@@ -1,0 +1,40 @@
+import type { AppUser } from "../types";
+
+export const initialUsers: AppUser[] = [
+  {
+    id: "usr-1",
+    name: "Ahmad Sanjaya (Admin)",
+    email: "admin@microrad.net",
+    role: "admin",
+    status: "active",
+    createdAt: "2026-01-10T08:00:00Z",
+    lastLoginAt: "2026-08-13T14:30:00Z",
+  },
+  {
+    id: "usr-2",
+    name: "Rian Hendrawan (NOC)",
+    email: "operator@microrad.net",
+    role: "operator",
+    status: "active",
+    createdAt: "2026-02-15T09:15:00Z",
+    lastLoginAt: "2026-08-13T10:00:00Z",
+  },
+  {
+    id: "usr-3",
+    name: "Bima Santosa (Field Tech)",
+    email: "tech@microrad.net",
+    role: "operator",
+    status: "active",
+    createdAt: "2026-03-01T11:20:00Z",
+    lastLoginAt: "2026-08-12T16:45:00Z",
+  },
+  {
+    id: "usr-4",
+    name: "Siti Sarah (Disabled Account)",
+    email: "siti.old@microrad.net",
+    role: "operator",
+    status: "disabled",
+    createdAt: "2025-11-20T10:00:00Z",
+    lastLoginAt: "2026-05-01T08:00:00Z",
+  },
+];
