@@ -40,20 +40,26 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950">
+    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 print:h-auto print:overflow-visible print:bg-white">
       {/* Desktop Sidebar */}
-      <div className="hidden lg:block h-full shrink-0">
+      <div className="hidden lg:block h-full shrink-0 print:hidden">
         <Sidebar />
       </div>
 
       {/* Mobile Drawer */}
-      <MobileNav open={mobileNavOpen} onOpenChange={setMobileNavOpen} />
+      <div className="print:hidden">
+        <MobileNav open={mobileNavOpen} onOpenChange={setMobileNavOpen} />
+      </div>
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-y-auto">
-        <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
-        <main className="flex-1 p-4 sm:p-6 md:p-8">
-          <div className="mx-auto max-w-7xl">{children}</div>
+      <div className="flex flex-1 flex-col overflow-y-auto print:overflow-visible print:h-auto print:bg-white">
+        <div className="print:hidden">
+          <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
+        </div>
+        <main className="flex-1 p-4 sm:p-6 md:p-8 print:p-0 print:m-0 print:max-w-none">
+          <div className="mx-auto max-w-7xl print:max-w-none print:m-0 print:p-0">
+            {children}
+          </div>
         </main>
       </div>
     </div>

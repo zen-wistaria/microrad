@@ -1,8 +1,17 @@
 "use client";
 
-import React from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  LogOut,
+  Menu,
+  RotateCcw,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import React from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,18 +20,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+import { resetDemoData } from "@/lib/api/dashboard";
 import { useAuth } from "@/lib/auth";
 import { initialUsers } from "@/lib/mock/users.mock";
-import { resetDemoData } from "@/lib/api/dashboard";
-import { toast } from "sonner";
-import {
-  ChevronRight,
-  Menu,
-  RotateCcw,
-  LogOut,
-  ChevronDown,
-} from "lucide-react";
 import { AppUserRoleBadge } from "../common/status-badge";
 import { ThemeToggle } from "../common/theme-toggle";
 
@@ -33,6 +33,7 @@ interface TopbarProps {
 const routeTitles: Record<string, string> = {
   dashboard: "Dashboard",
   customers: "Pelanggan PPPoE",
+  billing: "Tagihan & Billing",
   sessions: "Sesi Aktif",
   profiles: "Profil Bandwidth",
   routers: "Router NAS",
@@ -148,7 +149,9 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
                   {currentUser?.name || "Admin"}
                 </p>
                 <div className="flex items-center gap-1 mt-0.5">
-                  {currentUser?.role && <AppUserRoleBadge role={currentUser.role} />}
+                  {currentUser?.role && (
+                    <AppUserRoleBadge role={currentUser.role} />
+                  )}
                 </div>
               </div>
               <ChevronDown className="h-3.5 w-3.5 text-slate-400 hidden sm:block ml-0.5" />
@@ -156,7 +159,9 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-xl">
             <DropdownMenuLabel className="px-3 py-2">
-              <p className="text-xs font-normal text-slate-500 dark:text-slate-400">Masuk sebagai</p>
+              <p className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                Masuk sebagai
+              </p>
               <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
                 {currentUser?.email || "admin@microrad.net"}
               </p>

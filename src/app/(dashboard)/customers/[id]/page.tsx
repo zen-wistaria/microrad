@@ -11,6 +11,7 @@ import {
   History,
   Network,
   PowerOff,
+  Receipt,
   Upload,
   User,
   Zap,
@@ -23,7 +24,11 @@ import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { LiveDurationCounter } from "@/components/common/live-counter";
-import { CustomerStatusBadge } from "@/components/common/status-badge";
+import {
+  CustomerStatusBadge,
+  InvoiceStatusBadge,
+  PaymentMethodBadge,
+} from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,6 +39,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getInvoices } from "@/lib/api/billing";
 import {
   disconnectCustomer,
   getCustomerById,
@@ -51,6 +57,7 @@ import type {
   Customer,
   CustomerDailyUsage,
   CustomerStatus,
+  Invoice,
   NasRouter,
   Session,
 } from "@/lib/types";
@@ -59,6 +66,7 @@ import {
   formatDate,
   formatDuration,
   formatRelativeTime,
+  formatRupiah,
 } from "@/lib/utils";
 
 interface CustomerDetailPageProps {
@@ -78,6 +86,7 @@ export default function CustomerDetailPage({
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [sessionHistory, setSessionHistory] = useState<Session[]>([]);
   const [usageHistory, setUsageHistory] = useState<CustomerDailyUsage[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Disconnect Dialog
@@ -94,19 +103,30 @@ export default function CustomerDetailPage({
       }
       setCustomer(cust);
 
-      const [prof, rNas, activeSess, allSessions, usages] = await Promise.all([
-        cust.profileId ? getProfileById(cust.profileId) : Promise.resolve(null),
-        cust.nasId ? getRouterById(cust.nasId) : Promise.resolve(null),
-        getCustomerActiveSession(cust.id),
-        getCustomerSessions(cust.id),
-        getCustomerUsageHistory(cust.id),
-      ]);
+      const [prof, rNas, activeSess, allSessions, usages, allInvoices] =
+        await Promise.all([
+          cust.profileId
+            ? getProfileById(cust.profileId)
+            : Promise.resolve(null),
+          cust.nasId ? getRouterById(cust.nasId) : Promise.resolve(null),
+          getCustomerActiveSession(cust.id),
+          getCustomerSessions(cust.id),
+          getCustomerUsageHistory(cust.id),
+          getInvoices(),
+        ]);
 
       setProfile(prof);
       setRouterNas(rNas);
       setActiveSession(activeSess);
       setSessionHistory(allSessions);
       setUsageHistory(usages);
+      setInvoices(
+        allInvoices.filter(
+          (inv) =>
+            inv.customerId === cust.id ||
+            inv.customerUsername === cust.username,
+        ),
+      );
     } catch (err) {
       console.error(err);
       toast.error("Gagal memuat detail pelanggan.");
@@ -328,20 +348,24 @@ export default function CustomerDetailPage({
         </Card>
       )}
 
-      {/* Tabs Section: Overview, History, Usage Stats */}
+      {/* Tabs Section: Overview, History, Usage Stats, Billing */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="overview" className="gap-1.5 text-xs">
             <User className="h-3.5 w-3.5" />
-            Informasi Profil
+            Profil
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-1.5 text-xs">
             <History className="h-3.5 w-3.5" />
-            Histori Sesi ({sessionHistory.length})
+            Sesi ({sessionHistory.length})
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-1.5 text-xs">
             <BarChart3 className="h-3.5 w-3.5" />
-            Statistik Pemakaian
+            Statistik
+          </TabsTrigger>
+          <TabsTrigger value="billing" className="gap-1.5 text-xs">
+            <Receipt className="h-3.5 w-3.5" />
+            Tagihan ({invoices.length})
           </TabsTrigger>
         </TabsList>
 
@@ -591,6 +615,109 @@ export default function CustomerDetailPage({
             </CardHeader>
             <CardContent>
               <CustomerUsageChart data={usageHistory} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 4: Billing Invoices */}
+        <TabsContent value="billing" className="space-y-4 pt-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">
+                    Riwayat Tagihan & Faktur Pelanggan
+                  </CardTitle>
+                  <CardDescription>
+                    Daftar faktur tagihan bulanan PPPoE untuk akun{" "}
+                    {customer.username}.
+                  </CardDescription>
+                </div>
+                <Button asChild size="xs" variant="outline">
+                  <Link
+                    href={`/billing?search=${encodeURIComponent(customer.username)}`}
+                  >
+                    Buka di Menu Billing
+                  </Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-slate-50/80 text-slate-500 border-y border-slate-200 dark:bg-slate-800/50 dark:border-slate-800">
+                    <tr>
+                      <th className="py-2.5 px-4 font-semibold">No. Invoice</th>
+                      <th className="py-2.5 px-4 font-semibold">
+                        Paket & Periode
+                      </th>
+                      <th className="py-2.5 px-4 font-semibold">
+                        Total Tagihan
+                      </th>
+                      <th className="py-2.5 px-4 font-semibold">Jatuh Tempo</th>
+                      <th className="py-2.5 px-4 font-semibold">Status</th>
+                      <th className="py-2.5 px-4 font-semibold">Metode</th>
+                      <th className="py-2.5 px-4 font-semibold text-right">
+                        Aksi
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    {invoices.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="py-8 text-center text-slate-400"
+                        >
+                          Belum ada tagihan yang diterbitkan untuk pelanggan
+                          ini.
+                        </td>
+                      </tr>
+                    ) : (
+                      invoices.map((inv) => (
+                        <tr
+                          key={inv.id}
+                          className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
+                        >
+                          <td className="py-3 px-4 font-mono font-semibold text-blue-600 dark:text-blue-400">
+                            <Link
+                              href={`/billing/${inv.id}`}
+                              className="hover:underline"
+                            >
+                              {inv.invoiceNumber}
+                            </Link>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-slate-900 dark:text-slate-100">
+                              {inv.profileName}
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              Bulan {inv.periodMonth}/{inv.periodYear}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
+                            {formatRupiah(inv.totalAmount)}
+                          </td>
+                          <td className="py-3 px-4 text-xs text-slate-600 dark:text-slate-400">
+                            {formatDate(inv.dueDate)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <InvoiceStatusBadge status={inv.status} />
+                          </td>
+                          <td className="py-3 px-4">
+                            <PaymentMethodBadge method={inv.paymentMethod} />
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <Button asChild size="xs" variant="ghost">
+                              <Link href={`/billing/${inv.id}`}>Detail</Link>
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -24,8 +24,71 @@ export interface BandwidthProfile {
   name: string; // mis. "Paket 10Mbps - Home"
   rateLimitDown: number; // dalam Mbps
   rateLimitUp: number; // dalam Mbps
+  price?: number; // harga bulanan dalam Rupiah (IDR)
   description?: string;
   customerCount: number; // derived jumlah customer yang memakai profile ini
+}
+
+export type InvoiceStatus = "paid" | "unpaid" | "overdue" | "cancelled";
+
+export type PaymentMethod =
+  | "qris"
+  | "transfer_bca"
+  | "transfer_mandiri"
+  | "transfer_bri"
+  | "cash"
+  | "other";
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string; // e.g. "INV-202608-001"
+  customerId: string;
+  customerUsername: string;
+  customerFullName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  profileId: string;
+  profileName: string;
+  periodMonth: number; // 1 - 12
+  periodYear: number; // 2026
+  subtotal: number; // in IDR
+  tax: number; // PPN
+  discount: number;
+  adminFee: number;
+  totalAmount: number;
+  status: InvoiceStatus;
+  issueDate: string; // ISO date
+  dueDate: string; // ISO date
+  paidAt?: string;
+  paymentMethod?: PaymentMethod;
+  paymentReference?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentRecord {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  paymentReference?: string;
+  paidAt: string;
+  receivedBy: string;
+  notes?: string;
+}
+
+export interface BillingSummary {
+  totalRevenueThisMonth: number;
+  totalPendingAmount: number;
+  totalOverdueAmount: number;
+  paidCount: number;
+  unpaidCount: number;
+  overdueCount: number;
+  totalInvoicesCount: number;
 }
 
 export interface NasRouter {

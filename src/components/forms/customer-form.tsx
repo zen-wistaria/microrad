@@ -1,13 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "nextjs-toploader/app";
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowLeft, Loader2, Network, Shield, User } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "nextjs-toploader/app";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import * as z from "zod";
-import { Customer, BandwidthProfile, NasRouter, CustomerStatus } from "@/lib/types";
-import { createCustomer, updateCustomer } from "@/lib/api/customers";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,19 +25,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
-import { Loader2, ArrowLeft, User, Shield, Network, MapPin } from "lucide-react";
-import Link from "next/link";
+import { createCustomer, updateCustomer } from "@/lib/api/customers";
+import type {
+  BandwidthProfile,
+  Customer,
+  CustomerStatus,
+  NasRouter,
+} from "@/lib/types";
 
-const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+const ipv4Regex =
+  /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
 const customerSchema = z.object({
   username: z
     .string()
     .min(3, "Username minimal 3 karakter")
     .max(32, "Username maksimal 32 karakter")
-    .regex(/^[a-zA-Z0-9._-]+$/, "Username hanya boleh huruf, angka, titik, minus, dan underscore (tanpa spasi)"),
+    .regex(
+      /^[a-zA-Z0-9._-]+$/,
+      "Username hanya boleh huruf, angka, titik, minus, dan underscore (tanpa spasi)",
+    ),
   password: z
     .string()
     .optional()
@@ -82,9 +97,9 @@ export function CustomerForm({
       fullName: initialData?.fullName || "",
       phone: initialData?.phone || "",
       address: initialData?.address || "",
-      profileId: initialData?.profileId || (profiles[0]?.id || ""),
+      profileId: initialData?.profileId || profiles[0]?.id || "",
       staticIp: initialData?.staticIp || "",
-      nasId: initialData?.nasId || (routers[0]?.id || ""),
+      nasId: initialData?.nasId || routers[0]?.id || "",
       status: initialData?.status || "active",
     },
   });
@@ -127,11 +142,15 @@ export function CustomerForm({
           nasId: data.nasId || undefined,
           status: data.status as CustomerStatus,
         });
-        toast.success(`Pelanggan baru ${created.username} berhasil ditambahkan!`);
+        toast.success(
+          `Pelanggan baru ${created.username} berhasil ditambahkan!`,
+        );
         router.push("/customers");
       }
     } catch (err: any) {
-      toast.error(err?.message || "Terjadi kesalahan saat menyimpan data pelanggan.");
+      toast.error(
+        err?.message || "Terjadi kesalahan saat menyimpan data pelanggan.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -140,8 +159,19 @@ export function CustomerForm({
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" asChild className="gap-2 text-slate-600 dark:text-slate-400">
-          <Link href={isEditing && initialData ? `/customers/${initialData.id}` : "/customers"}>
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="gap-2 text-slate-600 dark:text-slate-400"
+        >
+          <Link
+            href={
+              isEditing && initialData
+                ? `/customers/${initialData.id}`
+                : "/customers"
+            }
+          >
             <ArrowLeft className="h-4 w-4" />
             Kembali
           </Link>
@@ -154,10 +184,13 @@ export function CustomerForm({
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
               <Shield className="h-5 w-5" />
-              <CardTitle className="text-base">Kredensial RADIUS PPPoE</CardTitle>
+              <CardTitle className="text-base">
+                Kredensial RADIUS PPPoE
+              </CardTitle>
             </div>
             <CardDescription>
-              Informasi autentikasi PPPoE yang akan disinkronkan ke FreeRADIUS (<code className="text-xs">radcheck</code>).
+              Informasi autentikasi PPPoE yang akan disinkronkan ke FreeRADIUS (
+              <code className="text-xs">radcheck</code>).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -172,23 +205,32 @@ export function CustomerForm({
                 className={errors.username ? "border-rose-500" : ""}
               />
               {errors.username && (
-                <p className="text-xs text-rose-500">{errors.username.message}</p>
+                <p className="text-xs text-rose-500">
+                  {errors.username.message}
+                </p>
               )}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">
-                Password PPPoE {!isEditing && <span className="text-rose-500">*</span>}
+                Password PPPoE{" "}
+                {!isEditing && <span className="text-rose-500">*</span>}
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder={isEditing ? "Kosongkan jika tidak ingin mengubah password" : "Minimal 6 karakter"}
+                placeholder={
+                  isEditing
+                    ? "Kosongkan jika tidak ingin mengubah password"
+                    : "Minimal 6 karakter"
+                }
                 {...register("password")}
                 className={errors.password ? "border-rose-500" : ""}
               />
               {errors.password && (
-                <p className="text-xs text-rose-500">{errors.password.message}</p>
+                <p className="text-xs text-rose-500">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
@@ -198,7 +240,9 @@ export function CustomerForm({
               </Label>
               <Select
                 value={selectedProfileId}
-                onValueChange={(val) => setValue("profileId", val, { shouldValidate: true })}
+                onValueChange={(val) =>
+                  setValue("profileId", val, { shouldValidate: true })
+                }
               >
                 <SelectTrigger id="profileId">
                   <SelectValue placeholder="Pilih Profil Paket" />
@@ -212,7 +256,9 @@ export function CustomerForm({
                 </SelectContent>
               </Select>
               {errors.profileId && (
-                <p className="text-xs text-rose-500">{errors.profileId.message}</p>
+                <p className="text-xs text-rose-500">
+                  {errors.profileId.message}
+                </p>
               )}
             </div>
 
@@ -220,15 +266,21 @@ export function CustomerForm({
               <Label htmlFor="status">Status Akun Pelanggan</Label>
               <Select
                 value={selectedStatus}
-                onValueChange={(val) => setValue("status", val as any, { shouldValidate: true })}
+                onValueChange={(val) =>
+                  setValue("status", val as any, { shouldValidate: true })
+                }
               >
                 <SelectTrigger id="status">
                   <SelectValue placeholder="Pilih Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">🟢 Active (Aktif)</SelectItem>
-                  <SelectItem value="suspended">🟡 Suspended (Isolir / Ditangguhkan)</SelectItem>
-                  <SelectItem value="disabled">⚪ Disabled (Nonaktif)</SelectItem>
+                  <SelectItem value="suspended">
+                    🟡 Suspended (Isolir / Ditangguhkan)
+                  </SelectItem>
+                  <SelectItem value="disabled">
+                    ⚪ Disabled (Nonaktif)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -240,10 +292,14 @@ export function CustomerForm({
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
               <Network className="h-5 w-5" />
-              <CardTitle className="text-base">Pengaturan Jaringan (Framed-IP & NAS)</CardTitle>
+              <CardTitle className="text-base">
+                Pengaturan Jaringan (Framed-IP & NAS)
+              </CardTitle>
             </div>
             <CardDescription>
-              Konfigurasi IP statis (<code className="text-xs">radreply: Framed-IP-Address</code>) & router NAS.
+              Konfigurasi IP statis (
+              <code className="text-xs">radreply: Framed-IP-Address</code>) &
+              router NAS.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -256,10 +312,13 @@ export function CustomerForm({
                 className={errors.staticIp ? "border-rose-500" : ""}
               />
               <p className="text-[11px] text-slate-500">
-                Jika diisi, router MikroTik akan selalu memberikan IP ini ke pelanggan.
+                Jika diisi, router MikroTik akan selalu memberikan IP ini ke
+                pelanggan.
               </p>
               {errors.staticIp && (
-                <p className="text-xs text-rose-500">{errors.staticIp.message}</p>
+                <p className="text-xs text-rose-500">
+                  {errors.staticIp.message}
+                </p>
               )}
             </div>
 
@@ -267,7 +326,9 @@ export function CustomerForm({
               <Label htmlFor="nasId">Default NAS Router (MikroTik)</Label>
               <Select
                 value={selectedNasId}
-                onValueChange={(val) => setValue("nasId", val, { shouldValidate: true })}
+                onValueChange={(val) =>
+                  setValue("nasId", val, { shouldValidate: true })
+                }
               >
                 <SelectTrigger id="nasId">
                   <SelectValue placeholder="Pilih NAS Router" />
@@ -289,10 +350,13 @@ export function CustomerForm({
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
               <User className="h-5 w-5" />
-              <CardTitle className="text-base">Informasi Pelanggan & Kontak</CardTitle>
+              <CardTitle className="text-base">
+                Informasi Pelanggan & Kontak
+              </CardTitle>
             </div>
             <CardDescription>
-              Data informasi identitas pelanggan untuk keperluan administrasi dan teknisi lapangan.
+              Data informasi identitas pelanggan untuk keperluan administrasi
+              dan teknisi lapangan.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

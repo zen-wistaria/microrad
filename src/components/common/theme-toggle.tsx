@@ -1,8 +1,8 @@
 "use client";
 
-import * as React from "react";
-import { Moon, Sun, Laptop } from "lucide-react";
+import { Laptop, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
+import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -44,21 +44,31 @@ export function ThemeToggle() {
       <DropdownMenuContent align="end" className="w-36">
         <DropdownMenuItem
           onClick={() => setTheme("light")}
-          className={theme === "light" ? "bg-slate-100 dark:bg-slate-800 font-medium" : ""}
+          className={
+            theme === "light"
+              ? "bg-slate-100 dark:bg-slate-800 font-medium"
+              : ""
+          }
         >
           <Sun className="mr-2 h-4 w-4 text-amber-500" />
           <span>Terang</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => setTheme("dark")}
-          className={theme === "dark" ? "bg-slate-100 dark:bg-slate-800 font-medium" : ""}
+          className={
+            theme === "dark" ? "bg-slate-100 dark:bg-slate-800 font-medium" : ""
+          }
         >
           <Moon className="mr-2 h-4 w-4 text-blue-400" />
           <span>Gelap</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => setTheme("system")}
-          className={theme === "system" ? "bg-slate-100 dark:bg-slate-800 font-medium" : ""}
+          className={
+            theme === "system"
+              ? "bg-slate-100 dark:bg-slate-800 font-medium"
+              : ""
+          }
         >
           <Laptop className="mr-2 h-4 w-4 text-slate-400" />
           <span>Sistem</span>

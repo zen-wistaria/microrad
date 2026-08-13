@@ -1,13 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "nextjs-toploader/app";
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowLeft, Loader2, Router as RouterIcon } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "nextjs-toploader/app";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import * as z from "zod";
-import { NasRouter } from "@/lib/types";
-import { createRouter, updateRouter } from "@/lib/api/routers";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,12 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
-import { Loader2, ArrowLeft, Router as RouterIcon } from "lucide-react";
-import Link from "next/link";
+import { createRouter, updateRouter } from "@/lib/api/routers";
+import type { NasRouter } from "@/lib/types";
 
-const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+const ipv4Regex =
+  /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
 const routerSchema = z.object({
   name: z.string().min(2, "Nama router minimal 2 karakter"),
@@ -41,7 +48,10 @@ interface RouterFormProps {
   isEditing?: boolean;
 }
 
-export function RouterForm({ initialData, isEditing = false }: RouterFormProps) {
+export function RouterForm({
+  initialData,
+  isEditing = false,
+}: RouterFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
 
@@ -95,7 +105,12 @@ export function RouterForm({ initialData, isEditing = false }: RouterFormProps) 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" asChild className="gap-2 text-slate-600 dark:text-slate-400">
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="gap-2 text-slate-600 dark:text-slate-400"
+        >
           <Link href="/routers">
             <ArrowLeft className="h-4 w-4" />
             Kembali ke Daftar Router
@@ -108,11 +123,14 @@ export function RouterForm({ initialData, isEditing = false }: RouterFormProps) 
           <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
             <RouterIcon className="h-5 w-5" />
             <CardTitle className="text-base">
-              {isEditing ? "Edit NAS Router MikroTik" : "Tambah NAS Router Baru"}
+              {isEditing
+                ? "Edit NAS Router MikroTik"
+                : "Tambah NAS Router Baru"}
             </CardTitle>
           </div>
           <CardDescription>
-            Router MikroTik yang terdaftar di database FreeRADIUS (tabel <code>nas</code>).
+            Router MikroTik yang terdaftar di database FreeRADIUS (tabel{" "}
+            <code>nas</code>).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -133,7 +151,8 @@ export function RouterForm({ initialData, isEditing = false }: RouterFormProps) 
 
           <div className="space-y-2">
             <Label htmlFor="ipAddress">
-              IP Address Router (nasname) <span className="text-rose-500">*</span>
+              IP Address Router (nasname){" "}
+              <span className="text-rose-500">*</span>
             </Label>
             <Input
               id="ipAddress"
@@ -142,7 +161,9 @@ export function RouterForm({ initialData, isEditing = false }: RouterFormProps) 
               className={errors.ipAddress ? "border-rose-500" : ""}
             />
             {errors.ipAddress && (
-              <p className="text-xs text-rose-500">{errors.ipAddress.message}</p>
+              <p className="text-xs text-rose-500">
+                {errors.ipAddress.message}
+              </p>
             )}
           </div>
 
@@ -159,14 +180,18 @@ export function RouterForm({ initialData, isEditing = false }: RouterFormProps) 
             <Label htmlFor="status">Status Router</Label>
             <Select
               value={selectedStatus}
-              onValueChange={(val) => setValue("status", val as any, { shouldValidate: true })}
+              onValueChange={(val) =>
+                setValue("status", val as any, { shouldValidate: true })
+              }
             >
               <SelectTrigger id="status">
                 <SelectValue placeholder="Pilih Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="online">🟢 Online (Terhubung)</SelectItem>
-                <SelectItem value="offline">🔴 Offline (Tidak Terjangkau)</SelectItem>
+                <SelectItem value="offline">
+                  🔴 Offline (Tidak Terjangkau)
+                </SelectItem>
                 <SelectItem value="unknown">⚪ Unknown</SelectItem>
               </SelectContent>
             </Select>

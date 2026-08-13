@@ -103,3 +103,65 @@ export function formatRate(mbps: number): string {
   if (!mbps && mbps !== 0) return "0 Mbps";
   return `${mbps} Mbps`;
 }
+
+/**
+ * Format number to Indonesian Rupiah currency string (e.g. Rp 165.000)
+ */
+export function formatRupiah(amount?: number | null): string {
+  if (amount === undefined || amount === null || Number.isNaN(amount)) {
+    return "Rp 0";
+  }
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+/**
+ * Helper to simulate network latency
+ */
+export const delay = (ms = 150) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Convert number to Indonesian words (Terbilang)
+ */
+export function terbilangRupiah(num: number): string {
+  if (!num || num === 0) return "Nol Rupiah";
+  const satuan = [
+    "",
+    "Satu",
+    "Dua",
+    "Tiga",
+    "Empat",
+    "Lima",
+    "Enam",
+    "Tujuh",
+    "Delapan",
+    "Sembilan",
+    "Sepuluh",
+    "Sebelas",
+  ];
+
+  function convert(n: number): string {
+    if (n < 12) return satuan[n];
+    if (n < 20) return `${convert(n - 10)} Belas`;
+    if (n < 100)
+      return `${convert(Math.floor(n / 10))} Puluh ${convert(n % 10)}`.trim();
+    if (n < 200) return `Seratus ${convert(n - 100)}`.trim();
+    if (n < 1000)
+      return `${convert(Math.floor(n / 100))} Ratus ${convert(n % 100)}`.trim();
+    if (n < 2000) return `Seribu ${convert(n - 1000)}`.trim();
+    if (n < 1000000)
+      return `${convert(Math.floor(n / 1000))} Ribu ${convert(n % 1000)}`.trim();
+    if (n < 1000000000)
+      return `${convert(Math.floor(n / 1000000))} Juta ${convert(n % 1000000)}`.trim();
+    if (n < 1000000000000)
+      return `${convert(Math.floor(n / 1000000000))} Miliar ${convert(n % 1000000000)}`.trim();
+    return `${convert(Math.floor(n / 1000000000000))} Triliun ${convert(n % 1000000000000)}`.trim();
+  }
+
+  const result = convert(Math.abs(Math.floor(num)));
+  return `${result.replace(/\s+/g, " ")} Rupiah`;
+}

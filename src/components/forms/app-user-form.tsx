@@ -1,13 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "nextjs-toploader/app";
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowLeft, Loader2, UserCheck } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "nextjs-toploader/app";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import * as z from "zod";
-import { AppUser, AppUserRole, AppUserStatus } from "@/lib/types";
-import { createUser, updateUser } from "@/lib/api/users";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,10 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
-import { Loader2, ArrowLeft, UserCheck } from "lucide-react";
-import Link from "next/link";
+import { createUser, updateUser } from "@/lib/api/users";
+import type { AppUser, AppUserRole, AppUserStatus } from "@/lib/types";
 
 const appUserSchema = z.object({
   name: z.string().min(2, "Nama minimal 2 karakter"),
@@ -36,7 +42,10 @@ interface AppUserFormProps {
   isEditing?: boolean;
 }
 
-export function AppUserForm({ initialData, isEditing = false }: AppUserFormProps) {
+export function AppUserForm({
+  initialData,
+  isEditing = false,
+}: AppUserFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
 
@@ -90,7 +99,12 @@ export function AppUserForm({ initialData, isEditing = false }: AppUserFormProps
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" asChild className="gap-2 text-slate-600 dark:text-slate-400">
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="gap-2 text-slate-600 dark:text-slate-400"
+        >
           <Link href="/users">
             <ArrowLeft className="h-4 w-4" />
             Kembali ke Pengguna Aplikasi
@@ -107,7 +121,8 @@ export function AppUserForm({ initialData, isEditing = false }: AppUserFormProps
             </CardTitle>
           </div>
           <CardDescription>
-            Akun pengguna (App User) yang berhak login ke portal manajemen PPPoE ini.
+            Akun pengguna (App User) yang berhak login ke portal manajemen PPPoE
+            ini.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -147,14 +162,20 @@ export function AppUserForm({ initialData, isEditing = false }: AppUserFormProps
               <Label htmlFor="role">Role / Hak Akses</Label>
               <Select
                 value={selectedRole}
-                onValueChange={(val) => setValue("role", val as any, { shouldValidate: true })}
+                onValueChange={(val) =>
+                  setValue("role", val as any, { shouldValidate: true })
+                }
               >
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Pilih Role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">🛡️ Administrator (Akses Penuh)</SelectItem>
-                  <SelectItem value="operator">👤 Operator / NOC (Monitoring & Operasional)</SelectItem>
+                  <SelectItem value="admin">
+                    🛡️ Administrator (Akses Penuh)
+                  </SelectItem>
+                  <SelectItem value="operator">
+                    👤 Operator / NOC (Monitoring & Operasional)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -163,14 +184,18 @@ export function AppUserForm({ initialData, isEditing = false }: AppUserFormProps
               <Label htmlFor="status">Status Akun</Label>
               <Select
                 value={selectedStatus}
-                onValueChange={(val) => setValue("status", val as any, { shouldValidate: true })}
+                onValueChange={(val) =>
+                  setValue("status", val as any, { shouldValidate: true })
+                }
               >
                 <SelectTrigger id="status">
                   <SelectValue placeholder="Pilih Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">🟢 Active (Bisa Login)</SelectItem>
-                  <SelectItem value="disabled">⚪ Disabled (Diblokir)</SelectItem>
+                  <SelectItem value="disabled">
+                    ⚪ Disabled (Diblokir)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

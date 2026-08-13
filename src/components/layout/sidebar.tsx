@@ -1,24 +1,24 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Users,
   Activity,
-  Zap,
+  ChevronRight,
+  LayoutDashboard,
+  LogOut,
+  Radio,
+  Receipt,
   Router as RouterIcon,
   ShieldCheck,
-  Radio,
-  LogOut,
-  ChevronRight,
-  Sparkles,
+  Users,
+  Zap,
 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { getActiveSessions } from "@/lib/api/sessions";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { getActiveSessions } from "@/lib/api/sessions";
-import { Button } from "@/components/ui/button";
 
 const mainNavItems = [
   {
@@ -30,6 +30,12 @@ const mainNavItems = [
     title: "Pelanggan PPPoE",
     href: "/customers",
     icon: Users,
+    matchExact: false,
+  },
+  {
+    title: "Tagihan & Billing",
+    href: "/billing",
+    icon: Receipt,
     matchExact: false,
   },
   {
@@ -73,7 +79,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
       try {
         const sessions = await getActiveSessions();
         setActiveSessionCount(sessions.length);
-      } catch (e) {
+      } catch (_e) {
         // silent fallback
       }
     };
@@ -93,7 +99,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
     <aside
       className={cn(
         "flex h-full w-64 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/95",
-        className
+        className,
       )}
     >
       {/* Brand Header */}
@@ -108,7 +114,9 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
               v0.2
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">PPPoE & RADIUS Manager</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            PPPoE & RADIUS Manager
+          </p>
         </div>
       </div>
 
@@ -131,7 +139,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                   "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   active
                     ? "bg-blue-50 text-blue-600 font-semibold dark:bg-blue-950/50 dark:text-blue-400 shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -140,7 +148,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                       "h-4 w-4 shrink-0 transition-colors",
                       active
                         ? "text-blue-600 dark:text-blue-400"
-                        : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300"
+                        : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
                     )}
                   />
                   <span>{item.title}</span>
@@ -152,7 +160,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                       "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold transition-all",
                       activeSessionCount > 0
                         ? "bg-emerald-500 text-white shadow-xs"
-                        : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                        : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
                     )}
                   >
                     {activeSessionCount}
@@ -180,7 +188,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                   "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   active
                     ? "bg-purple-50 text-purple-600 font-semibold dark:bg-purple-950/50 dark:text-purple-400"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -189,7 +197,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                       "h-4 w-4 shrink-0 transition-colors",
                       active
                         ? "text-purple-600 dark:text-purple-400"
-                        : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300"
+                        : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
                     )}
                   />
                   <span>{item.title}</span>
@@ -197,7 +205,8 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                 <ChevronRight
                   className={cn(
                     "h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100",
-                    active && "opacity-100 text-purple-600 dark:text-purple-400"
+                    active &&
+                      "opacity-100 text-purple-600 dark:text-purple-400",
                   )}
                 />
               </Link>

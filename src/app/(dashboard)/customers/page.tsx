@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Plus,
   PowerOff,
+  Receipt,
   RefreshCw,
   Search,
   Trash2,
@@ -434,6 +435,17 @@ export default function CustomersPage() {
                                 <Link href={`/customers/${customer.id}/edit`}>
                                   <Edit className="mr-2 h-4 w-4 text-slate-500" />
                                   Edit Akun
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                asChild
+                                className="cursor-pointer text-xs"
+                              >
+                                <Link
+                                  href={`/billing?search=${encodeURIComponent(customer.username)}`}
+                                >
+                                  <Receipt className="mr-2 h-4 w-4 text-slate-500" />
+                                  Lihat Tagihan
                                 </Link>
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />

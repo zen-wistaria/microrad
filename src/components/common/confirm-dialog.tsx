@@ -1,17 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import { AlertTriangle, Loader2 } from "lucide-react";
+import type React from "react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { AlertTriangle, Loader2 } from "lucide-react";
 
 export interface ConfirmDialogProps {
   open: boolean;

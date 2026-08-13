@@ -29,7 +29,6 @@ class MockDatabase {
   private routers: NasRouter[] = [];
   private sessions: Session[] = [];
   private users: AppUser[] = [];
-  private isLoaded = false;
 
   constructor() {
     this.load();
