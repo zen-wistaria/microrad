@@ -1,4 +1,13 @@
-import type { Invoice, PaymentRecord } from "../types";
+import type { Invoice, PaymentMethod, PaymentRecord } from "../types";
+
+export const PAYMENT_METHODS: PaymentMethod[] = [
+  "qris",
+  "transfer_bca",
+  "transfer_mandiri",
+  "transfer_bri",
+  "cash",
+  "other",
+];
 
 export const initialInvoices: Invoice[] = [
   {

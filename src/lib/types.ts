@@ -7,6 +7,7 @@ export interface Customer {
   username: string; // radcheck.username (login PPPoE)
   password?: string; // radcheck password (virtual / transient for update)
   fullName?: string; // metadata tambahan
+  email?: string; // akun login portal pelanggan
   phone?: string;
   address?: string;
   status: CustomerStatus;
@@ -131,7 +132,7 @@ export interface CompanyProfile {
   updatedAt?: string;
 }
 
-export type AppUserRole = "admin" | "operator";
+export type AppUserRole = "admin" | "operator" | "customer";
 export type AppUserStatus = "active" | "disabled";
 
 export interface AppUser {
@@ -142,6 +143,19 @@ export interface AppUser {
   status: AppUserStatus;
   createdAt: string;
   lastLoginAt?: string;
+  /** Jika role = "customer", merujuk ke id Customer di tabel pelanggan */
+  customerId?: string;
+}
+
+export interface CustomerPortalSummary {
+  totalUsage30dBytes: number;
+  totalDownload30dBytes: number;
+  totalUpload30dBytes: number;
+  onlineSessionCount: number;
+  onlineNow: boolean;
+  totalPaidAmount: number;
+  totalOutstandingAmount: number;
+  activeInvoiceCount: number;
 }
 
 export interface UsageTrendPoint {
@@ -166,6 +180,16 @@ export interface DashboardStats {
 
 export interface CustomerDailyUsage {
   date: string;
+  downloadBytes: number;
+  uploadBytes: number;
+  totalBytes: number;
+  sessionsCount: number;
+}
+
+export interface CustomerMonthlyUsage {
+  /** Format "YYYY-MM" */
+  month: string;
+  label: string; // mis. "Jul 2026"
   downloadBytes: number;
   uploadBytes: number;
   totalBytes: number;

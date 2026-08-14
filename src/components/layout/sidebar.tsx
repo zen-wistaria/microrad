@@ -3,6 +3,7 @@
 import {
   Activity,
   ChevronRight,
+  Home,
   LayoutDashboard,
   LogOut,
   Radio,
@@ -11,6 +12,7 @@ import {
   Settings2,
   ShieldCheck,
   Users,
+  Wallet,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -70,6 +72,30 @@ const systemNavItems = [
   },
 ];
 
+const portalNavItems = [
+  {
+    title: "Informasi Pelanggan",
+    href: "/portal",
+    icon: Home,
+    matchExact: true,
+  },
+  {
+    title: "Pemakaian",
+    href: "/portal/usage",
+    icon: Activity,
+  },
+  {
+    title: "Tagihan",
+    href: "/portal/billing",
+    icon: Receipt,
+  },
+  {
+    title: "Pembayaran",
+    href: "/portal/payments",
+    icon: Wallet,
+  },
+];
+
 interface SidebarProps {
   className?: string;
   onItemClick?: () => void;
@@ -89,10 +115,12 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
         // silent fallback
       }
     };
-    fetchCounts();
-    const interval = setInterval(fetchCounts, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    if (currentUser?.role !== "customer") {
+      fetchCounts();
+      const interval = setInterval(fetchCounts, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [currentUser?.role]);
 
   const isLinkActive = (href: string) => {
     if (href === "/dashboard") {
@@ -176,6 +204,46 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
             );
           })}
         </div>
+
+        {/* Portal Pelanggan Section */}
+        {currentUser?.role === "customer" && (
+          <div className="space-y-1">
+            <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Portal Pelanggan
+            </div>
+            {portalNavItems.map((item) => {
+              const active = item.matchExact
+                ? pathname === item.href
+                : isLinkActive(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onItemClick}
+                  className={cn(
+                    "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-emerald-50 text-emerald-600 font-semibold dark:bg-emerald-950/50 dark:text-emerald-400 shadow-xs"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon
+                      className={cn(
+                        "h-4 w-4 shrink-0 transition-colors",
+                        active
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
+                      )}
+                    />
+                    <span>{item.title}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
 
         {/* System Settings Section (Separated visual group) */}
         <div className="mt-8 space-y-1">

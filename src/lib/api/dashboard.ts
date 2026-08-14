@@ -1,5 +1,9 @@
 import { mockDb } from "../mock/db";
-import type { CustomerDailyUsage, DashboardStats } from "../types";
+import type {
+  CustomerDailyUsage,
+  CustomerMonthlyUsage,
+  DashboardStats,
+} from "../types";
 
 const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -13,6 +17,13 @@ export async function getCustomerUsageHistory(
 ): Promise<CustomerDailyUsage[]> {
   await delay();
   return mockDb.getCustomerUsageHistory(customerId);
+}
+
+export async function getCustomerMonthlyUsage(
+  customerId: string,
+): Promise<CustomerMonthlyUsage[]> {
+  await delay();
+  return mockDb.getCustomerMonthlyUsage(customerId);
 }
 
 export async function resetDemoData(): Promise<void> {

@@ -1,6 +1,7 @@
 import {
   AlertCircle,
   CheckCircle2,
+  Home,
   Shield,
   User,
   Wifi,
@@ -83,6 +84,17 @@ export function RouterStatusBadge({
 }
 
 export function AppUserRoleBadge({ role }: { role: AppUserRole }) {
+  if (role === "customer") {
+    return (
+      <Badge
+        variant="secondary"
+        className="font-medium text-emerald-600 dark:text-emerald-400"
+      >
+        <Home className="h-3 w-3" />
+        Pelanggan
+      </Badge>
+    );
+  }
   if (role === "admin") {
     return (
       <Badge variant="purple" className="font-medium">

@@ -4,6 +4,7 @@ import type {
   CompanyProfile,
   Customer,
   CustomerDailyUsage,
+  CustomerMonthlyUsage,
   DashboardStats,
   NasRouter,
   Session,
@@ -491,6 +492,25 @@ class MockDatabase {
     return [...this.users];
   }
 
+  /** Resolve customer akun login: via user.customerId, lalu fallback email sama
+   *  dengan customer.email (demo lama). */
+  public getCustomerByUserEmail(email: string): Customer | undefined {
+    this.load();
+    const normalized = email.toLowerCase();
+
+    // 1. Prioritas 1: AppUser dengan role "customer" yang punya customerId
+    const linkedUser = this.users.find(
+      (u) => u.email.toLowerCase() === normalized && u.customerId,
+    );
+    if (linkedUser) {
+      const linked = this.customers.find((c) => c.id === linkedUser.customerId);
+      if (linked) return linked;
+    }
+
+    // 2. Prioritas 2 (fallback): customer yang email-nya sama persis
+    return this.customers.find((c) => c.email?.toLowerCase() === normalized);
+  }
+
   public getUserById(id: string): AppUser | undefined {
     this.load();
     return this.users.find((u) => u.id === id);
@@ -648,6 +668,45 @@ class MockDatabase {
         uploadBytes: up,
         totalBytes: down + up,
         sessionsCount: (daySeed % 3) + 1,
+      });
+    }
+    return result;
+  }
+
+  // --- Customer Monthly Usage (12 bulan terakhir) ---
+  public getCustomerMonthlyUsage(customerId: string): CustomerMonthlyUsage[] {
+    this.load();
+    const result: CustomerMonthlyUsage[] = [];
+    const customer = this.customers.find((c) => c.id === customerId);
+    if (!customer) return [];
+
+    const hash = customerId
+      .split("")
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const label = d.toLocaleDateString("id-ID", {
+        month: "short",
+        year: "numeric",
+      });
+      const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+      const monthSeed = (hash + i * 97) % 100;
+      const factor = (monthSeed / 100) * 0.9 + 0.4; // 0.4 to 1.3 multiplier
+
+      const down = Math.round(factor * 50 * 1024 * 1024 * 1024); // rata-rata ~50 GB/bln
+      const up = Math.round(factor * 10 * 1024 * 1024 * 1024); // rata-rata ~10 GB/bln
+
+      result.push({
+        month: monthStr,
+        label,
+        downloadBytes: down,
+        uploadBytes: up,
+        totalBytes: down + up,
+        sessionsCount: Math.round((monthSeed % 20) + 18), // ~19-37 sesi/bln
       });
     }
     return result;

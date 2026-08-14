@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Lock, Mail, Radio, Shield, User } from "lucide-react";
+import { Home, Loader2, Lock, Mail, Radio, Shield, User } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import type React from "react";
 import { useState } from "react";
@@ -49,7 +49,7 @@ export default function LoginPage() {
 
       login(user);
       toast.success(`Selamat datang kembali, ${user.name}!`);
-      router.push("/dashboard");
+      router.push(user.role === "customer" ? "/portal" : "/dashboard");
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal melakukan login.");
     } finally {
@@ -64,7 +64,7 @@ export default function LoginPage() {
     if (user) {
       login(user);
       toast.success(`Login demo berhasil sebagai ${user.name}!`);
-      router.push("/dashboard");
+      router.push(user.role === "customer" ? "/portal" : "/dashboard");
     }
   };
 
@@ -185,6 +185,23 @@ export default function LoginPage() {
                   </div>
                   <div className="text-[10px] text-slate-500">
                     NOC & Monitoring
+                  </div>
+                </div>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleDemoLogin("budi.santoso@mail.com")}
+                className="flex items-center justify-center gap-1.5 h-auto py-2.5 px-3 text-xs"
+              >
+                <Home className="h-4 w-4 text-emerald-600" />
+                <div className="text-left leading-tight">
+                  <div className="font-semibold text-slate-900 dark:text-slate-100">
+                    Pelanggan
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    Portal Pelanggan
                   </div>
                 </div>
               </Button>

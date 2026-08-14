@@ -38,6 +38,9 @@ const routeTitles: Record<string, string> = {
   profiles: "Profil Bandwidth",
   routers: "Router NAS",
   users: "Pengguna Aplikasi",
+  portal: "Portal Pelanggan",
+  usage: "Pemakaian",
+  payments: "Pembayaran",
   new: "Tambah Baru",
   edit: "Edit Data",
 };

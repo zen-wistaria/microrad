@@ -32,7 +32,7 @@ import { getErrorMessage } from "@/lib/utils";
 const appUserSchema = z.object({
   name: z.string().min(2, "Nama minimal 2 karakter"),
   email: z.string().email("Format email tidak valid"),
-  role: z.enum(["admin", "operator"]),
+  role: z.enum(["admin", "operator", "customer"]),
   status: z.enum(["active", "disabled"]),
 });
 
@@ -176,6 +176,9 @@ export function AppUserForm({
                   </SelectItem>
                   <SelectItem value="operator">
                     👤 Operator / NOC (Monitoring & Operasional)
+                  </SelectItem>
+                  <SelectItem value="customer">
+                    🏠 Pelanggan (Portal Pelanggan)
                   </SelectItem>
                 </SelectContent>
               </Select>
