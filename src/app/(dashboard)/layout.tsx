@@ -1,8 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { usePathname } from "next/navigation";
-import { useRouter } from "nextjs-toploader/app";
+import { usePathname, useRouter } from "next/navigation";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { MobileNav } from "@/components/layout/mobile-nav";

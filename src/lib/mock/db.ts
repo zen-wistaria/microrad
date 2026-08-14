@@ -24,7 +24,7 @@ const STORAGE_KEYS = {
   SESSIONS: "microrad_sessions",
   USERS: "microrad_users",
   COMPANY_PROFILE: "microrad_company_profile",
-  INITIALIZED: "microrad_initialized_v1",
+  INITIALIZED: "microrad_initialized_v2",
 };
 
 class MockDatabase {

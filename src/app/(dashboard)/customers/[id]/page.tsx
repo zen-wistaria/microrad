@@ -17,7 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "nextjs-toploader/app";
+import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
@@ -104,16 +104,18 @@ export default function CustomerDetailPage({
       }
       setCustomer(cust);
 
+      // Load data pendukung secara independen — kegagalan satu bagian tidak
+      // menghapus data pelanggan yang sudah tampil.
       const [prof, rNas, activeSess, allSessions, usages, allInvoices] =
         await Promise.all([
           cust.profileId
             ? getProfileById(cust.profileId)
             : Promise.resolve(null),
           cust.nasId ? getRouterById(cust.nasId) : Promise.resolve(null),
-          getCustomerActiveSession(cust.id),
-          getCustomerSessions(cust.id),
-          getCustomerUsageHistory(cust.id),
-          getInvoices(),
+          getCustomerActiveSession(cust.id).catch(() => null),
+          getCustomerSessions(cust.id).catch(() => []),
+          getCustomerUsageHistory(cust.id).catch(() => []),
+          getInvoices().catch(() => []),
         ]);
 
       setProfile(prof);
@@ -122,13 +124,13 @@ export default function CustomerDetailPage({
       setSessionHistory(allSessions);
       setUsageHistory(usages);
       setInvoices(
-        allInvoices.filter(
+        (allInvoices || []).filter(
           (inv) =>
             inv.customerId === cust.id ||
             inv.customerUsername === cust.username,
         ),
       );
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       toast.error("Gagal memuat detail pelanggan.");
     } finally {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Home, Loader2, Lock, Mail, Radio, Shield, User } from "lucide-react";
-import { useRouter } from "nextjs-toploader/app";
+import { useRouter } from "next/navigation";
 import type React from "react";
 import { useState } from "react";
 import { toast } from "sonner";

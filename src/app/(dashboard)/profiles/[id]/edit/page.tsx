@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "nextjs-toploader/app";
+import { useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ProfileForm } from "@/components/forms/profile-form";
