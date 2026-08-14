@@ -1,6 +1,7 @@
 import type {
   AppUser,
   BandwidthProfile,
+  CompanyProfile,
   Customer,
   CustomerDailyUsage,
   DashboardStats,
@@ -12,6 +13,7 @@ import { initialCustomers } from "./customers.mock";
 import { initialProfiles } from "./profiles.mock";
 import { initialRouters } from "./routers.mock";
 import { initialSessions } from "./sessions.mock";
+import { initialCompanyProfile } from "./settings.mock";
 import { initialUsers } from "./users.mock";
 
 const STORAGE_KEYS = {
@@ -20,6 +22,7 @@ const STORAGE_KEYS = {
   ROUTERS: "microrad_routers",
   SESSIONS: "microrad_sessions",
   USERS: "microrad_users",
+  COMPANY_PROFILE: "microrad_company_profile",
   INITIALIZED: "microrad_initialized_v1",
 };
 
@@ -29,6 +32,7 @@ class MockDatabase {
   private routers: NasRouter[] = [];
   private sessions: Session[] = [];
   private users: AppUser[] = [];
+  private companyProfile: CompanyProfile = { ...initialCompanyProfile };
 
   constructor() {
     this.load();
@@ -49,6 +53,7 @@ class MockDatabase {
       this.routers = [...initialRouters];
       this.sessions = [...initialSessions];
       this.users = [...initialUsers];
+      this.companyProfile = { ...initialCompanyProfile };
       this.isLoaded = true;
       return;
     }
@@ -77,6 +82,12 @@ class MockDatabase {
           ? JSON.parse(storedSessions)
           : [...initialSessions];
         this.users = storedUsers ? JSON.parse(storedUsers) : [...initialUsers];
+        const storedProfile = localStorage.getItem(
+          STORAGE_KEYS.COMPANY_PROFILE,
+        );
+        this.companyProfile = storedProfile
+          ? JSON.parse(storedProfile)
+          : { ...initialCompanyProfile };
       }
     } catch {
       this.resetToDefaults();
@@ -103,6 +114,10 @@ class MockDatabase {
         JSON.stringify(this.sessions),
       );
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
+      localStorage.setItem(
+        STORAGE_KEYS.COMPANY_PROFILE,
+        JSON.stringify(this.companyProfile),
+      );
     } catch (e) {
       console.error("Failed to save state to localStorage", e);
     }
@@ -114,6 +129,7 @@ class MockDatabase {
     this.routers = JSON.parse(JSON.stringify(initialRouters));
     this.sessions = JSON.parse(JSON.stringify(initialSessions));
     this.users = JSON.parse(JSON.stringify(initialUsers));
+    this.companyProfile = JSON.parse(JSON.stringify(initialCompanyProfile));
     this.recalculateDerivedCounts();
 
     if (this.isBrowser()) {
@@ -450,6 +466,24 @@ class MockDatabase {
   }
 
   // --- App Users CRUD ---
+  public getCompanyProfile(): CompanyProfile {
+    this.load();
+    return { ...this.companyProfile };
+  }
+
+  public updateCompanyProfile(
+    updates: Partial<CompanyProfile>,
+  ): CompanyProfile {
+    this.load();
+    this.companyProfile = {
+      ...this.companyProfile,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    this.save();
+    return { ...this.companyProfile };
+  }
+
   public getUsers(): AppUser[] {
     this.load();
     return [...this.users];

@@ -116,6 +116,19 @@ export interface Session {
   terminateCause?: string; // "User-Request" | "Lost-Carrier" | "Admin-Reset" dsb
 }
 
+// Konfigurasi identitas perusahaan (dipakai di header invoice / nota cetak)
+export interface CompanyProfile {
+  brandName: string; // nama brand, mis. "MicroRAD Internet Services"
+  fullName: string; // nama legal perusahaan, mis. "PT MicroRAD Broadband Solusindo"
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  npwp?: string;
+  licenseNo?: string; // izin ISP Kominfo
+  updatedAt?: string;
+}
+
 export type AppUserRole = "admin" | "operator";
 export type AppUserStatus = "active" | "disabled";
 

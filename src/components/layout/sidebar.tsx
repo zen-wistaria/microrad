@@ -8,6 +8,7 @@ import {
   Radio,
   Receipt,
   Router as RouterIcon,
+  Settings2,
   ShieldCheck,
   Users,
   Zap,
@@ -61,6 +62,11 @@ const systemNavItems = [
     title: "Pengguna Aplikasi",
     href: "/users",
     icon: ShieldCheck,
+  },
+  {
+    title: "Profil Perusahaan",
+    href: "/settings",
+    icon: Settings2,
   },
 ];
 
@@ -174,7 +180,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
         {/* System Settings Section (Separated visual group) */}
         <div className="mt-8 space-y-1">
           <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Pengaturan Sistem
+            Profil Perusahaan
           </div>
           {systemNavItems.map((item) => {
             const active = isLinkActive(item.href);

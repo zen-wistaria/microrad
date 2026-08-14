@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   CheckCircle2,
+  Globe,
   Mail,
   MapPin,
   Phone,
@@ -19,7 +20,8 @@ import { ReminderDialog } from "@/components/billing/reminder-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getInvoiceById } from "@/lib/api/billing";
-import type { Invoice } from "@/lib/types";
+import { getCompanyProfile } from "@/lib/api/settings";
+import type { CompanyProfile, Invoice } from "@/lib/types";
 import { formatDate, formatRupiah, terbilangRupiah } from "@/lib/utils";
 
 export default function InvoiceDetailPage() {
@@ -30,13 +32,18 @@ export default function InvoiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [payOpen, setPayOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [company, setCompany] = useState<CompanyProfile | null>(null);
 
   useEffect(() => {
     const fetchInv = async () => {
       try {
         setLoading(true);
-        const data = await getInvoiceById(id);
+        const [data, profile] = await Promise.all([
+          getInvoiceById(id),
+          getCompanyProfile(),
+        ]);
         setInvoice(data);
+        setCompany(profile);
       } catch {
         toast.error("Gagal memuat detail faktur");
       } finally {
@@ -302,36 +309,54 @@ export default function InvoiceDetailPage() {
             <div>
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white font-black text-base">
-                  M
+                  {(company?.brandName || "M").charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <h1 className="font-extrabold text-lg tracking-tight text-slate-900 dark:text-slate-100 print:text-slate-900 leading-tight">
-                    MicroRAD Internet Services
+                    {company?.brandName || "MicroRAD Internet Services"}
                   </h1>
                   <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
-                    PT MicroRAD Broadband Solusindo
+                    {company?.fullName || "PT MicroRAD Broadband Solusindo"}
                   </p>
                 </div>
               </div>
 
               <div className="mt-2.5 text-[11px] text-slate-500 dark:text-slate-400 print:text-slate-600 space-y-0.5 leading-tight">
-                <p className="flex items-center gap-1.5">
-                  <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
-                  Jl. Jenderal Sudirman No. 45, Gedung MicroRAD Lt. 3, Jakarta
-                  10220
-                </p>
-                <p className="flex items-center gap-1.5">
-                  <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                  Helpdesk & Billing: 0812-8888-9999 • (021) 555-0199
-                </p>
-                <p className="flex items-center gap-1.5">
-                  <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                  billing@microrad.net • www.microrad.net
-                </p>
-                <p className="text-[10px] text-slate-400 pt-0.5">
-                  NPWP: 01.345.678.9-012.000 • Izin ISP Kominfo No:
-                  124/DIR-POSTEL/2023
-                </p>
+                {company?.address && (
+                  <p className="flex items-center gap-1.5">
+                    <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                    {company.address}
+                  </p>
+                )}
+                {company?.phone && (
+                  <p className="flex items-center gap-1.5">
+                    <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                    {company.phone}
+                  </p>
+                )}
+                {company?.email && (
+                  <p className="flex items-center gap-1.5">
+                    <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                    {company.email}
+                  </p>
+                )}
+                {company?.website && (
+                  <p className="flex items-center gap-1.5">
+                    <Globe className="h-3 w-3 text-slate-400 shrink-0" />
+                    {company.website}
+                  </p>
+                )}
+                {(company?.npwp || company?.licenseNo) && (
+                  <p className="text-[10px] text-slate-400 pt-0.5">
+                    {[
+                      company.npwp && `NPWP: ${company.npwp}`,
+                      company.licenseNo &&
+                        `Izin ISP Kominfo No: ${company.licenseNo}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" • ")}
+                  </p>
+                )}
               </div>
             </div>
 
