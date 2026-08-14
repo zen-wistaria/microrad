@@ -251,6 +251,23 @@ export default function CustomerDetailPage({
   );
   const totalTraffic30d = totalDownload30d + totalUpload30d;
 
+  // Akumulasi bulan ini: pakai baris bulan berjalan dari data bulanan (sesuai
+  // tahun terpilih); jika belum ada (loading/error), fallback ke akumulasi 30 hari.
+  const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const currentMonthEntry = monthlyUsage.find(
+    (m) => m.month === currentMonthKey,
+  );
+  // Nama bulan berjalan dalam kurung (mis. "(Agustus)") — pakai label data
+  // bulanan bila ada, fallback ke nama bulan lokal saat ini.
+  const currentMonthLabel =
+    currentMonthEntry?.label ??
+    new Date().toLocaleDateString("id-ID", { month: "long" });
+  const currentMonth = currentMonthEntry ?? {
+    downloadBytes: totalDownload30d,
+    uploadBytes: totalUpload30d,
+    totalBytes: totalTraffic30d,
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Navigation & Quick Actions */}
@@ -701,7 +718,40 @@ export default function CustomerDetailPage({
                 </Select>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Akumulasi bulan berjalan — diambil dari data bulanan tahun terpilih */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Card>
+                  <CardContent className="p-4">
+                    <span className="text-xs text-slate-500">
+                      Akumulasi Bulan Ini (Download)
+                    </span>
+                    <p className="mt-1 text-xl font-bold text-blue-900 dark:text-blue-100">
+                      {formatBytes(currentMonth.downloadBytes)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <span className="text-xs text-slate-500">
+                      Akumulasi Bulan Ini (Upload)
+                    </span>
+                    <p className="mt-1 text-xl font-bold text-indigo-900 dark:text-indigo-100">
+                      {formatBytes(currentMonth.uploadBytes)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <span className="text-xs text-slate-500">
+                      Akumulasi Bulan Ini ({currentMonthLabel})
+                    </span>
+                    <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">
+                      {formatBytes(currentMonth.totalBytes)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
               {monthlyLoading ? (
                 <div className="flex h-70 items-center justify-center">
                   <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
