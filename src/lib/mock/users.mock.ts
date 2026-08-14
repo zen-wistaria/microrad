@@ -1,4 +1,5 @@
 import type { AppUser } from "../types";
+import { relMonthsAgoIso, relNowIso } from "./relative-dates";
 
 export const initialUsers: AppUser[] = [
   {
@@ -7,8 +8,8 @@ export const initialUsers: AppUser[] = [
     email: "admin@microrad.net",
     role: "admin",
     status: "active",
-    createdAt: "2026-01-10T08:00:00Z",
-    lastLoginAt: "2026-08-13T14:30:00Z",
+    createdAt: relMonthsAgoIso(7, 8, 0),
+    lastLoginAt: relNowIso(0, 14, 30),
   },
   {
     id: "usr-2",
@@ -16,8 +17,8 @@ export const initialUsers: AppUser[] = [
     email: "operator@microrad.net",
     role: "operator",
     status: "active",
-    createdAt: "2026-02-15T09:15:00Z",
-    lastLoginAt: "2026-08-13T10:00:00Z",
+    createdAt: relMonthsAgoIso(6, 9, 15),
+    lastLoginAt: relNowIso(0, 10, 0),
   },
   {
     id: "usr-3",
@@ -25,8 +26,8 @@ export const initialUsers: AppUser[] = [
     email: "tech@microrad.net",
     role: "operator",
     status: "active",
-    createdAt: "2026-03-01T11:20:00Z",
-    lastLoginAt: "2026-08-12T16:45:00Z",
+    createdAt: relMonthsAgoIso(5.5, 11, 20),
+    lastLoginAt: relNowIso(1, 16, 45),
   },
   {
     id: "usr-4",
@@ -34,8 +35,8 @@ export const initialUsers: AppUser[] = [
     email: "siti.old@microrad.net",
     role: "operator",
     status: "disabled",
-    createdAt: "2025-11-20T10:00:00Z",
-    lastLoginAt: "2026-05-01T08:00:00Z",
+    createdAt: relMonthsAgoIso(9, 10, 0),
+    lastLoginAt: relMonthsAgoIso(3, 8, 0),
   },
   {
     id: "usr-cust-1",
@@ -44,8 +45,8 @@ export const initialUsers: AppUser[] = [
     role: "customer",
     status: "active",
     customerId: "cust-1",
-    createdAt: "2026-01-10T08:00:00Z",
-    lastLoginAt: "2026-08-13T20:15:00Z",
+    createdAt: relMonthsAgoIso(7, 8, 0),
+    lastLoginAt: relNowIso(0, 20, 15),
   },
   {
     id: "usr-cust-2",
@@ -54,7 +55,7 @@ export const initialUsers: AppUser[] = [
     role: "customer",
     status: "active",
     customerId: "cust-2",
-    createdAt: "2026-02-15T09:15:00Z",
-    lastLoginAt: "2026-08-12T19:30:00Z",
+    createdAt: relMonthsAgoIso(6, 9, 15),
+    lastLoginAt: relNowIso(1, 19, 30),
   },
 ];

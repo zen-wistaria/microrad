@@ -1,4 +1,5 @@
 import type { Customer } from "../types";
+import { relMonthsAgoIso, relNowIso } from "./relative-dates";
 
 export const initialCustomers: Customer[] = [
   {
@@ -12,9 +13,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-2", // 10 Mbps
     staticIp: "10.10.10.15",
     nasId: "nas-1",
-    createdAt: "2026-01-15T08:30:00Z",
-    updatedAt: "2026-08-10T11:00:00Z",
-    lastSeenAt: "2026-08-13T14:45:00Z",
+    createdAt: "relMonthsAgoIso(7, 8, 30)",
+    updatedAt: relNowIso(0, 11, 0),
+    lastSeenAt: "relNowIso(0,14)",
     currentSessionId: "sess-101",
   },
   {
@@ -28,9 +29,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-3", // 20 Mbps
     staticIp: "10.10.10.16",
     nasId: "nas-1",
-    createdAt: "2026-02-01T10:15:00Z",
-    updatedAt: "2026-08-01T09:30:00Z",
-    lastSeenAt: "2026-08-13T14:50:00Z",
+    createdAt: "relMonthsAgoIso(6.5, 10, 15)",
+    updatedAt: relNowIso(0, 9, 30),
+    lastSeenAt: "relNowIso(0,14)",
     currentSessionId: "sess-102",
   },
   {
@@ -43,9 +44,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-4", // 50 Mbps
     staticIp: "10.10.10.17",
     nasId: "nas-1",
-    createdAt: "2026-02-14T14:00:00Z",
-    updatedAt: "2026-07-20T16:00:00Z",
-    lastSeenAt: "2026-08-13T14:55:00Z",
+    createdAt: "relMonthsAgoIso(6, 14, 0)",
+    updatedAt: relMonthsAgoIso(1, 16, 0),
+    lastSeenAt: "relNowIso(0,14)",
     currentSessionId: "sess-103",
   },
   {
@@ -58,9 +59,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-2", // 10 Mbps
     staticIp: "10.10.20.21",
     nasId: "nas-2",
-    createdAt: "2026-03-05T09:00:00Z",
-    updatedAt: "2026-08-12T13:00:00Z",
-    lastSeenAt: "2026-08-13T15:00:00Z",
+    createdAt: "relMonthsAgoIso(5.5, 9, 0)",
+    updatedAt: relNowIso(0, 13, 0),
+    lastSeenAt: "relNowIso(0,15)",
     currentSessionId: "sess-104",
   },
   {
@@ -73,9 +74,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-1", // 5 Mbps
     staticIp: "10.10.20.22",
     nasId: "nas-2",
-    createdAt: "2026-03-20T11:45:00Z",
-    updatedAt: "2026-08-11T10:15:00Z",
-    lastSeenAt: "2026-08-13T15:01:00Z",
+    createdAt: "relMonthsAgoIso(5, 11, 45)",
+    updatedAt: relNowIso(0, 10, 15),
+    lastSeenAt: "relNowIso(0,15)",
     currentSessionId: "sess-105",
   },
   {
@@ -88,9 +89,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-3", // 20 Mbps
     staticIp: "10.10.30.10",
     nasId: "nas-3",
-    createdAt: "2026-04-10T13:30:00Z",
-    updatedAt: "2026-08-13T08:00:00Z",
-    lastSeenAt: "2026-08-13T15:02:00Z",
+    createdAt: "relMonthsAgoIso(4, 13, 30)",
+    updatedAt: relNowIso(0, 8, 0),
+    lastSeenAt: "relNowIso(0,15)",
     currentSessionId: "sess-106",
   },
   {
@@ -103,9 +104,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-5", // 100 Mbps
     staticIp: "10.10.10.20",
     nasId: "nas-1",
-    createdAt: "2026-04-25T15:10:00Z",
-    updatedAt: "2026-08-13T12:00:00Z",
-    lastSeenAt: "2026-08-13T15:03:00Z",
+    createdAt: "relMonthsAgoIso(3.5, 15, 10)",
+    updatedAt: relNowIso(0, 12, 0),
+    lastSeenAt: "relNowIso(0,15)",
     currentSessionId: "sess-107",
   },
   {
@@ -118,9 +119,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-2", // 10 Mbps
     staticIp: "10.10.10.25",
     nasId: "nas-1",
-    createdAt: "2026-05-02T10:00:00Z",
-    updatedAt: "2026-08-13T14:30:00Z",
-    lastSeenAt: "2026-08-13T15:04:00Z",
+    createdAt: "relMonthsAgoIso(3.5, 10, 0)",
+    updatedAt: relNowIso(0, 14, 30),
+    lastSeenAt: "relNowIso(0,15)",
     currentSessionId: "sess-108",
   },
   {
@@ -133,9 +134,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-2", // 10 Mbps
     staticIp: "10.10.10.30",
     nasId: "nas-1",
-    createdAt: "2026-05-18T14:20:00Z",
-    updatedAt: "2026-08-12T16:00:00Z",
-    lastSeenAt: "2026-08-13T09:15:00Z",
+    createdAt: "relMonthsAgoIso(3, 14, 20)",
+    updatedAt: relNowIso(0, 16, 0),
+    lastSeenAt: "relNowIso(0,9)",
     currentSessionId: undefined, // Offline
   },
   {
@@ -148,9 +149,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-3", // 20 Mbps
     staticIp: "10.10.20.35",
     nasId: "nas-2",
-    createdAt: "2026-06-01T08:00:00Z",
-    updatedAt: "2026-08-10T17:00:00Z",
-    lastSeenAt: "2026-08-12T23:50:00Z",
+    createdAt: "relMonthsAgoIso(2.5, 8, 0)",
+    updatedAt: relNowIso(0, 17, 0),
+    lastSeenAt: "relNowIso(0,23)",
     currentSessionId: undefined, // Offline
   },
   {
@@ -163,9 +164,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-1", // 5 Mbps
     staticIp: "10.10.10.40",
     nasId: "nas-1",
-    createdAt: "2026-06-15T11:00:00Z",
-    updatedAt: "2026-08-01T08:00:00Z",
-    lastSeenAt: "2026-08-01T07:45:00Z",
+    createdAt: "relMonthsAgoIso(2, 11, 0)",
+    updatedAt: relNowIso(0, 8, 0),
+    lastSeenAt: "relNowIso(13,7)",
     currentSessionId: undefined, // Suspended
   },
   {
@@ -178,9 +179,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-2", // 10 Mbps
     staticIp: "10.10.20.45",
     nasId: "nas-2",
-    createdAt: "2026-06-25T13:40:00Z",
-    updatedAt: "2026-08-05T10:00:00Z",
-    lastSeenAt: "2026-08-05T09:30:00Z",
+    createdAt: "relMonthsAgoIso(1.5, 13, 40)",
+    updatedAt: relNowIso(0, 10, 0),
+    lastSeenAt: "relNowIso(9,9)",
     currentSessionId: undefined, // Suspended
   },
   {
@@ -193,9 +194,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-1", // 5 Mbps
     staticIp: "10.10.10.50",
     nasId: "nas-1",
-    createdAt: "2026-07-01T09:15:00Z",
-    updatedAt: "2026-08-08T15:00:00Z",
-    lastSeenAt: "2026-08-08T14:10:00Z",
+    createdAt: "relMonthsAgoIso(1.5, 9, 15)",
+    updatedAt: relNowIso(0, 15, 0),
+    lastSeenAt: "relNowIso(6,14)",
     currentSessionId: undefined, // Disabled
   },
   {
@@ -208,9 +209,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-3", // 20 Mbps
     staticIp: "10.10.10.55",
     nasId: "nas-1",
-    createdAt: "2026-07-15T16:00:00Z",
-    updatedAt: "2026-08-11T12:00:00Z",
-    lastSeenAt: "2026-08-13T06:20:00Z",
+    createdAt: "relMonthsAgoIso(1, 16, 0)",
+    updatedAt: relNowIso(0, 12, 0),
+    lastSeenAt: "relNowIso(0,6)",
     currentSessionId: undefined, // Offline
   },
   {
@@ -223,9 +224,9 @@ export const initialCustomers: Customer[] = [
     profileId: "prof-4", // 50 Mbps
     staticIp: "10.10.10.60",
     nasId: "nas-1",
-    createdAt: "2026-07-28T10:30:00Z",
-    updatedAt: "2026-08-12T14:00:00Z",
-    lastSeenAt: "2026-08-13T11:40:00Z",
+    createdAt: "relMonthsAgoIso(0.5, 10, 30)",
+    updatedAt: relNowIso(0, 14, 0),
+    lastSeenAt: "relNowIso(0,11)",
     currentSessionId: undefined, // Offline
   },
 ];

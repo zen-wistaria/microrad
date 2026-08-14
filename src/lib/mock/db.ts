@@ -417,6 +417,22 @@ class MockDatabase {
       );
     }
 
+    // Sesi aktif "hidup": durasi & trafik diperpanjang sesuai waktu berjalan
+    // (tanpa menyimpan ke storage — murni tampilan).
+    const nowMs = Date.now();
+    list = list.map((s) => {
+      if (s.stoppedAt) return s;
+      const started = new Date(s.startedAt).getTime();
+      const elapsed = Math.max(0, (nowMs - started) / 1000);
+      const growth = 1 + Math.min(elapsed * 10, 60 * 60) / (60 * 60); // 1× → 2×
+      return {
+        ...s,
+        durationSeconds: Math.round(elapsed),
+        inputBytes: Math.round(s.inputBytes * growth),
+        outputBytes: Math.round(s.outputBytes * growth),
+      };
+    });
+
     // Sort by startedAt descending
     return list.sort(
       (a, b) =>
@@ -426,9 +442,31 @@ class MockDatabase {
 
   public getActiveSessionForCustomer(customerId: string): Session | undefined {
     this.load();
-    return this.sessions.find(
+    const session = this.sessions.find(
       (s) => s.customerId === customerId && !s.stoppedAt,
     );
+    if (!session) return undefined;
+
+    // Sesi aktif "hidup": durasi & trafik diperpanjang sesuai waktu berjalan
+    // (tanpa menyimpan ke storage — murni tampilan).
+    const nowMs = Date.now();
+    const started = new Date(session.startedAt).getTime();
+    const elapsed = Math.max(0, (nowMs - started) / 1000);
+    const growth = 1 + Math.min(elapsed * 10, 60 * 60) / (60 * 60); // 1× → 2×
+    return {
+      ...session,
+      durationSeconds: Math.round(elapsed),
+      inputBytes: Math.round(session.inputBytes * growth),
+      outputBytes: Math.round(session.outputBytes * growth),
+    };
+  }
+
+  /** Perkiraan trafik sesi aktif saat ini (murni tampilan, tidak disimpan). */
+  private liveBytesNow(s: Session, nowMs: number): number {
+    const started = new Date(s.startedAt).getTime();
+    const elapsed = Math.max(0, (nowMs - started) / 1000);
+    const growth = 1 + Math.min(elapsed * 10, 60 * 60) / (60 * 60); // 1× → 2×
+    return Math.round(s.outputBytes * growth);
   }
 
   public disconnectSession(sessionId: string, cause = "User-Request"): boolean {
@@ -579,17 +617,24 @@ class MockDatabase {
       (r) => r.status === "offline",
     ).length;
 
-    // Traffic today calculation
-    const today = new Date().toISOString().slice(0, 10);
-    const todaySessions = this.sessions.filter((s) =>
-      s.startedAt.startsWith(today),
+    // Traffic today calculation.
+    // Data mock "hidup": semua sesi aktif terus berjalan selama aplikasi
+    // terbuka — pindahkan usianya ke nilai saat ini (live), panjang durasi
+    // diperpanjang, dan trafik hari ini dihitung dari DATA LIVE terkini.
+    const nowMs = Date.now();
+    const today = new Date(nowMs).toISOString().slice(0, 10);
+    const todaySessions = this.sessions.filter(
+      (s) => !s.stoppedAt || s.startedAt.startsWith(today),
     );
 
-    let totalDownload = todaySessions.reduce(
-      (acc, s) => acc + s.outputBytes,
-      0,
-    );
-    let totalUpload = todaySessions.reduce((acc, s) => acc + s.inputBytes, 0);
+    let totalDownload = todaySessions.reduce((acc, s) => {
+      const live = s.stoppedAt ? s.outputBytes : this.liveBytesNow(s, nowMs);
+      return acc + live;
+    }, 0);
+    let totalUpload = todaySessions.reduce((acc, s) => {
+      const live = s.stoppedAt ? s.inputBytes : this.liveBytesNow(s, nowMs);
+      return acc + live;
+    }, 0);
 
     // If today is light on mock sessions, provide a realistic baseline (~84.5 GB)
     if (totalDownload === 0) {
@@ -659,8 +704,20 @@ class MockDatabase {
       const daySeed = (hash + i * 13) % 100;
       const factor = (daySeed / 100) * 0.8 + 0.6; // 0.6 to 1.4 multiplier
 
-      const down = Math.round(factor * 2.8 * 1024 * 1024 * 1024); // avg ~2.8 GB
-      const up = Math.round(factor * 0.45 * 1024 * 1024 * 1024); // avg ~450 MB
+      // Hari ini: tambahkan "live progress" — trafik naik seiring waktu
+      // berjalan (cap per detik × 10), sehingga angka terus bertambah
+      // dan terlihat seperti data real-time.
+      const isToday = i === 0;
+      const nowMs = Date.now();
+      const liveBias = isToday
+        ? Math.min(1, ((nowMs / 1000) % 86400) / 86400)
+        : 0;
+      const down = Math.round(
+        factor * 2.8 * 1024 * 1024 * 1024 * (1 + liveBias * 0.5),
+      ); // avg ~2.8 GB (+50% progresif hari ini)
+      const up = Math.round(
+        factor * 0.45 * 1024 * 1024 * 1024 * (1 + liveBias * 0.5),
+      ); // avg ~450 MB
 
       result.push({
         date: dateStr,
@@ -713,8 +770,21 @@ class MockDatabase {
       const monthSeed = (hash + i * 97) % 100;
       const factor = (monthSeed / 100) * 0.9 + 0.4; // 0.4 to 1.3 multiplier
 
-      const down = Math.round(factor * 50 * 1024 * 1024 * 1024); // rata-rata ~50 GB/bln
-      const up = Math.round(factor * 10 * 1024 * 1024 * 1024); // rata-rata ~10 GB/bln
+      // Bulan berjalan: naikkan sedikit seiring hari berjalan dalam bulan
+      // (progresif 0→+40%), sehingga "akumulasi bulan ini" terlihat bertambah.
+      const now = new Date();
+      const isCurrentMonth =
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear();
+      const dayOfMonth = new Date().getDate();
+      const monthBias = isCurrentMonth ? dayOfMonth / 30 : 1;
+
+      const down = Math.round(
+        factor * 50 * 1024 * 1024 * 1024 * (0.6 + monthBias * 0.4),
+      ); // rata-rata ~50 GB/bln
+      const up = Math.round(
+        factor * 10 * 1024 * 1024 * 1024 * (0.6 + monthBias * 0.4),
+      ); // rata-rata ~10 GB/bln
 
       result.push({
         month: monthStr,
