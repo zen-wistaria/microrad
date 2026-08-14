@@ -184,7 +184,7 @@ export default function CustomersPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            Pelanggan PPPoE
+            Pelanggan
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Kelola akun pelanggan, konfigurasi paket bandwidth, IP statis, dan
@@ -330,7 +330,7 @@ export default function CustomersPage() {
                           statusFilter !== "all" ||
                           profileFilter !== "all"
                             ? "Coba ubah kata kunci pencarian atau filter yang dipilih."
-                            : "Belum ada pelanggan PPPoE yang terdaftar."
+                            : "Belum ada pelanggan yang terdaftar."
                         }
                         actionLabel={
                           search ||

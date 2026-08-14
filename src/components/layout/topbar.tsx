@@ -32,7 +32,7 @@ interface TopbarProps {
 
 const routeTitles: Record<string, string> = {
   dashboard: "Dashboard",
-  customers: "Pelanggan PPPoE",
+  customers: "Pelanggan",
   billing: "Tagihan & Billing",
   sessions: "Sesi Aktif",
   profiles: "Profil Bandwidth",

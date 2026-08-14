@@ -30,7 +30,7 @@ const mainNavItems = [
     icon: LayoutDashboard,
   },
   {
-    title: "Pelanggan PPPoE",
+    title: "Pelanggan",
     href: "/customers",
     icon: Users,
     matchExact: false,

@@ -274,7 +274,7 @@ export default function SessionsPage() {
             <table className="w-full text-left text-xs sm:text-sm">
               <thead className="bg-slate-50/80 text-slate-500 border-b border-slate-200 dark:bg-slate-800/50 dark:border-slate-800">
                 <tr>
-                  <th className="py-3 px-4 font-semibold">Pelanggan PPPoE</th>
+                  <th className="py-3 px-4 font-semibold">Pelanggan</th>
                   <th className="py-3 px-4 font-semibold">Framed IP Address</th>
                   <th className="py-3 px-4 font-semibold">
                     NAS Router (MikroTik)
@@ -305,7 +305,7 @@ export default function SessionsPage() {
                         description={
                           search || routerFilter !== "all"
                             ? "Tidak ada sesi yang sesuai dengan kriteria pencarian Anda."
-                            : "Saat ini tidak ada pelanggan PPPoE yang sedang terhubung online."
+                            : "Saat ini tidak ada pelanggan yang sedang terhubung online."
                         }
                       />
                     </td>

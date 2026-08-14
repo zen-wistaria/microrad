@@ -407,7 +407,7 @@ export function CustomerForm({
         </Button>
         <Button type="submit" disabled={submitting}>
           {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isEditing ? "Simpan Perubahan" : "Tambah Pelanggan PPPoE"}
+          {isEditing ? "Simpan Perubahan" : "Tambah Pelanggan"}
         </Button>
       </div>
     </form>

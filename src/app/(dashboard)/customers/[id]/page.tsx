@@ -231,7 +231,7 @@ export default function CustomerDetailPage({
     return (
       <EmptyState
         title="Pelanggan Tidak Ditemukan"
-        description="Data pelanggan PPPoE yang Anda cari tidak tersedia."
+        description="Data pelanggan yang Anda cari tidak tersedia."
         actionLabel="Kembali ke Daftar Pelanggan"
         actionHref="/customers"
       />
