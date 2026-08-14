@@ -1,7 +1,14 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowDown, ArrowLeft, ArrowUp, Loader2, Zap } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Loader2,
+  Wallet,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
 import { useState } from "react";
@@ -25,6 +32,10 @@ const profileSchema = z.object({
   name: z.string().min(3, "Nama profil minimal 3 karakter"),
   rateLimitDown: z.number().min(1, "Batas download minimal 1 Mbps"),
   rateLimitUp: z.number().min(1, "Batas upload minimal 1 Mbps"),
+  price: z
+    .number()
+    .min(1, "Harga paket minimal Rp 1")
+    .max(1_000_000_000, "Harga paket terlalu besar"),
   description: z.string().optional(),
 });
 
@@ -52,6 +63,7 @@ export function ProfileForm({
       name: initialData?.name || "",
       rateLimitDown: initialData?.rateLimitDown || 10,
       rateLimitUp: initialData?.rateLimitUp || 5,
+      price: initialData?.price || 100000,
       description: initialData?.description || "",
     },
   });
@@ -167,6 +179,32 @@ export function ProfileForm({
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label
+              htmlFor="price"
+              className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"
+            >
+              <Wallet className="h-4 w-4" />
+              Harga Paket Bulanan (Rp) <span className="text-rose-500">*</span>
+            </Label>
+            <Input
+              id="price"
+              type="number"
+              min={1}
+              step={1000}
+              placeholder="mis. 165000"
+              {...register("price", { valueAsNumber: true })}
+              className={errors.price ? "border-rose-500" : ""}
+            />
+            {errors.price && (
+              <p className="text-xs text-rose-500">{errors.price.message}</p>
+            )}
+            <p className="text-[11px] text-slate-400">
+              Harga ini otomatis dipakai sebagai tarif pokok (subtotal) saat
+              membuat tagihan / invoice pelanggan.
+            </p>
           </div>
 
           <div className="space-y-2">

@@ -1,6 +1,7 @@
 "use client";
 
 import { Calculator, Loader2, PlusCircle } from "lucide-react";
+import Link from "next/link";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -60,7 +61,7 @@ export function CreateInvoiceDialog({
   const [customerId, setCustomerId] = useState("");
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [subtotal, setSubtotal] = useState<number>(150000);
+  const [subtotal, setSubtotal] = useState<number>(0);
   const [adminFee, setAdminFee] = useState<number>(2500);
   const [tax, setTax] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
@@ -90,8 +91,7 @@ export function CreateInvoiceDialog({
     const selected = customers.find((c) => c.id === cId);
     if (selected) {
       const profile = profiles.find((p) => p.id === selected.profileId);
-      const price = profile?.price || 150000;
-      setSubtotal(price);
+      setSubtotal(profile?.price ?? 0);
     }
   };
 
@@ -222,23 +222,42 @@ export function CreateInvoiceDialog({
             </div>
 
             {/* Price breakdown */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="inv-subtotal">Tarif Pokok Paket (Rp)</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="inv-subtotal">Tarif Pokok Paket (Rp)</Label>
+              <div className="flex items-center gap-2">
                 <Input
                   id="inv-subtotal"
                   type="number"
+                  min={0}
                   value={subtotal}
                   onChange={(e) => setSubtotal(Number(e.target.value))}
                   className="h-9"
                 />
+                {selectedProfile?.price ? (
+                  <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                    Auto: {formatRupiah(selectedProfile.price)}
+                  </span>
+                ) : null}
               </div>
+              <p className="text-[11px] text-slate-400">
+                Terisi otomatis dari harga paket di{" "}
+                <Link
+                  href="/profiles"
+                  className="font-medium text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+                >
+                  Profil Bandwidth
+                </Link>
+                .
+              </p>
+            </div>
 
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="inv-admin">Biaya Admin / Payment (Rp)</Label>
                 <Input
                   id="inv-admin"
                   type="number"
+                  min={0}
                   value={adminFee}
                   onChange={(e) => setAdminFee(Number(e.target.value))}
                   className="h-9"

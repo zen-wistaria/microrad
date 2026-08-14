@@ -400,6 +400,12 @@ export default function CustomerDetailPage({
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Tarif Paket Bulanan:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {profile?.price ? formatRupiah(profile.price) : "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">IP Statis (Framed-IP):</span>
                   <span className="font-mono font-medium text-slate-900 dark:text-slate-100">
                     {customer.staticIp || (

@@ -211,7 +211,7 @@ export async function bulkGenerateInvoices(
 
     if (!exists) {
       const profile = profiles.find((p) => p.id === customer.profileId);
-      const subtotal = profile?.price || 150000;
+      const subtotal = profile?.price || 0;
       const adminFee = 2500;
       const totalAmount = subtotal + adminFee;
       const seq = existingInvoices.length + newlyCreated.length + 1;

@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Trash2,
   Users,
+  Wallet,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -28,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getCustomers } from "@/lib/api/customers";
 import { deleteProfile, getProfiles } from "@/lib/api/profiles";
 import type { BandwidthProfile, Customer } from "@/lib/types";
+import { formatRupiah } from "@/lib/utils";
 
 export default function ProfilesPage() {
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
@@ -185,6 +187,17 @@ export default function ProfilesPage() {
                           </span>
                         </p>
                       </div>
+                    </div>
+
+                    {/* Monthly Price */}
+                    <div className="flex items-center justify-between rounded-lg border border-emerald-200/80 bg-emerald-50/60 px-3 py-2.5 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                        <Wallet className="h-3 w-3" />
+                        Harga Bulanan
+                      </span>
+                      <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                        {formatRupiah(profile.price || 0)}
+                      </span>
                     </div>
 
                     {/* RADIUS Attribute Preview */}
