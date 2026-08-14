@@ -673,8 +673,11 @@ class MockDatabase {
     return result;
   }
 
-  // --- Customer Monthly Usage (12 bulan terakhir) ---
-  public getCustomerMonthlyUsage(customerId: string): CustomerMonthlyUsage[] {
+  // --- Customer Monthly Usage (per tahun, 12 bulan per tahun) ---
+  public getCustomerMonthlyUsage(
+    customerId: string,
+    year?: number,
+  ): CustomerMonthlyUsage[] {
     this.load();
     const result: CustomerMonthlyUsage[] = [];
     const customer = this.customers.find((c) => c.id === customerId);
@@ -684,10 +687,23 @@ class MockDatabase {
       .split("")
       .reduce((acc, char) => acc + char.charCodeAt(0), 0);
 
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(1);
-      d.setMonth(d.getMonth() - i);
+    // Tanpa argumen year → 12 bulan terakhir (perilaku lama).
+    // Dengan year → 12 bulan pada tahun tsb (Jan–Des), utk filter pertahun.
+    const months: { d: Date; i: number }[] = [];
+    if (year === undefined) {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - i);
+        months.push({ d, i });
+      }
+    } else {
+      for (let i = 0; i < 12; i++) {
+        months.push({ d: new Date(year, i, 1), i });
+      }
+    }
+
+    for (const { d, i } of months) {
       const label = d.toLocaleDateString("id-ID", {
         month: "short",
         year: "numeric",

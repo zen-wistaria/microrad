@@ -21,9 +21,10 @@ export async function getCustomerUsageHistory(
 
 export async function getCustomerMonthlyUsage(
   customerId: string,
+  year?: number,
 ): Promise<CustomerMonthlyUsage[]> {
   await delay();
-  return mockDb.getCustomerMonthlyUsage(customerId);
+  return mockDb.getCustomerMonthlyUsage(customerId, year);
 }
 
 export async function resetDemoData(): Promise<void> {

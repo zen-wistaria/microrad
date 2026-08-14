@@ -18,8 +18,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { CustomerMonthlyUsageChart } from "@/components/charts/customer-monthly-usage-chart";
 import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -37,6 +38,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getInvoices } from "@/lib/api/billing";
@@ -45,7 +53,10 @@ import {
   getCustomerById,
   updateCustomer,
 } from "@/lib/api/customers";
-import { getCustomerUsageHistory } from "@/lib/api/dashboard";
+import {
+  getCustomerMonthlyUsage,
+  getCustomerUsageHistory,
+} from "@/lib/api/dashboard";
 import { getProfileById } from "@/lib/api/profiles";
 import { getRouterById } from "@/lib/api/routers";
 import {
@@ -56,6 +67,7 @@ import type {
   BandwidthProfile,
   Customer,
   CustomerDailyUsage,
+  CustomerMonthlyUsage,
   CustomerStatus,
   Invoice,
   NasRouter,
@@ -87,6 +99,18 @@ export default function CustomerDetailPage({
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [sessionHistory, setSessionHistory] = useState<Session[]>([]);
   const [usageHistory, setUsageHistory] = useState<CustomerDailyUsage[]>([]);
+  const [monthlyUsage, setMonthlyUsage] = useState<CustomerMonthlyUsage[]>([]);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [selectedYear, setSelectedYear] = useState<number>(() =>
+    new Date().getFullYear(),
+  );
+  // Deret tahun (mis. 2022–2026) untuk opsi filter "Per Tahun"
+  const years = useMemo(() => {
+    const cur = new Date().getFullYear();
+    const arr: number[] = [];
+    for (let y = cur; y >= cur - 3; y--) arr.push(y);
+    return arr;
+  }, []);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -141,6 +165,27 @@ export default function CustomerDetailPage({
   useEffect(() => {
     fetchCustomerData();
   }, [fetchCustomerData]);
+
+  // Muat pemakaian bulanan per tahun terpilih — fetch ulang saat pindah tahun
+  useEffect(() => {
+    if (!customerId) return;
+    let cancelled = false;
+    setMonthlyLoading(true);
+    getCustomerMonthlyUsage(customerId, selectedYear)
+      .then((res) => {
+        if (!cancelled) setMonthlyUsage(res);
+      })
+      .catch((err: unknown) => {
+        console.error("Gagal memuat pemakaian bulanan:", err);
+        if (!cancelled) setMonthlyUsage([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMonthlyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, selectedYear]);
 
   const handleDisconnect = async () => {
     if (!customer) return;
@@ -624,6 +669,46 @@ export default function CustomerDetailPage({
             </CardHeader>
             <CardContent>
               <CustomerUsageChart data={usageHistory} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base">
+                    Grafik Konsumsi Bandwidth Per Bulan
+                  </CardTitle>
+                  <CardDescription>
+                    Pemakaian download & upload bulanan pelanggan ini.
+                  </CardDescription>
+                </div>
+                {/* Filter per tahun */}
+                <Select
+                  value={String(selectedYear)}
+                  onValueChange={(v) => setSelectedYear(Number(v))}
+                >
+                  <SelectTrigger className="w-32 h-9">
+                    <SelectValue placeholder="Pilih Tahun" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {years.map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {monthlyLoading ? (
+                <div className="flex h-70 items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                </div>
+              ) : (
+                <CustomerMonthlyUsageChart data={monthlyUsage} />
+              )}
             </CardContent>
           </Card>
         </TabsContent>

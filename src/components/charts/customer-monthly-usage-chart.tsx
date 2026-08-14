@@ -4,7 +4,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -90,7 +89,7 @@ export function CustomerMonthlyUsageChart({
             fontSize={11}
             tickLine={false}
             axisLine={false}
-            interval={1}
+            interval={0}
           />
           <YAxis
             stroke="#94a3b8"
@@ -100,16 +99,9 @@ export function CustomerMonthlyUsageChart({
             tickFormatter={(value) => formatBytes(value, 0)}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend
-            verticalAlign="top"
-            align="right"
-            iconType="circle"
-            formatter={(value) => (
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                {value === "downloadBytes" ? "Download" : "Upload"}
-              </span>
-            )}
-          />
+          {/* Legend diganti label di bawah chart (map kecil berwarna) —
+              warna biru (download) & ungu (upload) konsisten dgn
+              CustomerUsageChart, tooltip membawa angka & total. */}
           <Bar
             dataKey="downloadBytes"
             name="downloadBytes"
