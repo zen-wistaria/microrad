@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { markInvoiceAsPaid } from "@/lib/api/billing";
 import type { Invoice, PaymentMethod } from "@/lib/types";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
 interface PaymentDialogProps {
   invoice: Invoice | null;
@@ -80,8 +80,8 @@ export function PaymentDialog({
       );
       onSuccess(updated);
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal mencatat pembayaran");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal mencatat pembayaran");
     } finally {
       setLoading(false);
     }

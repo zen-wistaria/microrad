@@ -3,7 +3,7 @@
 import { Calculator, Loader2, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { createInvoice } from "@/lib/api/billing";
 import type { BandwidthProfile, Customer, Invoice } from "@/lib/types";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
 interface CreateInvoiceDialogProps {
   customers: Customer[];
@@ -68,6 +68,18 @@ export function CreateInvoiceDialog({
   const [dueDate, setDueDate] = useState<string>("");
   const [notes, _setNotes] = useState<string>("");
 
+  const handleSelectCustomer = useCallback(
+    (cId: string) => {
+      setCustomerId(cId);
+      const selected = customers.find((c) => c.id === cId);
+      if (selected) {
+        const profile = profiles.find((p) => p.id === selected.profileId);
+        setSubtotal(profile?.price ?? 0);
+      }
+    },
+    [customers, profiles],
+  );
+
   useEffect(() => {
     if (open) {
       const now = new Date();
@@ -84,16 +96,7 @@ export function CreateInvoiceDialog({
         handleSelectCustomer(customers[0].id);
       }
     }
-  }, [open, customers]);
-
-  const handleSelectCustomer = (cId: string) => {
-    setCustomerId(cId);
-    const selected = customers.find((c) => c.id === cId);
-    if (selected) {
-      const profile = profiles.find((p) => p.id === selected.profileId);
-      setSubtotal(profile?.price ?? 0);
-    }
-  };
+  }, [open, customers, customerId, handleSelectCustomer]);
 
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const selectedProfile = profiles.find(
@@ -142,8 +145,8 @@ export function CreateInvoiceDialog({
       toast.success(`Invoice ${created.invoiceNumber} berhasil dibuat!`);
       onSuccess(created);
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal membuat invoice");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal membuat invoice");
     } finally {
       setLoading(false);
     }

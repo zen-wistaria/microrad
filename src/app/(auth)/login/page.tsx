@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { getUserByEmail } from "@/lib/api/users";
 import { useAuth } from "@/lib/auth";
 import { initialUsers } from "@/lib/mock/users.mock";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,8 +50,8 @@ export default function LoginPage() {
       login(user);
       toast.success(`Selamat datang kembali, ${user.name}!`);
       router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal melakukan login.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal melakukan login.");
     } finally {
       setLoading(false);
     }

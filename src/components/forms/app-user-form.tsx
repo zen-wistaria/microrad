@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { createUser, updateUser } from "@/lib/api/users";
 import type { AppUser, AppUserRole, AppUserStatus } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 const appUserSchema = z.object({
   name: z.string().min(2, "Nama minimal 2 karakter"),
@@ -89,8 +90,8 @@ export function AppUserForm({
         toast.success(`Pengguna ${data.name} berhasil ditambahkan.`);
       }
       router.push("/users");
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menyimpan pengguna aplikasi.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menyimpan pengguna aplikasi.");
     } finally {
       setSubmitting(false);
     }
@@ -163,7 +164,7 @@ export function AppUserForm({
               <Select
                 value={selectedRole}
                 onValueChange={(val) =>
-                  setValue("role", val as any, { shouldValidate: true })
+                  setValue("role", val as AppUserRole, { shouldValidate: true })
                 }
               >
                 <SelectTrigger id="role">
@@ -185,7 +186,9 @@ export function AppUserForm({
               <Select
                 value={selectedStatus}
                 onValueChange={(val) =>
-                  setValue("status", val as any, { shouldValidate: true })
+                  setValue("status", val as AppUserStatus, {
+                    shouldValidate: true,
+                  })
                 }
               >
                 <SelectTrigger id="status">

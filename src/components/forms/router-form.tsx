@@ -26,7 +26,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createRouter, updateRouter } from "@/lib/api/routers";
-import type { NasRouter } from "@/lib/types";
+import type { NasRouter, NasRouterStatus } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 const ipv4Regex =
   /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -81,7 +82,7 @@ export function RouterForm({
           name: data.name,
           ipAddress: data.ipAddress,
           location: data.location,
-          status: data.status as any,
+          status: data.status as NasRouterStatus,
         });
         toast.success(`Router ${data.name} berhasil diperbarui.`);
       } else {
@@ -90,13 +91,13 @@ export function RouterForm({
           ipAddress: data.ipAddress,
           location: data.location,
           type: "mikrotik",
-          status: data.status as any,
+          status: data.status as NasRouterStatus,
         });
         toast.success(`Router NAS ${data.name} berhasil ditambahkan.`);
       }
       router.push("/routers");
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menyimpan router NAS.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menyimpan router NAS.");
     } finally {
       setSubmitting(false);
     }
@@ -181,7 +182,9 @@ export function RouterForm({
             <Select
               value={selectedStatus}
               onValueChange={(val) =>
-                setValue("status", val as any, { shouldValidate: true })
+                setValue("status", val as NasRouterStatus, {
+                  shouldValidate: true,
+                })
               }
             >
               <SelectTrigger id="status">

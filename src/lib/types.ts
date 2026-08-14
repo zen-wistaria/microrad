@@ -91,13 +91,15 @@ export interface BillingSummary {
   totalInvoicesCount: number;
 }
 
+export type NasRouterStatus = "online" | "offline" | "unknown";
+
 export interface NasRouter {
   id: string;
   name: string; // shortname / nama router
   ipAddress: string; // nasname / IP Router MikroTik
   location?: string;
   type: "mikrotik";
-  status: "online" | "offline" | "unknown";
+  status: NasRouterStatus;
   activeSessionCount: number; // derived jumlah sesi aktif di router ini
 }
 

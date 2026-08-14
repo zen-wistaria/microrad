@@ -2,7 +2,7 @@
 
 import { Edit, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { deleteUser, getUsers, updateUser } from "@/lib/api/users";
 import { useAuth } from "@/lib/auth";
 import type { AppUser, AppUserStatus } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getErrorMessage } from "@/lib/utils";
 
 export default function UsersPage() {
   const { currentUser } = useAuth();
@@ -24,7 +24,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const list = await getUsers();
@@ -34,11 +34,11 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -52,8 +52,8 @@ export default function UsersPage() {
       toast.success(`Pengguna ${deleteTarget.name} berhasil dihapus.`);
       setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menghapus pengguna.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menghapus pengguna.");
     }
   };
 
@@ -72,8 +72,8 @@ export default function UsersPage() {
       toast.success(
         `Status ${user.name} diubah menjadi ${newStatus === "active" ? "Aktif" : "Nonaktif"}.`,
       );
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal mengubah status.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal mengubah status.");
     }
   };
 

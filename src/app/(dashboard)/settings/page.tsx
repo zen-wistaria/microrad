@@ -14,7 +14,7 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -31,7 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getCompanyProfile, updateCompanyProfile } from "@/lib/api/settings";
 import type { CompanyProfile } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getErrorMessage } from "@/lib/utils";
 
 const companyProfileSchema = z.object({
   brandName: z.string().min(2, "Nama brand minimal 2 karakter"),
@@ -72,7 +72,7 @@ export default function SettingsPage() {
     },
   });
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getCompanyProfile();
@@ -83,11 +83,11 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [reset]);
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [fetchProfile]);
 
   const onSubmit = async (data: CompanyProfileFormValues) => {
     try {
@@ -95,8 +95,8 @@ export default function SettingsPage() {
       const updated = await updateCompanyProfile(data);
       setProfile(updated);
       toast.success("Profil perusahaan berhasil diperbarui.");
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menyimpan profil perusahaan.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menyimpan profil perusahaan.");
     } finally {
       setSubmitting(false);
     }

@@ -6,6 +6,23 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Extract a human-readable message from an unknown thrown value
+ * (Error instance, object with .message, or primitive).
+ */
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "message" in err &&
+    typeof (err as { message: unknown }).message === "string"
+  ) {
+    return (err as { message: string }).message;
+  }
+  return String(err);
+}
+
+/**
  * Format bytes to human readable string (e.g. 1.25 GB, 840 MB)
  */
 export function formatBytes(bytes: number, decimals = 2): string {

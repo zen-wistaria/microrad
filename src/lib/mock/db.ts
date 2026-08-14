@@ -33,6 +33,7 @@ class MockDatabase {
   private sessions: Session[] = [];
   private users: AppUser[] = [];
   private companyProfile: CompanyProfile = { ...initialCompanyProfile };
+  private isLoaded = false;
 
   constructor() {
     this.load();
@@ -46,6 +47,7 @@ class MockDatabase {
   }
 
   private load(): void {
+    if (this.isLoaded) return;
     if (!this.isBrowser()) {
       // Server-side default
       this.customers = [...initialCustomers];

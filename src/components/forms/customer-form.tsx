@@ -32,6 +32,7 @@ import type {
   CustomerStatus,
   NasRouter,
 } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 const ipv4Regex =
   /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -147,9 +148,10 @@ export function CustomerForm({
         );
         router.push("/customers");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(
-        err?.message || "Terjadi kesalahan saat menyimpan data pelanggan.",
+        getErrorMessage(err) ||
+          "Terjadi kesalahan saat menyimpan data pelanggan.",
       );
     } finally {
       setSubmitting(false);
@@ -267,7 +269,9 @@ export function CustomerForm({
               <Select
                 value={selectedStatus}
                 onValueChange={(val) =>
-                  setValue("status", val as any, { shouldValidate: true })
+                  setValue("status", val as CustomerStatus, {
+                    shouldValidate: true,
+                  })
                 }
               >
                 <SelectTrigger id="status">

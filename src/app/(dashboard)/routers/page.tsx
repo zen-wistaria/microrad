@@ -11,7 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { deleteRouter, getRouters, updateRouter } from "@/lib/api/routers";
 import { getActiveSessions } from "@/lib/api/sessions";
 import type { NasRouter, Session } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function RoutersPage() {
   const [routers, setRouters] = useState<NasRouter[]>([]);
@@ -30,7 +31,7 @@ export default function RoutersPage() {
   const [testingPingId, setTestingPingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NasRouter | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [rList, sList] = await Promise.all([
@@ -44,11 +45,11 @@ export default function RoutersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -57,8 +58,8 @@ export default function RoutersPage() {
       toast.success(`Router NAS ${deleteTarget.name} berhasil dihapus.`);
       setRouters((prev) => prev.filter((r) => r.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menghapus router NAS.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menghapus router NAS.");
     }
   };
 

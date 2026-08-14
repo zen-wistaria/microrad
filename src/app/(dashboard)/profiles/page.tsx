@@ -13,7 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -29,7 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getCustomers } from "@/lib/api/customers";
 import { deleteProfile, getProfiles } from "@/lib/api/profiles";
 import type { BandwidthProfile, Customer } from "@/lib/types";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
 export default function ProfilesPage() {
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
@@ -39,7 +39,7 @@ export default function ProfilesPage() {
     null,
   );
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [profList, custList] = await Promise.all([
@@ -53,11 +53,11 @@ export default function ProfilesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -66,8 +66,8 @@ export default function ProfilesPage() {
       toast.success(`Profil ${deleteTarget.name} berhasil dihapus.`);
       setProfiles((prev) => prev.filter((p) => p.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menghapus profil.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menghapus profil.");
     }
   };
 

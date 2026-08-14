@@ -17,14 +17,29 @@ interface UsageTrendChartProps {
   data: UsageTrendPoint[];
 }
 
+interface TooltipEntry {
+  dataKey?: string | number;
+  value?: number | string;
+}
+
+interface TooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string | number;
+}
+
 export function UsageTrendChart({ data }: UsageTrendChartProps) {
   // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
     if (active && payload && payload.length) {
-      const down =
-        payload.find((p: any) => p.dataKey === "downloadBytes")?.value || 0;
-      const up =
-        payload.find((p: any) => p.dataKey === "uploadBytes")?.value || 0;
+      const toNumber = (v: number | string | undefined) =>
+        typeof v === "number" ? v : Number(v) || 0;
+      const down = toNumber(
+        payload.find((p) => p.dataKey === "downloadBytes")?.value,
+      );
+      const up = toNumber(
+        payload.find((p) => p.dataKey === "uploadBytes")?.value,
+      );
       const total = down + up;
 
       return (

@@ -9,7 +9,7 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -28,7 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getRouters } from "@/lib/api/routers";
 import { disconnectSession, getActiveSessions } from "@/lib/api/sessions";
 import type { NasRouter, Session } from "@/lib/types";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, getErrorMessage } from "@/lib/utils";
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -44,7 +44,7 @@ export default function SessionsPage() {
   const [disconnectSessionTarget, setDisconnectSessionTarget] =
     useState<Session | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [sessList, routerList] = await Promise.all([
         getActiveSessions(),
@@ -58,11 +58,11 @@ export default function SessionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   // Polling interval
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function SessionsPage() {
     }, 6000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, fetchData]);
 
   const handleDisconnect = async () => {
     if (!disconnectSessionTarget) return;
@@ -85,8 +85,8 @@ export default function SessionsPage() {
         prev.filter((s) => s.id !== disconnectSessionTarget.id),
       );
       setDisconnectSessionTarget(null);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal memutuskan sesi PPPoE.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal memutuskan sesi PPPoE.");
     }
   };
 

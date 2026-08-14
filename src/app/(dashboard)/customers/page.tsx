@@ -16,7 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -48,7 +48,7 @@ import {
 } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
 import type { BandwidthProfile, Customer, CustomerStatus } from "@/lib/types";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime, getErrorMessage } from "@/lib/utils";
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -70,7 +70,7 @@ export default function CustomersPage() {
     null,
   );
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [custList, profList] = await Promise.all([
@@ -84,11 +84,11 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   // Filtered customers
   const filteredCustomers = useMemo(() => {
@@ -131,8 +131,8 @@ export default function CustomersPage() {
       toast.success(`Pelanggan ${deleteTarget.username} berhasil dihapus.`);
       setCustomers((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menghapus pelanggan.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menghapus pelanggan.");
     }
   };
 
@@ -155,8 +155,8 @@ export default function CustomersPage() {
         ),
       );
       setDisconnectTarget(null);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal memutuskan koneksi.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal memutuskan koneksi.");
     }
   };
 
@@ -173,8 +173,8 @@ export default function CustomersPage() {
           c.id === customer.id ? { ...c, status: newStatus } : c,
         ),
       );
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal mengubah status.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal mengubah status.");
     }
   };
 

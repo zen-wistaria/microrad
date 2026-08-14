@@ -12,7 +12,7 @@ import {
   Wifi,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { UsageTrendChart } from "@/components/charts/usage-trend-chart";
 import { LiveDurationCounter } from "@/components/common/live-counter";
 import { CustomerStatusBadge } from "@/components/common/status-badge";
@@ -37,7 +37,7 @@ export default function DashboardPage() {
   const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const [statsData, sessionsData, customersData] = await Promise.all([
         getDashboardStats(),
@@ -52,13 +52,13 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchDashboardData]);
 
   return (
     <div className="space-y-6">

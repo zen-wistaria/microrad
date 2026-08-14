@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BulkGenerateDialog } from "@/components/billing/bulk-generate-dialog";
 import { CreateInvoiceDialog } from "@/components/billing/create-invoice-dialog";
@@ -64,7 +64,7 @@ import type {
   Invoice,
   PaymentRecord,
 } from "@/lib/types";
-import { formatDate, formatRupiah } from "@/lib/utils";
+import { formatDate, formatRupiah, getErrorMessage } from "@/lib/utils";
 
 function BillingContent() {
   const searchParams = useSearchParams();
@@ -90,7 +90,7 @@ function BillingContent() {
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [invList, payList, custList, profList, sumData] = await Promise.all(
@@ -112,11 +112,11 @@ function BillingContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
     if (initialQuery) {
@@ -150,8 +150,8 @@ function BillingContent() {
       setDeleteTarget(null);
       const sumData = await getBillingSummary();
       setSummary(sumData);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menghapus invoice");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menghapus invoice");
     }
   };
 

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
@@ -67,6 +67,7 @@ import {
   formatDuration,
   formatRelativeTime,
   formatRupiah,
+  getErrorMessage,
 } from "@/lib/utils";
 
 interface CustomerDetailPageProps {
@@ -92,7 +93,7 @@ export default function CustomerDetailPage({
   // Disconnect Dialog
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
 
-  const fetchCustomerData = async () => {
+  const fetchCustomerData = useCallback(async () => {
     try {
       setLoading(true);
       const cust = await getCustomerById(customerId);
@@ -133,11 +134,11 @@ export default function CustomerDetailPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [customerId, router]);
 
   useEffect(() => {
     fetchCustomerData();
-  }, [customerId]);
+  }, [fetchCustomerData]);
 
   const handleDisconnect = async () => {
     if (!customer) return;
@@ -149,8 +150,8 @@ export default function CustomerDetailPage({
         prev ? { ...prev, currentSessionId: undefined } : null,
       );
       setDisconnectModalOpen(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal memutuskan koneksi.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal memutuskan koneksi.");
     }
   };
 
@@ -164,8 +165,8 @@ export default function CustomerDetailPage({
       toast.success(
         `Status ${customer.username} berhasil diubah menjadi ${newStatus === "active" ? "Aktif" : "Suspended"}.`,
       );
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal mengubah status.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal mengubah status.");
     }
   };
 

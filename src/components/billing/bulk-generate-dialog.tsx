@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { bulkGenerateInvoices } from "@/lib/api/billing";
 import type { Customer, Invoice } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 interface BulkGenerateDialogProps {
   customers: Customer[];
@@ -77,8 +78,10 @@ export function BulkGenerateDialog({
       }
       onSuccess(res.invoices, res.createdCount);
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal melakukan generate tagihan massal");
+    } catch (err: unknown) {
+      toast.error(
+        getErrorMessage(err) || "Gagal melakukan generate tagihan massal",
+      );
     } finally {
       setLoading(false);
     }

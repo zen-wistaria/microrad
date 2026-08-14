@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createProfile, updateProfile } from "@/lib/api/profiles";
 import type { BandwidthProfile } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 const profileSchema = z.object({
   name: z.string().min(3, "Nama profil minimal 3 karakter"),
@@ -79,8 +80,8 @@ export function ProfileForm({
         toast.success(`Profil paket ${data.name} berhasil dibuat.`);
       }
       router.push("/profiles");
-    } catch (err: any) {
-      toast.error(err?.message || "Gagal menyimpan profil bandwidth.");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menyimpan profil bandwidth.");
     } finally {
       setSubmitting(false);
     }
@@ -193,7 +194,6 @@ export function ProfileForm({
               id="price"
               type="number"
               min={1}
-              step={1000}
               placeholder="mis. 165000"
               {...register("price", { valueAsNumber: true })}
               className={errors.price ? "border-rose-500" : ""}
