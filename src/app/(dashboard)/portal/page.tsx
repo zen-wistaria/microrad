@@ -22,12 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePortal } from "@/lib/portal-context";
-import {
-  formatBytes,
-  formatDate,
-  formatRelativeTime,
-  formatRupiah,
-} from "@/lib/utils";
+import { formatDate, formatRelativeTime, formatRupiah } from "@/lib/utils";
 
 export default function PortalInfoPage() {
   const { data, loading, refreshing, reload } = usePortal();
@@ -136,8 +131,8 @@ export default function PortalInfoPage() {
         </div>
       </div>
 
-      {/* Ringkasan pemakaian & keuangan */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Ringkasan layanan & keuangan */}
+      <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="pt-5">
             <p className="text-xs font-medium text-slate-500">Status Layanan</p>
@@ -147,16 +142,6 @@ export default function PortalInfoPage() {
                 isOnline={summary.onlineNow}
               />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs font-medium text-slate-500">
-              Pemakaian 30 Hari
-            </p>
-            <p className="mt-1.5 text-lg font-bold text-slate-900 dark:text-slate-100">
-              {formatBytes(summary.totalUsage30dBytes)}
-            </p>
           </CardContent>
         </Card>
         <Card>

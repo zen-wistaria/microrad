@@ -41,6 +41,7 @@ const routeTitles: Record<string, string> = {
   portal: "Portal Pelanggan",
   usage: "Pemakaian",
   payments: "Pembayaran",
+  logs: "Log",
   new: "Tambah Baru",
   edit: "Edit Data",
 };

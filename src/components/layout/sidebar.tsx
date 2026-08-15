@@ -9,6 +9,7 @@ import {
   Radio,
   Receipt,
   Router as RouterIcon,
+  ScrollText,
   Settings2,
   ShieldCheck,
   Users,
@@ -93,6 +94,11 @@ const portalNavItems = [
     title: "Pembayaran",
     href: "/portal/payments",
     icon: Wallet,
+  },
+  {
+    title: "Log",
+    href: "/portal/logs",
+    icon: ScrollText,
   },
 ];
 

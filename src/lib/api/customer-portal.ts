@@ -1,3 +1,9 @@
+import {
+  getPortalLoginLogs,
+  getPortalSessionLogs,
+  type LogLoginPortal,
+  type LogSesiPppoe,
+} from "../mock/portal-logs";
 import type {
   AppUser,
   BandwidthProfile,
@@ -24,6 +30,8 @@ export interface CustomerPortalData {
   invoices: Invoice[];
   payments: PaymentRecord[];
   sessions: Session[];
+  loginLogs: LogLoginPortal[];
+  sessionLogs: LogSesiPppoe[];
 }
 
 /** Resolve data pelanggan yang terhubung dengan akun login portal. */
@@ -105,5 +113,7 @@ export async function getCustomerPortalData(
     invoices: myInvoices,
     payments: payments.filter((p) => p.customerId === customer.id),
     sessions,
+    loginLogs: getPortalLoginLogs(customer),
+    sessionLogs: getPortalSessionLogs(customer, sessions),
   };
 }
