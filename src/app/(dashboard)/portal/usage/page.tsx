@@ -12,6 +12,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCustomerMonthlyUsage } from "@/lib/api/dashboard";
@@ -19,41 +26,68 @@ import { usePortal } from "@/lib/portal-context";
 import type { CustomerDailyUsage, CustomerMonthlyUsage } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
 
+// Deret tahun (mis. 2023–2026) untuk filter "Per Tahun"
+const YEARS = (() => {
+  const cur = new Date().getFullYear();
+  const arr: number[] = [];
+  for (let y = cur; y >= cur - 3; y--) arr.push(y);
+  return arr;
+})();
+
 export default function PortalUsagePage() {
   const { data, loading, refreshing, reload } = usePortal();
 
   const [daily, setDaily] = useState<CustomerDailyUsage[]>([]);
   const [monthly, setMonthly] = useState<CustomerMonthlyUsage[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState<number>(() =>
+    new Date().getFullYear(),
+  );
 
   useEffect(() => {
     if (data) setDaily(data.usageHistory);
   }, [data]);
 
+  // Pemakaian per bulan — fetch per tahun terpilih (filter "Per Tahun")
   const fetchMonthly = useCallback(async () => {
     if (!data) return;
     try {
       setMonthlyLoading(true);
-      const res = await getCustomerMonthlyUsage(data.customer.id);
+      const res = await getCustomerMonthlyUsage(data.customer.id, selectedYear);
       setMonthly(res);
     } catch {
       setMonthly([]);
     } finally {
       setMonthlyLoading(false);
     }
-  }, [data]);
+  }, [data, selectedYear]);
 
   useEffect(() => {
     fetchMonthly();
   }, [fetchMonthly]);
 
+  // Akumulasi pemakaian bulan ini (bulan berjalan) dari data bulanan tahun
+  // terpilih; fallback ke baris bulan berjalan dari 30 hari terakhir.
+  const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const currentMonthEntry = monthly.find((m) => m.month === currentMonthKey);
+  const currentMonth = currentMonthEntry ?? {
+    downloadBytes: daily.reduce((acc, d) => acc + d.downloadBytes, 0),
+    uploadBytes: daily.reduce((acc, d) => acc + d.uploadBytes, 0),
+    totalBytes: daily.reduce((acc, d) => acc + d.totalBytes, 0),
+    sessionsCount: daily.reduce((acc, d) => acc + d.sessionsCount, 0),
+  };
+  const currentMonthLabel =
+    currentMonthEntry?.label ??
+    new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+
   if (loading) {
     return <Skeleton className="h-80 w-full rounded-xl" />;
   }
 
-  const totalMonthly = monthly.reduce((acc, m) => acc + m.totalBytes, 0);
-  const totalMonthlyDown = monthly.reduce((acc, m) => acc + m.downloadBytes, 0);
-  const totalMonthlyUp = monthly.reduce((acc, m) => acc + m.uploadBytes, 0);
+  // Akumulasi per tahun terpilih (filter tahun) — dipakai di mini cards
+  const totalYearly = monthly.reduce((acc, m) => acc + m.totalBytes, 0);
+  const totalYearlyDown = monthly.reduce((acc, m) => acc + m.downloadBytes, 0);
+  const totalYearlyUp = monthly.reduce((acc, m) => acc + m.uploadBytes, 0);
   const totalSessions = monthly.reduce((acc, m) => acc + m.sessionsCount, 0);
 
   return (
@@ -82,7 +116,7 @@ export default function PortalUsagePage() {
         </Button>
       </div>
 
-      {/* Summary Mini Cards */}
+      {/* Summary Mini Cards — 30 hari + pemakaian bulan berjalan */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="pt-5">
@@ -98,34 +132,34 @@ export default function PortalUsagePage() {
         <Card>
           <CardContent className="pt-5">
             <p className="text-xs font-medium text-slate-500">
-              Per Bulan (12 bln)
+              Pemakaian Bulan Ini (Download)
             </p>
-            <p className="mt-1.5 text-lg font-bold text-slate-900 dark:text-slate-100">
-              {formatBytes(totalMonthly)}
+            <p className="mt-1.5 text-lg font-bold text-blue-900 dark:text-blue-100">
+              {formatBytes(currentMonth.downloadBytes)}
             </p>
-            <p className="text-[11px] text-slate-400">Total pemakaian</p>
+            <p className="text-[11px] text-slate-400">Akumulasi download</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
             <p className="text-xs font-medium text-slate-500">
-              Download / Upload
+              Pemakaian Bulan Ini (Upload)
             </p>
-            <p className="mt-1.5 text-lg font-bold text-blue-600 dark:text-blue-400">
-              {formatBytes(totalMonthlyDown)}
+            <p className="mt-1.5 text-lg font-bold text-indigo-900 dark:text-indigo-100">
+              {formatBytes(currentMonth.uploadBytes)}
             </p>
-            <p className="text-[11px] text-slate-400">
-              Upload: {formatBytes(totalMonthlyUp)}
-            </p>
+            <p className="text-[11px] text-slate-400">Akumulasi upload</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-medium text-slate-500">Total Sesi</p>
-            <p className="mt-1.5 text-lg font-bold text-slate-900 dark:text-slate-100">
-              {totalSessions}
+            <p className="text-xs font-medium text-slate-500">
+              Total Pemakaian Bulan Ini ({currentMonthLabel})
             </p>
-            <p className="text-[11px] text-slate-400">12 bulan terakhir</p>
+            <p className="mt-1.5 text-lg font-bold text-slate-900 dark:text-slate-100">
+              {formatBytes(currentMonth.totalBytes)}
+            </p>
+            <p className="text-[11px] text-slate-400">Bulan berjalan</p>
           </CardContent>
         </Card>
       </div>
@@ -215,14 +249,72 @@ export default function PortalUsagePage() {
         </TabsContent>
 
         <TabsContent value="monthly" className="space-y-6">
+          {/* Akumulasi 1 tahun (tahun terpilih pada filter di bawah) */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card>
+              <CardContent className="p-4">
+                <span className="text-xs text-slate-500">
+                  Akumulasi {selectedYear} (Download)
+                </span>
+                <p className="mt-1 text-xl font-bold text-blue-900 dark:text-blue-100">
+                  {formatBytes(totalYearlyDown)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <span className="text-xs text-slate-500">
+                  Akumulasi {selectedYear} (Upload)
+                </span>
+                <p className="mt-1 text-xl font-bold text-indigo-900 dark:text-indigo-100">
+                  {formatBytes(totalYearlyUp)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <span className="text-xs text-slate-500">
+                  Total Akumulasi {selectedYear}
+                </span>
+                <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">
+                  {formatBytes(totalYearly)}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Sesi: {totalSessions}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                Grafik Pemakaian Per Bulan
-              </CardTitle>
-              <CardDescription>
-                Total download vs upload per bulan selama 12 bulan terakhir.
-              </CardDescription>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base">
+                    Grafik Pemakaian Per Bulan
+                  </CardTitle>
+                  <CardDescription>
+                    Total download vs upload per bulan pada tahun {selectedYear}
+                    .
+                  </CardDescription>
+                </div>
+                {/* Filter per tahun */}
+                <Select
+                  value={String(selectedYear)}
+                  onValueChange={(v) => setSelectedYear(Number(v))}
+                >
+                  <SelectTrigger className="w-32 h-9">
+                    <SelectValue placeholder="Pilih Tahun" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {YEARS.map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               {monthlyLoading ? (
@@ -241,7 +333,7 @@ export default function PortalUsagePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
-                  Rincian Per Bulan (12 Bulan Terakhir)
+                  Rincian Per Bulan ({selectedYear})
                 </CardTitle>
               </CardHeader>
               <CardContent>

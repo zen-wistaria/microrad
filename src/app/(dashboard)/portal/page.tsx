@@ -51,6 +51,18 @@ export default function PortalInfoPage() {
 
   const { customer, profile, summary } = data;
 
+  // Periode/bulan berlangganan yang aktif saat ini — dari invoice periode
+  // bulan berjalan (mock dibuat dinamis), fallback ke tanggal sekarang.
+  const now = new Date();
+  const activeInvoice = data.invoices.find(
+    (inv) =>
+      inv.periodYear === now.getFullYear() &&
+      inv.periodMonth === now.getMonth() + 1,
+  );
+  const periodLabel = activeInvoice
+    ? `${now.toLocaleDateString("id-ID", { month: "long" })} ${now.getFullYear()}`
+    : `${now.toLocaleDateString("id-ID", { month: "long" })} ${now.getFullYear()}`;
+
   const infoItems = [
     {
       icon: AtSign,
@@ -207,6 +219,14 @@ export default function PortalInfoPage() {
               <p className="text-[11px] text-slate-500">Harga Bulanan</p>
               <p className="mt-0.5 text-sm font-bold text-emerald-600 dark:text-emerald-400">
                 {formatRupiah(profile.price || 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-500">
+                Periode Aktif (Bulan Ini)
+              </p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {periodLabel}
               </p>
             </div>
             {profile.description && (
