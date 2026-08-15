@@ -19,6 +19,7 @@ import {
   type GlobalLogEntry,
 } from "./global-logs";
 import { initialProfiles } from "./profiles.mock";
+import { relMonthsAgo, relNow } from "./relative-dates";
 import { initialRoles } from "./roles.mock";
 import { initialRouters } from "./routers.mock";
 import { initialSessions } from "./sessions.mock";
@@ -35,6 +36,47 @@ const STORAGE_KEYS = {
   COMPANY_PROFILE: "microrad_company_profile",
   INITIALIZED: "microrad_initialized_v2",
 };
+
+/**
+ * Data mock pelanggan menyimpan tanggal relatif sebagai string literal
+ * (mis. "relMonthsAgoIso(7, 8, 30)") agar selalu mengikuti hari berjalan.
+ * String ini hanya valid di file source, bukan di JSON runtime — resolve
+ * ke Date asli pada saat data dimuat, sehingga createdAt bisa dipakai
+ * logika bisnis (mis. perhitungan tenggat jatuh tempo).
+ */
+function resolveMockDates<T>(rows: T[]): T[] {
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const out: Record<string, unknown> = {
+      ...(row as Record<string, unknown>),
+    };
+    for (const [key, value] of Object.entries(out)) {
+      if (typeof value !== "string") continue;
+      const match = value.match(
+        /^relMonthsAgoIso\(([\d.]+),\s*(\d+),\s*(\d+)\)$/,
+      );
+      if (match) {
+        out[key] = relMonthsAgo(
+          Number(match[1]),
+          Number(match[2]),
+          Number(match[3]),
+        ).toISOString();
+        continue;
+      }
+      const matchNow = value.match(
+        /^relNowIso\((\d+),\s*(\d+)(?:,\s*(\d+))?\)$/,
+      );
+      if (matchNow) {
+        out[key] = relNow(
+          Number(matchNow[1]),
+          Number(matchNow[2]),
+          Number(matchNow[3] ?? 0),
+        ).toISOString();
+      }
+    }
+    return out as T;
+  });
+}
 
 class MockDatabase {
   private customers: Customer[] = [];
@@ -60,7 +102,7 @@ class MockDatabase {
     if (this.isLoaded) return;
     if (!this.isBrowser()) {
       // Server-side default
-      this.customers = [...initialCustomers];
+      this.customers = resolveMockDates(initialCustomers);
       this.profiles = [...initialProfiles];
       this.routers = [...initialRouters];
       this.sessions = [...initialSessions];
@@ -84,8 +126,8 @@ class MockDatabase {
         const storedRoles = localStorage.getItem(STORAGE_KEYS.ROLES);
 
         this.customers = storedCustomers
-          ? JSON.parse(storedCustomers)
-          : [...initialCustomers];
+          ? resolveMockDates(JSON.parse(storedCustomers))
+          : resolveMockDates(initialCustomers);
         this.profiles = storedProfiles
           ? JSON.parse(storedProfiles)
           : [...initialProfiles];
@@ -140,7 +182,9 @@ class MockDatabase {
   }
 
   public resetToDefaults(): void {
-    this.customers = JSON.parse(JSON.stringify(initialCustomers));
+    this.customers = resolveMockDates(
+      JSON.parse(JSON.stringify(initialCustomers)),
+    );
     this.profiles = JSON.parse(JSON.stringify(initialProfiles));
     this.routers = JSON.parse(JSON.stringify(initialRouters));
     this.sessions = JSON.parse(JSON.stringify(initialSessions));

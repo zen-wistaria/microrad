@@ -56,6 +56,10 @@ export interface Invoice {
   tax: number; // PPN
   discount: number;
   adminFee: number;
+  /** Termasuk dalam tagihan bulanan (satuan Rupiah), default 0 */
+  installationFee: number;
+  /** Persentase PPN (0-100) yang dikenakan atas subtotal */
+  taxPercent: number;
   totalAmount: number;
   status: InvoiceStatus;
   issueDate: string; // ISO date

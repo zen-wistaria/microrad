@@ -5,6 +5,7 @@ import Link from "next/link";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,7 +24,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createInvoice } from "@/lib/api/billing";
+import {
+  createInvoiceForCustomer,
+  getDueDateFromRegistration,
+} from "@/lib/api/billing";
 import type { BandwidthProfile, Customer, Invoice } from "@/lib/types";
 import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
@@ -63,10 +67,16 @@ export function CreateInvoiceDialog({
   const [year, setYear] = useState(new Date().getFullYear());
   const [subtotal, setSubtotal] = useState<number>(0);
   const [adminFee, setAdminFee] = useState<number>(2500);
-  const [tax, setTax] = useState<number>(0);
+  const [taxPercent, setTaxPercent] = useState<number>(11);
   const [discount, setDiscount] = useState<number>(0);
+  const [installationFee, setInstallationFee] = useState<number>(0);
   const [dueDate, setDueDate] = useState<string>("");
   const [notes, _setNotes] = useState<string>("");
+  const [duplicateConfirm, setDuplicateConfirm] = useState(false);
+  const [duplicateTarget, setDuplicateTarget] = useState<{
+    month: number;
+    year: number;
+  } | null>(null);
 
   const handleSelectCustomer = useCallback(
     (cId: string) => {
@@ -80,6 +90,18 @@ export function CreateInvoiceDialog({
     [customers, profiles],
   );
 
+  const selectedCustomer = customers.find((c) => c.id === customerId);
+  const selectedProfile = profiles.find(
+    (p) => p.id === selectedCustomer?.profileId,
+  );
+
+  // Jatuh tempo otomatis: tanggal registrasi pelanggan + 1 bulan.
+  // (Nomor hari tetap, mis. registrasi tgl 15 → jatuh tempo tgl 15 bulan
+  // berikutnya; jika bulan berikutnya lebih pendek, dipakai hari terakhir.)
+  const autoDueDate = selectedCustomer
+    ? getDueDateFromRegistration(selectedCustomer.createdAt)
+    : "";
+
   useEffect(() => {
     if (open) {
       const now = new Date();
@@ -88,22 +110,26 @@ export function CreateInvoiceDialog({
       setMonth(currentMonth);
       setYear(currentYear);
 
-      // Default due date: 10th of this month
-      const dueStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}-10`;
-      setDueDate(dueStr);
-
       if (customers.length > 0 && !customerId) {
         handleSelectCustomer(customers[0].id);
       }
     }
   }, [open, customers, customerId, handleSelectCustomer]);
 
-  const selectedCustomer = customers.find((c) => c.id === customerId);
-  const selectedProfile = profiles.find(
-    (p) => p.id === selectedCustomer?.profileId,
-  );
+  useEffect(() => {
+    if (open && autoDueDate) {
+      setDueDate(autoDueDate.slice(0, 10));
+    }
+  }, [open, autoDueDate]);
 
-  const totalAmount = Math.max(0, subtotal + adminFee + tax - discount);
+  // Persentase PPN (0-100) → nominal Rupiah dihitung dari subtotal.
+  const safeTaxPercent = Math.min(100, Math.max(0, taxPercent || 0));
+  const taxAmount = Math.round((subtotal * safeTaxPercent) / 100);
+
+  const totalAmount = Math.max(
+    0,
+    subtotal + taxAmount + adminFee + installationFee - discount,
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,13 +141,38 @@ export function CreateInvoiceDialog({
       toast.error("Tentukan tanggal jatuh tempo.");
       return;
     }
+    if (taxPercent < 0 || taxPercent > 100) {
+      toast.error("PPN hanya boleh diisi antara 0% sampai 100%.");
+      return;
+    }
+
+    // Validasi duplikat: pelanggan belum boleh punya tagihan di bulan ini
+    // (periode sama dengan bulan jatuh tempo yang sedang dibuat).
+    const targetMonth = month;
+    const targetYear = year;
+    try {
+      const { getInvoices } = await import("@/lib/api/billing");
+      const allInvoices = await getInvoices();
+      const hasDup = allInvoices.some(
+        (inv) =>
+          inv.customerId === selectedCustomer.id &&
+          inv.periodYear === targetYear &&
+          inv.periodMonth === targetMonth,
+      );
+      if (hasDup) {
+        setDuplicateTarget({ month: targetMonth, year: targetYear });
+        setDuplicateConfirm(true);
+        return;
+      }
+    } catch {
+      // kalau cek gagal, biarkan API createInvoice yang menolak
+    }
 
     try {
       setLoading(true);
       const dueISO = new Date(`${dueDate}T23:59:59Z`).toISOString();
-      const issueISO = new Date().toISOString();
 
-      const created = await createInvoice({
+      const created = await createInvoiceForCustomer({
         customerId: selectedCustomer.id,
         customerUsername: selectedCustomer.username,
         customerFullName: selectedCustomer.fullName,
@@ -132,12 +183,14 @@ export function CreateInvoiceDialog({
         periodMonth: month,
         periodYear: year,
         subtotal,
-        tax,
+        tax: taxAmount,
+        taxPercent: safeTaxPercent,
         discount,
         adminFee,
+        installationFee,
         totalAmount,
         status: "unpaid",
-        issueDate: issueISO,
+        issueDate: new Date().toISOString(),
         dueDate: dueISO,
         notes: notes.trim() || undefined,
       });
@@ -270,14 +323,20 @@ export function CreateInvoiceDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="inv-tax">Pajak / PPN (Rp)</Label>
+                <Label htmlFor="inv-tax-percent">PPN (%)</Label>
                 <Input
-                  id="inv-tax"
+                  id="inv-tax-percent"
                   type="number"
-                  value={tax}
-                  onChange={(e) => setTax(Number(e.target.value))}
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={taxPercent}
+                  onChange={(e) => setTaxPercent(Number(e.target.value))}
                   className="h-9"
                 />
+                <p className="text-[11px] text-slate-400">
+                  Persentase PPN; maksimal 100%. ({formatRupiah(taxAmount)})
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -285,6 +344,7 @@ export function CreateInvoiceDialog({
                 <Input
                   id="inv-discount"
                   type="number"
+                  min={0}
                   value={discount}
                   onChange={(e) => setDiscount(Number(e.target.value))}
                   className="h-9"
@@ -292,7 +352,23 @@ export function CreateInvoiceDialog({
               </div>
             </div>
 
-            {/* Due Date */}
+            {/* Installation fee */}
+            <div className="space-y-1.5">
+              <Label htmlFor="inv-installation">
+                Biaya Instalasi (Rp, default 0)
+              </Label>
+              <Input
+                id="inv-installation"
+                type="number"
+                min={0}
+                value={installationFee}
+                onChange={(e) => setInstallationFee(Number(e.target.value))}
+                className="h-9"
+                placeholder="0"
+              />
+            </div>
+
+            {/* Due Date — otomatis dari tanggal registrasi pelanggan */}
             <div className="space-y-1.5">
               <Label htmlFor="inv-due-date">Tanggal Jatuh Tempo</Label>
               <Input
@@ -302,6 +378,12 @@ export function CreateInvoiceDialog({
                 onChange={(e) => setDueDate(e.target.value)}
                 className="h-9"
               />
+              <p className="text-[11px] text-slate-400">
+                Otomatis = tanggal registrasi pelanggan + 1 bulan
+                {selectedCustomer
+                  ? ` (registrasi ${new Date(selectedCustomer.createdAt).getDate()} — jatuh tempo ${dueDate || "—"})`
+                  : "."}
+              </p>
             </div>
 
             {/* Total Calculation summary banner */}
@@ -334,6 +416,24 @@ export function CreateInvoiceDialog({
               Simpan Tagihan
             </Button>
           </DialogFooter>
+
+          {/* Konfirmasi duplikat tagihan periode ini */}
+          <ConfirmDialog
+            open={duplicateConfirm}
+            onOpenChange={(open) => !open && setDuplicateConfirm(false)}
+            title="Tagihan Sudah Ada di Periode Ini"
+            description={`Pelanggan ${selectedCustomer?.username || ""} sudah memiliki tagihan untuk bulan ${
+              duplicateTarget
+                ? MONTH_NAMES[duplicateTarget.month - 1]
+                : "periode tersebut"
+            }${duplicateTarget ? ` ${duplicateTarget.year}` : ""}. Hapus atau lunasi tagihan tersebut terlebih dahulu sebelum membuat tagihan baru.`}
+            confirmLabel="Mengerti"
+            onConfirm={() => {
+              setDuplicateConfirm(false);
+              setDuplicateTarget(null);
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>

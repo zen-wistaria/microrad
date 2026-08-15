@@ -506,7 +506,31 @@ export default function InvoiceDetailPage() {
                   </td>
                 </tr>
 
-                {/* Item 2: Admin fee (if any) */}
+                {/* Item 2: Biaya Instalasi (jika ada) */}
+                {invoice.installationFee > 0 && (
+                  <tr>
+                    <td className="py-2 px-3 text-center text-slate-500 font-mono text-[11px]">
+                      {invoice.adminFee > 0 ? 2 : 2}
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="font-medium text-slate-800 dark:text-slate-200 print:text-slate-900">
+                        Biaya Instalasi & Aktivasi Layanan
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Ongkos pasang / aktivasi awal koneksi
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-center text-slate-500">-</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-600 print:text-slate-700">
+                      {formatRupiah(invoice.installationFee)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200 print:text-slate-900">
+                      {formatRupiah(invoice.installationFee)}
+                    </td>
+                  </tr>
+                )}
+
+                {/* Item berikutnya: Admin fee (if any) */}
                 {invoice.adminFee > 0 && (
                   <tr>
                     <td className="py-2 px-3 text-center text-slate-500 font-mono text-[11px]">
@@ -538,7 +562,8 @@ export default function InvoiceDetailPage() {
                     </td>
                     <td className="py-2 px-3">
                       <div className="font-medium text-slate-800 dark:text-slate-200 print:text-slate-900">
-                        PPN (Pajak Pertambahan Nilai 11%)
+                        PPN (Pajak Pertambahan Nilai {invoice.taxPercent || 11}
+                        %)
                       </div>
                     </td>
                     <td className="py-2 px-3 text-center text-slate-500">-</td>
@@ -618,6 +643,15 @@ export default function InvoiceDetailPage() {
                 </span>
               </div>
 
+              {invoice.installationFee > 0 && (
+                <div className="flex justify-between text-slate-600 dark:text-slate-400 print:text-slate-700 text-[11px]">
+                  <span>Biaya Instalasi:</span>
+                  <span className="font-mono font-medium">
+                    {formatRupiah(invoice.installationFee)}
+                  </span>
+                </div>
+              )}
+
               {invoice.adminFee > 0 && (
                 <div className="flex justify-between text-slate-600 dark:text-slate-400 print:text-slate-700 text-[11px]">
                   <span>Biaya Admin & Transaksi:</span>
@@ -629,7 +663,7 @@ export default function InvoiceDetailPage() {
 
               {invoice.tax > 0 && (
                 <div className="flex justify-between text-slate-600 dark:text-slate-400 print:text-slate-700 text-[11px]">
-                  <span>Pajak (PPN 11%):</span>
+                  <span>Pajak (PPN {invoice.taxPercent || 11}%):</span>
                   <span className="font-mono font-medium">
                     {formatRupiah(invoice.tax)}
                   </span>

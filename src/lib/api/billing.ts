@@ -1,4 +1,5 @@
 import { initialInvoices, initialPayments } from "../mock/billing.mock";
+import { relMonthsAgo, relNow } from "../mock/relative-dates";
 import type {
   BillingSummary,
   Invoice,
@@ -13,18 +14,120 @@ const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
 const INVOICES_STORAGE_KEY = "microrad_invoices_mock";
 const PAYMENTS_STORAGE_KEY = "microrad_payments_mock";
 
+/**
+ * Tanggal relatif mock tersimpan sebagai string literal di file source
+ * (mis. "relMonthsAgoIso(7, 8, 30)"). Setelah diserialisasi ke JSON,
+ * string tersebut tidak lagi tervalidasi — resolve ke Date nyata.
+ */
+function resolveMockDateString(dateStr?: string | null): string {
+  if (!dateStr) return dateStr || "";
+  const months = dateStr.match(
+    /^relMonthsAgoIso\(([\d.]+),\s*(\d+),\s*(\d+)\)$/,
+  );
+  if (months) {
+    return relMonthsAgo(
+      Number(months[1]),
+      Number(months[2]),
+      Number(months[3]),
+    ).toISOString();
+  }
+  const nowMatch = dateStr.match(/^relNowIso\((\d+),\s*(\d+)(?:,\s*(\d+))?\)$/);
+  if (nowMatch) {
+    return relNow(
+      Number(nowMatch[1]),
+      Number(nowMatch[2]),
+      Number(nowMatch[3] ?? 0),
+    ).toISOString();
+  }
+  return dateStr;
+}
+
+/**
+ * Tanggal jatuh tempo otomatis: tanggal registrasi pelanggan ditambah
+ * satu bulan (hari tetap sama; jika hari tersebut tidak ada di bulan
+ * berikutnya, dipakai hari terakhir bulan tersebut).
+ */
+export function getDueDateFromRegistration(createdAt?: string | null): string {
+  const raw = resolveMockDateString(createdAt);
+  const reg = new Date(raw);
+  if (Number.isNaN(reg.getTime())) return "";
+  const base = new Date(reg); // bentuk "YYYY-MM-DD" utk input date
+  const due = new Date(
+    base.getFullYear(),
+    base.getMonth() + 1,
+    base.getDate(),
+    23,
+    59,
+    59,
+  );
+  return [
+    `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`,
+    `${String(due.getHours()).padStart(2, "0")}:${String(due.getMinutes()).padStart(2, "0")}`,
+  ].join("T");
+}
+
+export interface CreateInvoiceInput {
+  customerId: string;
+  customerUsername: string;
+  customerFullName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  profileId: string;
+  profileName: string;
+  periodMonth: number;
+  periodYear: number;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  adminFee: number;
+  installationFee: number;
+  taxPercent: number;
+  totalAmount: number;
+  status: Invoice["status"];
+  issueDate?: string;
+  dueDate?: string;
+  notes?: string;
+}
+
+export async function createInvoiceForCustomer(
+  data: CreateInvoiceInput,
+): Promise<Invoice> {
+  const customers = await getCustomers();
+  const existingCustomer = customers.find((c) => c.id === data.customerId);
+  if (!existingCustomer) {
+    throw new Error("Pelanggan tidak ditemukan.");
+  }
+
+  // Jatuh tempo otomatis: tanggal registrasi pelanggan + 1 bulan.
+  const dueFromReg = getDueDateFromRegistration(existingCustomer.createdAt);
+  const dueDate = (
+    dueFromReg ? new Date(dueFromReg).toISOString() : data.dueDate
+  ) as string;
+
+  // Periodenya mengikuti bulan jatuh tempo otomatis di atas.
+  const dueFallback = dueDate ? new Date(dueDate) : new Date();
+  const periodYear = data.periodYear || dueFallback.getFullYear();
+  const periodMonth = data.periodMonth || dueFallback.getMonth() + 1;
+
+  return createInvoice({
+    ...data,
+    dueDate,
+    periodYear,
+    periodMonth,
+    issueDate: data.issueDate || new Date().toISOString(),
+  });
+}
+
 function loadInvoicesFromStorage(): Invoice[] {
   if (typeof window === "undefined") return initialInvoices;
   try {
     const raw = localStorage.getItem(INVOICES_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(
-        INVOICES_STORAGE_KEY,
-        JSON.stringify(initialInvoices),
-      );
-      return initialInvoices;
-    }
-    return JSON.parse(raw);
+    const invoices = raw ? JSON.parse(raw) : initialInvoices;
+    return invoices.map((inv: Invoice) => ({
+      ...inv,
+      installationFee: inv.installationFee ?? 0,
+      taxPercent: inv.taxPercent ?? 0,
+    }));
   } catch {
     return initialInvoices;
   }
@@ -76,10 +179,24 @@ export async function createInvoice(
   await delay(200);
   const invoices = loadInvoicesFromStorage();
 
-  const year = payload.periodYear || new Date().getFullYear();
-  const month = String(
-    payload.periodMonth || new Date().getMonth() + 1,
-  ).padStart(2, "0");
+  // Validasi duplikat: tidak boleh ada 2 tagihan utk pelanggan yang sama
+  // pada periode bulan yang sama.
+  const currentYear = payload.periodYear || new Date().getFullYear();
+  const currentMonth = payload.periodMonth || new Date().getMonth() + 1;
+  const hasInvoiceThisMonth = invoices.some(
+    (inv) =>
+      inv.customerId === payload.customerId &&
+      inv.periodYear === currentYear &&
+      inv.periodMonth === currentMonth,
+  );
+  if (hasInvoiceThisMonth) {
+    throw new Error(
+      `Pelanggan '${payload.customerUsername}' sudah memiliki tagihan pada periode ini. Hapus atau lunasi tagihan tersebut terlebih dahulu sebelum membuat tagihan baru.`,
+    );
+  }
+
+  const year = currentYear;
+  const month = String(currentMonth).padStart(2, "0");
   const countThisMonth = invoices.filter(
     (i) => i.periodYear === year && i.periodMonth === Number(month),
   ).length;
@@ -233,6 +350,8 @@ export async function bulkGenerateInvoices(
         tax: 0,
         discount: 0,
         adminFee,
+        installationFee: 0,
+        taxPercent: 0,
         totalAmount,
         status: "unpaid",
         issueDate: `${year}-${dueMonthStr}-01T08:00:00Z`,
