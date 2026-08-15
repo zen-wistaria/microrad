@@ -136,12 +136,10 @@ export default function PortalInfoPage() {
         <Card>
           <CardContent className="pt-5">
             <p className="text-xs font-medium text-slate-500">Status Layanan</p>
-            <div className="mt-1.5">
-              <CustomerStatusBadge
-                status={customer.status}
-                isOnline={summary.onlineNow}
-              />
-            </div>
+            <CustomerStatusBadge
+              status={customer.status}
+              isOnline={summary.onlineNow}
+            />
           </CardContent>
         </Card>
         <Card>
@@ -249,7 +247,7 @@ export default function PortalInfoPage() {
                   <Icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                   <div className="min-w-0">
                     <p className="text-[11px] text-slate-500">{item.label}</p>
-                    <p
+                    <div
                       className={
                         item.mono
                           ? "mt-0.5 break-all font-mono text-sm font-semibold text-slate-900 dark:text-slate-100"
@@ -257,7 +255,7 @@ export default function PortalInfoPage() {
                       }
                     >
                       {item.value}
-                    </p>
+                    </div>
                   </div>
                 </div>
               );

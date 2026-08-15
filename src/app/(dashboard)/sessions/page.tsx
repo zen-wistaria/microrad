@@ -9,6 +9,12 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  parseAsInteger,
+  parseAsString,
+  parseAsStringEnum,
+  useQueryState,
+} from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
@@ -37,8 +43,24 @@ export default function SessionsPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Search & Filter
-  const [search, setSearch] = useState("");
-  const [routerFilter, setRouterFilter] = useState("all");
+  const [search, setSearch] = useQueryState(
+    "search",
+    parseAsString.withDefault(""),
+  );
+  const [routerFilter, setRouterFilter] = useQueryState(
+    "router",
+    parseAsStringEnum(["all", ...routers.map((r) => r.ipAddress)]).withDefault(
+      "all",
+    ),
+  );
+
+  // Pagination (via nuqs — konsisten saat refresh)
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
 
   // Disconnect Target
   const [disconnectSessionTarget, setDisconnectSessionTarget] =
@@ -104,6 +126,14 @@ export default function SessionsPage() {
       return matchSearch && matchRouter;
     });
   }, [sessions, search, routerFilter]);
+
+  // Pagination slice
+  const totalPages = Math.ceil(filteredSessions.length / safeLimit) || 1;
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const paginatedSessions = useMemo(() => {
+    const start = (safePage - 1) * safeLimit;
+    return filteredSessions.slice(start, start + safeLimit);
+  }, [filteredSessions, safePage, safeLimit]);
 
   // Aggregate KPI Stats
   const totalDownloadActive = useMemo(
@@ -311,7 +341,7 @@ export default function SessionsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredSessions.map((session) => {
+                  paginatedSessions.map((session) => {
                     const routerObj = routers.find(
                       (r) => r.ipAddress === session.nasIpAddress,
                     );
@@ -373,6 +403,72 @@ export default function SessionsPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Footer */}
+          {!loading && filteredSessions.length > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>
+                  Menampilkan{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min(
+                      (safePage - 1) * safeLimit + 1,
+                      filteredSessions.length,
+                    )}
+                  </span>{" "}
+                  -{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min(safePage * safeLimit, filteredSessions.length)}
+                  </span>{" "}
+                  dari{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {filteredSessions.length}
+                  </span>{" "}
+                  sesi
+                </span>
+                <Select
+                  value={String(safeLimit)}
+                  onValueChange={(v) => {
+                    setLimit(Number(v));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="h-8 px-3 text-xs"
+                >
+                  Sebelumnya
+                </Button>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Hal {safePage} dari {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="h-8 px-3 text-xs"
+                >
+                  Selanjutnya
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

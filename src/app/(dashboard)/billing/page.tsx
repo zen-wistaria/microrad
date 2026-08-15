@@ -18,7 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BulkGenerateDialog } from "@/components/billing/bulk-generate-dialog";
@@ -67,9 +67,6 @@ import type {
 import { formatDate, formatRupiah, getErrorMessage } from "@/lib/utils";
 
 function BillingContent() {
-  const searchParams = useSearchParams();
-  const initialQuery = searchParams.get("search") || "";
-
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -77,11 +74,36 @@ function BillingContent() {
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Filters
-  const [search, setSearch] = useState(initialQuery);
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [monthFilter, setMonthFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState("invoices");
+  // Filters (via nuqs — konsisten saat refresh)
+  const [search, setSearch] = useQueryState(
+    "search",
+    parseAsString.withDefault(""),
+  );
+  const [statusFilter, setStatusFilter] = useQueryState(
+    "status",
+    parseAsString.withDefault("all"),
+  );
+  const [monthFilter, setMonthFilter] = useQueryState(
+    "month",
+    parseAsString.withDefault("all"),
+  );
+  // Pencarian khusus tab pembayaran
+  const [paymentSearch, setPaymentSearch] = useQueryState(
+    "paysearch",
+    parseAsString.withDefault(""),
+  );
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsString.withDefault("invoices"),
+  );
+
+  // Pagination (via nuqs — konsisten saat refresh)
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
 
   // Dialog states
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null);
@@ -118,12 +140,6 @@ function BillingContent() {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    if (initialQuery) {
-      setSearch(initialQuery);
-    }
-  }, [initialQuery]);
-
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
       const matchSearch =
@@ -140,6 +156,34 @@ function BillingContent() {
       return matchSearch && matchStatus && matchMonth;
     });
   }, [invoices, search, statusFilter, monthFilter]);
+
+  // Pagination slice untuk tab tagihan
+  const invoiceTotalPages = Math.ceil(filteredInvoices.length / safeLimit) || 1;
+  const invoiceSafePage = Math.min(Math.max(page, 1), invoiceTotalPages);
+  const paginatedInvoices = useMemo(() => {
+    const start = (invoiceSafePage - 1) * safeLimit;
+    return filteredInvoices.slice(start, start + safeLimit);
+  }, [filteredInvoices, invoiceSafePage, safeLimit]);
+
+  // Pagination slice untuk tab pembayaran (dengan pencarian)
+  const filteredPayments = useMemo(() => {
+    const q = paymentSearch.toLowerCase().trim();
+    if (!q) return payments;
+    return payments.filter(
+      (p) =>
+        p.paymentReference?.toLowerCase().includes(q) ||
+        p.invoiceNumber.toLowerCase().includes(q) ||
+        p.customerName?.toLowerCase().includes(q) ||
+        p.customerId.toLowerCase().includes(q),
+    );
+  }, [payments, paymentSearch]);
+
+  const paymentTotalPages = Math.ceil(filteredPayments.length / safeLimit) || 1;
+  const paymentSafePage = Math.min(Math.max(page, 1), paymentTotalPages);
+  const paginatedPayments = useMemo(() => {
+    const start = (paymentSafePage - 1) * safeLimit;
+    return filteredPayments.slice(start, start + safeLimit);
+  }, [filteredPayments, paymentSafePage, safeLimit]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -456,7 +500,7 @@ function BillingContent() {
                         </td>
                       </tr>
                     ) : (
-                      filteredInvoices.map((inv) => (
+                      paginatedInvoices.map((inv) => (
                         <tr
                           key={inv.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
@@ -559,12 +603,116 @@ function BillingContent() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Footer — Tagihan */}
+              {!loading && filteredInvoices.length > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span>
+                      Menampilkan{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          (invoiceSafePage - 1) * safeLimit + 1,
+                          filteredInvoices.length,
+                        )}
+                      </span>{" "}
+                      -{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          invoiceSafePage * safeLimit,
+                          filteredInvoices.length,
+                        )}
+                      </span>{" "}
+                      dari{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {filteredInvoices.length}
+                      </span>{" "}
+                      tagihan
+                    </span>
+                    <Select
+                      value={String(safeLimit)}
+                      onValueChange={(v) => {
+                        setLimit(Number(v));
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={invoiceSafePage === 1}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Sebelumnya
+                    </Button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Hal {invoiceSafePage} dari {invoiceTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(invoiceTotalPages, p + 1))
+                      }
+                      disabled={invoiceSafePage === invoiceTotalPages}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Selanjutnya
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Tab 2: Payment Records History */}
         <TabsContent value="payments" className="space-y-4 pt-2">
+          {/* Filters Bar — Pembayaran */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    placeholder="Cari referensi, no. invoice, nama pelanggan..."
+                    value={paymentSearch}
+                    onChange={(e) => {
+                      setPaymentSearch(e.target.value);
+                      setPage(1);
+                    }}
+                    className="pl-9 text-xs"
+                  />
+                </div>
+                {paymentSearch && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setPaymentSearch("");
+                      setPage(1);
+                    }}
+                    className="text-xs text-slate-500 hover:text-slate-900"
+                  >
+                    Reset
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
@@ -596,17 +744,19 @@ function BillingContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {payments.length === 0 ? (
+                    {filteredPayments.length === 0 ? (
                       <tr>
                         <td
                           colSpan={7}
                           className="py-8 text-center text-slate-400"
                         >
-                          Belum ada data transaksi pembayaran.
+                          {paymentSearch
+                            ? "Tidak ada pembayaran yang cocok dengan pencarian."
+                            : "Belum ada data transaksi pembayaran."}
                         </td>
                       </tr>
                     ) : (
-                      payments.map((p) => (
+                      paginatedPayments.map((p) => (
                         <tr
                           key={p.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
@@ -643,6 +793,77 @@ function BillingContent() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Footer — Pembayaran */}
+              {!loading && filteredPayments.length > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span>
+                      Menampilkan{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          (paymentSafePage - 1) * safeLimit + 1,
+                          filteredPayments.length,
+                        )}
+                      </span>{" "}
+                      -{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          paymentSafePage * safeLimit,
+                          filteredPayments.length,
+                        )}
+                      </span>{" "}
+                      dari{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {filteredPayments.length}
+                      </span>{" "}
+                      pembayaran
+                    </span>
+                    <Select
+                      value={String(safeLimit)}
+                      onValueChange={(v) => {
+                        setLimit(Number(v));
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={paymentSafePage === 1}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Sebelumnya
+                    </Button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Hal {paymentSafePage} dari {paymentTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(paymentTotalPages, p + 1))
+                      }
+                      disabled={paymentSafePage === paymentTotalPages}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Selanjutnya
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

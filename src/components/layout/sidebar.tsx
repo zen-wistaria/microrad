@@ -74,7 +74,7 @@ const systemNavItems = [
     title: "Log Global",
     href: "/logs",
     icon: ScrollText,
-  }
+  },
 ];
 
 const portalNavItems = [

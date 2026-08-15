@@ -1,6 +1,7 @@
 "use client";
 
 import { Filter, RefreshCw, ScrollText, Search } from "lucide-react";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,11 +35,31 @@ export default function GlobalLogsPage() {
   const [logs, setLogs] = useState<GlobalLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter
-  const [search, setSearch] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  // Filter (via nuqs — konsisten saat refresh)
+  const [search, setSearch] = useQueryState(
+    "search",
+    parseAsString.withDefault(""),
+  );
+  const [sourceFilter, setSourceFilter] = useQueryState(
+    "source",
+    parseAsString.withDefault("all"),
+  );
+  const [fromDate, setFromDate] = useQueryState(
+    "from",
+    parseAsString.withDefault(""),
+  );
+  const [toDate, setToDate] = useQueryState(
+    "to",
+    parseAsString.withDefault(""),
+  );
+
+  // Pagination
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -66,7 +87,16 @@ export default function GlobalLogsPage() {
     setSourceFilter("all");
     setFromDate("");
     setToDate("");
+    setPage(1);
   };
+
+  // Pagination slice
+  const totalPages = Math.ceil(logs.length / safeLimit) || 1;
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const paginatedLogs = useMemo(() => {
+    const start = (safePage - 1) * safeLimit;
+    return logs.slice(start, start + safeLimit);
+  }, [logs, safePage, safeLimit]);
 
   // Ringkasan jumlah per sumber
   const counts = useMemo(() => {
@@ -237,7 +267,7 @@ export default function GlobalLogsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {logs.map((log) => (
+                  {paginatedLogs.map((log) => (
                     <tr
                       key={log.id}
                       className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -281,6 +311,69 @@ export default function GlobalLogsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Footer */}
+          {!loading && logs.length > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>
+                  Menampilkan{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min((safePage - 1) * safeLimit + 1, logs.length)}
+                  </span>{" "}
+                  -{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min(safePage * safeLimit, logs.length)}
+                  </span>{" "}
+                  dari{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {logs.length}
+                  </span>{" "}
+                  log
+                </span>
+                <Select
+                  value={String(safeLimit)}
+                  onValueChange={(v) => {
+                    setLimit(Number(v));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="h-8 px-3 text-xs"
+                >
+                  Sebelumnya
+                </Button>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Hal {safePage} dari {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="h-8 px-3 text-xs"
+                >
+                  Selanjutnya
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

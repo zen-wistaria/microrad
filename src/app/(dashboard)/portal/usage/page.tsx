@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUp, CalendarDays, RefreshCw } from "lucide-react";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
 import { useCallback, useEffect, useState } from "react";
 import { CustomerMonthlyUsageChart } from "@/components/charts/customer-monthly-usage-chart";
 import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
@@ -40,8 +41,13 @@ export default function PortalUsagePage() {
   const [daily, setDaily] = useState<CustomerDailyUsage[]>([]);
   const [monthly, setMonthly] = useState<CustomerMonthlyUsage[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(true);
-  const [selectedYear, setSelectedYear] = useState<number>(() =>
-    new Date().getFullYear(),
+  const [selectedYear, setSelectedYear] = useQueryState(
+    "year",
+    parseAsInteger.withDefault(new Date().getFullYear()),
+  );
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsString.withDefault("daily"),
   );
 
   useEffect(() => {
@@ -164,7 +170,7 @@ export default function PortalUsagePage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="daily">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="daily" className="gap-1.5">
             <CalendarDays className="h-4 w-4" />

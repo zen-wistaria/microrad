@@ -1,6 +1,8 @@
 "use client";
 
 import { LogIn, RefreshCw, Satellite } from "lucide-react";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,6 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePortal } from "@/lib/portal-context";
@@ -22,6 +31,36 @@ import {
 export default function PortalLogsPage() {
   const { data, loading, refreshing, reload } = usePortal();
 
+  // State tabs + pagination (via nuqs — konsisten saat refresh)
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsString.withDefault("login"),
+  );
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+
+  const loginLogs = data?.loginLogs ?? [];
+  const sessionLogs = data?.sessionLogs ?? [];
+
+  // Pagination per tab (satu halaman terpisah per tab)
+  const loginTotalPages = Math.ceil(loginLogs.length / safeLimit) || 1;
+  const loginSafePage = Math.min(Math.max(page, 1), loginTotalPages);
+  const paginatedLoginLogs = useMemo(() => {
+    const start = (loginSafePage - 1) * safeLimit;
+    return loginLogs.slice(start, start + safeLimit);
+  }, [loginLogs, loginSafePage, safeLimit]);
+
+  const sessionTotalPages = Math.ceil(sessionLogs.length / safeLimit) || 1;
+  const sessionSafePage = Math.min(Math.max(page, 1), sessionTotalPages);
+  const paginatedSessionLogs = useMemo(() => {
+    const start = (sessionSafePage - 1) * safeLimit;
+    return sessionLogs.slice(start, start + safeLimit);
+  }, [sessionLogs, sessionSafePage, safeLimit]);
+
   if (loading) {
     return <Skeleton className="h-80 w-full rounded-xl" />;
   }
@@ -34,7 +73,7 @@ export default function PortalLogsPage() {
     );
   }
 
-  const { customer, loginLogs, sessionLogs } = data;
+  const { customer } = data;
 
   return (
     <div className="space-y-6">
@@ -62,15 +101,15 @@ export default function PortalLogsPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="login">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="login" className="gap-1.5">
             <LogIn className="h-4 w-4" />
-            Log Login Sistem
+            Login
           </TabsTrigger>
           <TabsTrigger value="sessions" className="gap-1.5">
             <Satellite className="h-4 w-4" />
-            Log Sesi PPPoE
+            Sesi PPPoE
           </TabsTrigger>
         </TabsList>
 
@@ -78,7 +117,7 @@ export default function PortalLogsPage() {
         <TabsContent value="login" className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Log Login Sistem</CardTitle>
+              <CardTitle className="text-base">Log Login</CardTitle>
               <CardDescription>
                 Riwayat masuk ke akun portal — mencatat IP, perangkat (user
                 agent), dan waktu login.
@@ -96,7 +135,7 @@ export default function PortalLogsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {loginLogs.map((log) => (
+                    {paginatedLoginLogs.map((log) => (
                       <tr
                         key={log.id}
                         className="border-b border-slate-100 last:border-0 dark:border-slate-800"
@@ -129,6 +168,74 @@ export default function PortalLogsPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Footer — Log Login */}
+              {loginLogs.length > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span>
+                      Menampilkan{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          (loginSafePage - 1) * safeLimit + 1,
+                          loginLogs.length,
+                        )}
+                      </span>{" "}
+                      -{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(loginSafePage * safeLimit, loginLogs.length)}
+                      </span>{" "}
+                      dari{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {loginLogs.length}
+                      </span>{" "}
+                      log
+                    </span>
+                    <Select
+                      value={String(safeLimit)}
+                      onValueChange={(v) => {
+                        setLimit(Number(v));
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={loginSafePage === 1}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Sebelumnya
+                    </Button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Hal {loginSafePage} dari {loginTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(loginTotalPages, p + 1))
+                      }
+                      disabled={loginSafePage === loginTotalPages}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Selanjutnya
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -145,7 +252,7 @@ export default function PortalLogsPage() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs sm:text-sm">
+                <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50/80 text-slate-500 border-y border-slate-200 dark:bg-slate-800/50 dark:border-slate-800">
                     <tr>
                       <th className="py-2.5 px-4 font-semibold">
@@ -176,7 +283,7 @@ export default function PortalLogsPage() {
                         </td>
                       </tr>
                     ) : (
-                      sessionLogs.map((log) => (
+                      paginatedSessionLogs.map((log) => (
                         <tr
                           key={log.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -227,6 +334,77 @@ export default function PortalLogsPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Footer — Log Sesi PPPoE */}
+              {sessionLogs.length > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span>
+                      Menampilkan{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          (sessionSafePage - 1) * safeLimit + 1,
+                          sessionLogs.length,
+                        )}
+                      </span>{" "}
+                      -{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          sessionSafePage * safeLimit,
+                          sessionLogs.length,
+                        )}
+                      </span>{" "}
+                      dari{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {sessionLogs.length}
+                      </span>{" "}
+                      sesi
+                    </span>
+                    <Select
+                      value={String(safeLimit)}
+                      onValueChange={(v) => {
+                        setLimit(Number(v));
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={sessionSafePage === 1}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Sebelumnya
+                    </Button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Hal {sessionSafePage} dari {sessionTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(sessionTotalPages, p + 1))
+                      }
+                      disabled={sessionSafePage === sessionTotalPages}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Selanjutnya
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

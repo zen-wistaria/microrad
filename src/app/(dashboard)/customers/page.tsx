@@ -16,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
@@ -55,14 +56,27 @@ export default function CustomersPage() {
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters & Search
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [profileFilter, setProfileFilter] = useState("all");
+  // Filters & Search (via nuqs — konsisten saat refresh)
+  const [search, setSearch] = useQueryState(
+    "search",
+    parseAsString.withDefault(""),
+  );
+  const [statusFilter, setStatusFilter] = useQueryState(
+    "status",
+    parseAsString.withDefault("all"),
+  );
+  const [profileFilter, setProfileFilter] = useQueryState(
+    "profile",
+    parseAsString.withDefault("all"),
+  );
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
+  // Pagination (via nuqs — konsisten saat refresh)
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
 
   // Dialog State
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
@@ -109,11 +123,12 @@ export default function CustomersPage() {
   }, [customers, search, statusFilter, profileFilter]);
 
   // Paginated customers
-  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
+  const totalPages = Math.ceil(filteredCustomers.length / safeLimit) || 1;
+  const safePage = Math.min(Math.max(page, 1), totalPages);
   const paginatedCustomers = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredCustomers.slice(start, start + itemsPerPage);
-  }, [filteredCustomers, currentPage]);
+    const start = (safePage - 1) * safeLimit;
+    return filteredCustomers.slice(start, start + safeLimit);
+  }, [filteredCustomers, safePage, safeLimit]);
 
   const profileMap = useMemo(() => {
     const map = new Map<string, BandwidthProfile>();
@@ -222,7 +237,7 @@ export default function CustomersPage() {
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
-                  setCurrentPage(1);
+                  setPage(1);
                 }}
                 className="pl-9 text-xs sm:text-sm"
               />
@@ -235,7 +250,7 @@ export default function CustomersPage() {
                   value={statusFilter}
                   onValueChange={(v) => {
                     setStatusFilter(v);
-                    setCurrentPage(1);
+                    setPage(1);
                   }}
                 >
                   <SelectTrigger className="h-9 text-xs">
@@ -255,7 +270,7 @@ export default function CustomersPage() {
                   value={profileFilter}
                   onValueChange={(v) => {
                     setProfileFilter(v);
-                    setCurrentPage(1);
+                    setPage(1);
                   }}
                 >
                   <SelectTrigger className="h-9 text-xs">
@@ -282,7 +297,7 @@ export default function CustomersPage() {
                     setSearch("");
                     setStatusFilter("all");
                     setProfileFilter("all");
-                    setCurrentPage(1);
+                    setPage(1);
                   }}
                   className="text-xs text-slate-500 hover:text-slate-900"
                 >
@@ -496,48 +511,61 @@ export default function CustomersPage() {
           {/* Pagination Footer */}
           {!loading && filteredCustomers.length > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
-              <div className="text-xs text-slate-500">
-                Menampilkan{" "}
-                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                  {Math.min(
-                    (currentPage - 1) * itemsPerPage + 1,
-                    filteredCustomers.length,
-                  )}
-                </span>{" "}
-                -{" "}
-                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                  {Math.min(
-                    currentPage * itemsPerPage,
-                    filteredCustomers.length,
-                  )}
-                </span>{" "}
-                dari{" "}
-                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                  {filteredCustomers.length}
-                </span>{" "}
-                pelanggan
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>
+                  Menampilkan{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min(
+                      (safePage - 1) * safeLimit + 1,
+                      filteredCustomers.length,
+                    )}
+                  </span>{" "}
+                  -{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min(safePage * safeLimit, filteredCustomers.length)}
+                  </span>{" "}
+                  dari{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {filteredCustomers.length}
+                  </span>{" "}
+                  pelanggan
+                </span>
+                <Select
+                  value={String(safeLimit)}
+                  onValueChange={(v) => {
+                    setLimit(Number(v));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
                   className="h-8 px-3 text-xs"
                 >
                   Sebelumnya
                 </Button>
                 <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                  Hal {currentPage} dari {totalPages}
+                  Hal {safePage} dari {totalPages}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setCurrentPage((p) => Math.min(totalPages, p + 1))
-                  }
-                  disabled={currentPage === totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
                   className="h-8 px-3 text-xs"
                 >
                   Selanjutnya

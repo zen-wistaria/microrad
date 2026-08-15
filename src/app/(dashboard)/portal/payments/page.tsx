@@ -1,6 +1,8 @@
 "use client";
 
 import { RefreshCw, Wallet } from "lucide-react";
+import { parseAsInteger, useQueryState } from "nuqs";
+import { useMemo } from "react";
 import { PaymentMethodBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +12,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePortal } from "@/lib/portal-context";
 import { formatDate, formatRupiah } from "@/lib/utils";
@@ -17,11 +26,26 @@ import { formatDate, formatRupiah } from "@/lib/utils";
 export default function PortalPaymentsPage() {
   const { data, loading, refreshing, reload } = usePortal();
 
+  // Pagination (via nuqs — konsisten saat refresh)
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+
+  const payments = data?.payments ?? [];
+
+  const totalPages = Math.ceil(payments.length / safeLimit) || 1;
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const paginatedPayments = useMemo(() => {
+    const start = (safePage - 1) * safeLimit;
+    return payments.slice(start, start + safeLimit);
+  }, [payments, safePage, safeLimit]);
+
   if (loading) {
     return <Skeleton className="h-80 w-full rounded-xl" />;
   }
-
-  const payments = data?.payments ?? [];
 
   return (
     <div className="space-y-6">
@@ -76,7 +100,7 @@ export default function PortalPaymentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.map((p) => (
+                  {paginatedPayments.map((p) => (
                     <tr
                       key={p.id}
                       className="border-b border-slate-100 last:border-0 dark:border-slate-800"
@@ -102,6 +126,69 @@ export default function PortalPaymentsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Footer */}
+          {payments.length > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>
+                  Menampilkan{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min((safePage - 1) * safeLimit + 1, payments.length)}
+                  </span>{" "}
+                  -{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min(safePage * safeLimit, payments.length)}
+                  </span>{" "}
+                  dari{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {payments.length}
+                  </span>{" "}
+                  pembayaran
+                </span>
+                <Select
+                  value={String(safeLimit)}
+                  onValueChange={(v) => {
+                    setLimit(Number(v));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="h-8 px-3 text-xs"
+                >
+                  Sebelumnya
+                </Button>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Hal {safePage} dari {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="h-8 px-3 text-xs"
+                >
+                  Selanjutnya
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

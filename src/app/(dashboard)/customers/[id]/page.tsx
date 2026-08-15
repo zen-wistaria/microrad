@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CustomerMonthlyUsageChart } from "@/components/charts/customer-monthly-usage-chart";
@@ -101,8 +102,10 @@ export default function CustomerDetailPage({
   const [usageHistory, setUsageHistory] = useState<CustomerDailyUsage[]>([]);
   const [monthlyUsage, setMonthlyUsage] = useState<CustomerMonthlyUsage[]>([]);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
-  const [selectedYear, setSelectedYear] = useState<number>(() =>
-    new Date().getFullYear(),
+  // Filter tahun grafik per bulan (via nuqs — konsisten saat refresh)
+  const [selectedYear, setSelectedYear] = useQueryState(
+    "year",
+    parseAsInteger.withDefault(new Date().getFullYear()),
   );
   // Deret tahun (mis. 2022–2026) untuk opsi filter "Per Tahun"
   const years = useMemo(() => {
@@ -113,6 +116,18 @@ export default function CustomerDetailPage({
   }, []);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Tab aktif + pagination (via nuqs — konsisten saat refresh)
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsString.withDefault("overview"),
+  );
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
 
   // Disconnect Dialog
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
@@ -217,6 +232,22 @@ export default function CustomerDetailPage({
     }
   };
 
+  // Pagination slice — tab sesi
+  const sessionTotalPages = Math.ceil(sessionHistory.length / safeLimit) || 1;
+  const sessionSafePage = Math.min(Math.max(page, 1), sessionTotalPages);
+  const paginatedSessions = useMemo(() => {
+    const start = (sessionSafePage - 1) * safeLimit;
+    return sessionHistory.slice(start, start + safeLimit);
+  }, [sessionHistory, sessionSafePage, safeLimit]);
+
+  // Pagination slice — tab tagihan
+  const invoiceTotalPages = Math.ceil(invoices.length / safeLimit) || 1;
+  const invoiceSafePage = Math.min(Math.max(page, 1), invoiceTotalPages);
+  const paginatedInvoices = useMemo(() => {
+    const start = (invoiceSafePage - 1) * safeLimit;
+    return invoices.slice(start, start + safeLimit);
+  }, [invoices, invoiceSafePage, safeLimit]);
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -268,7 +299,6 @@ export default function CustomerDetailPage({
     totalBytes: totalTraffic30d,
   };
 
-  // Akumulasi per tahun terpilih (mengikuti filter tahun di grafik per bulan)
   const totalYearlyDown = monthlyUsage.reduce(
     (acc, m) => acc + m.downloadBytes,
     0,
@@ -422,7 +452,7 @@ export default function CustomerDetailPage({
       )}
 
       {/* Tabs Section: Overview, History, Usage Stats, Billing */}
-      <Tabs defaultValue="overview" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="overview" className="gap-1.5 text-xs">
             <User className="h-3.5 w-3.5" />
@@ -592,7 +622,7 @@ export default function CustomerDetailPage({
                         </td>
                       </tr>
                     ) : (
-                      sessionHistory.map((sess) => (
+                      paginatedSessions.map((sess) => (
                         <tr
                           key={sess.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -643,6 +673,77 @@ export default function CustomerDetailPage({
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Footer — Sesi */}
+              {sessionHistory.length > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span>
+                      Menampilkan{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          (sessionSafePage - 1) * safeLimit + 1,
+                          sessionHistory.length,
+                        )}
+                      </span>{" "}
+                      -{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          sessionSafePage * safeLimit,
+                          sessionHistory.length,
+                        )}
+                      </span>{" "}
+                      dari{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {sessionHistory.length}
+                      </span>{" "}
+                      sesi
+                    </span>
+                    <Select
+                      value={String(safeLimit)}
+                      onValueChange={(v) => {
+                        setLimit(Number(v));
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={sessionSafePage === 1}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Sebelumnya
+                    </Button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Hal {sessionSafePage} dari {sessionTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(sessionTotalPages, p + 1))
+                      }
+                      disabled={sessionSafePage === sessionTotalPages}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Selanjutnya
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -836,7 +937,7 @@ export default function CustomerDetailPage({
                         </td>
                       </tr>
                     ) : (
-                      invoices.map((inv) => (
+                      paginatedInvoices.map((inv) => (
                         <tr
                           key={inv.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -880,6 +981,74 @@ export default function CustomerDetailPage({
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Footer — Tagihan */}
+              {invoices.length > 0 && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span>
+                      Menampilkan{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(
+                          (invoiceSafePage - 1) * safeLimit + 1,
+                          invoices.length,
+                        )}
+                      </span>{" "}
+                      -{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {Math.min(invoiceSafePage * safeLimit, invoices.length)}
+                      </span>{" "}
+                      dari{" "}
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {invoices.length}
+                      </span>{" "}
+                      tagihan
+                    </span>
+                    <Select
+                      value={String(safeLimit)}
+                      onValueChange={(v) => {
+                        setLimit(Number(v));
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={invoiceSafePage === 1}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Sebelumnya
+                    </Button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Hal {invoiceSafePage} dari {invoiceTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(invoiceTotalPages, p + 1))
+                      }
+                      disabled={invoiceSafePage === invoiceTotalPages}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Selanjutnya
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

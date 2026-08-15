@@ -21,7 +21,7 @@ export function CustomerStatusBadge({
   isOnline,
 }: CustomerStatusBadgeProps) {
   return (
-    <div className="flex items-center gap-2">
+    <span className="inline-flex flex-wrap items-center gap-2">
       {status === "active" && (
         <Badge variant="success" className="font-medium">
           <CheckCircle2 className="h-3 w-3" />
@@ -50,7 +50,7 @@ export function CustomerStatusBadge({
           Online
         </span>
       )}
-    </div>
+    </span>
   );
 }
 
