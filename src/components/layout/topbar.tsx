@@ -31,6 +31,7 @@ interface TopbarProps {
 }
 
 const routeTitles: Record<string, string> = {
+  roles: "Role & Permissions",
   dashboard: "Dashboard",
   customers: "Pelanggan",
   billing: "Tagihan & Billing",
@@ -49,6 +50,7 @@ const routeTitles: Record<string, string> = {
 export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const pathname = usePathname();
   const { currentUser, login, logout } = useAuth();
+  const isAdmin = currentUser?.role === "admin";
 
   // Generate breadcrumb items
   const pathSegments = pathname.split("/").filter(Boolean);
@@ -121,17 +123,19 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
 
       {/* Right: Theme Toggle, Quick Tools, and App User Menu */}
       <div className="flex items-center gap-3 sm:gap-4">
-        {/* Reset Demo Data Button */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleResetData}
-          title="Reset Data Mock ke Nilai Awal"
-          className="hidden md:inline-flex text-xs text-slate-600 dark:text-slate-300 gap-1.5 h-9 px-3 rounded-lg border-slate-200 dark:border-slate-700"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          <span>Reset Demo</span>
-        </Button>
+        {/* Reset Demo Data Button (khusus Admin) */}
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetData}
+            title="Reset Data Mock ke Nilai Awal"
+            className="hidden md:inline-flex text-xs text-slate-600 dark:text-slate-300 gap-1.5 h-9 px-3 rounded-lg border-slate-200 dark:border-slate-700"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>Reset Demo</span>
+          </Button>
+        )}
 
         {/* Theme Switcher Toggle (Light / Dark / System) */}
         <div className="flex items-center border-l border-slate-200 dark:border-slate-800 pl-3 sm:pl-4">
@@ -154,7 +158,10 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
                 </p>
                 <div className="flex items-center gap-1 mt-0.5">
                   {currentUser?.role && (
-                    <AppUserRoleBadge role={currentUser.role} />
+                    <AppUserRoleBadge
+                      role={currentUser.role}
+                      roleId={currentUser.roleId}
+                    />
                   )}
                 </div>
               </div>
@@ -175,27 +182,37 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             <DropdownMenuLabel className="text-[11px] text-slate-400 font-medium px-3 py-1.5">
               Ganti Akun Cepat (Demo):
             </DropdownMenuLabel>
-            {initialUsers.slice(0, 2).map((user) => (
-              <DropdownMenuItem
-                key={user.id}
-                onClick={() => handleSwitchUser(user.id)}
-                className="justify-between text-xs px-3 py-2 cursor-pointer rounded-lg"
-              >
-                <span className="font-medium">{user.name}</span>
-                <span className="text-[10px] text-slate-500 uppercase font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                  {user.role}
-                </span>
-              </DropdownMenuItem>
-            ))}
+            {isAdmin &&
+              initialUsers.slice(0, 4).map((user) => (
+                <DropdownMenuItem
+                  key={user.id}
+                  onClick={() => handleSwitchUser(user.id)}
+                  className="justify-between text-xs px-3 py-2 cursor-pointer rounded-lg"
+                >
+                  <span className="font-medium">{user.name}</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                    {user.role === "operator" && user.roleId === "role-manager"
+                      ? "manager"
+                      : user.role}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            {!isAdmin && (
+              <p className="px-3 py-1.5 text-[11px] text-slate-400">
+                Ganti akun hanya tersedia untuk Administrator.
+              </p>
+            )}
 
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleResetData}
-              className="text-xs cursor-pointer text-slate-600 dark:text-slate-300 md:hidden px-3 py-2 rounded-lg"
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Reset Demo Data
-            </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem
+                onClick={handleResetData}
+                className="text-xs cursor-pointer text-slate-600 dark:text-slate-300 md:hidden px-3 py-2 rounded-lg"
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Reset Demo Data
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={logout}
               className="text-xs cursor-pointer text-rose-600 dark:text-rose-400 focus:text-rose-600 dark:focus:text-rose-400 px-3 py-2 rounded-lg"

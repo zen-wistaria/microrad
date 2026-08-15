@@ -3,6 +3,7 @@
 import {
   Activity,
   Home,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Radio,
@@ -21,9 +22,27 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getActiveSessions } from "@/lib/api/sessions";
 import { useAuth } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import type { Permission } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const mainNavItems = [
+/** Sysadmin/System Settings item hanya tampil untuk role Admin */
+function canShowSystemItem(user: { role?: string } | null): boolean {
+  if (!user) return false;
+  return user.role === "admin";
+}
+
+interface MainNavItem {
+  title: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+  matchExact?: boolean;
+  badgeKey?: "activeSessions";
+  /** Permission read yang dibutuhkan (null = semua user non-pelanggan) */
+  permission?: Permission;
+}
+
+const mainNavItems: MainNavItem[] = [
   {
     title: "Dashboard",
     href: "/dashboard",
@@ -33,29 +52,32 @@ const mainNavItems = [
     title: "Pelanggan",
     href: "/customers",
     icon: Users,
-    matchExact: false,
+    permission: "customer.read",
   },
   {
     title: "Tagihan & Billing",
     href: "/billing",
     icon: Receipt,
-    matchExact: false,
+    permission: "billing.read",
   },
   {
     title: "Sesi Aktif",
     href: "/sessions",
     icon: Activity,
     badgeKey: "activeSessions",
+    permission: "session.read",
   },
   {
     title: "Profil Bandwidth",
     href: "/profiles",
     icon: Zap,
+    permission: "profile.read",
   },
   {
     title: "Router NAS",
     href: "/routers",
     icon: RouterIcon,
+    permission: "router.read",
   },
 ];
 
@@ -64,6 +86,12 @@ const systemNavItems = [
     title: "Pengguna Aplikasi",
     href: "/users",
     icon: ShieldCheck,
+    permission: "user.read",
+  },
+  {
+    title: "Role & Permissions",
+    href: "/roles",
+    icon: KeyRound,
   },
   {
     title: "Profil Perusahaan",
@@ -74,6 +102,7 @@ const systemNavItems = [
     title: "Log Global",
     href: "/logs",
     icon: ScrollText,
+    permission: "log.read",
   },
 ];
 
@@ -115,6 +144,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
   const pathname = usePathname();
   const { currentUser, logout } = useAuth();
   const [activeSessionCount, setActiveSessionCount] = useState<number>(0);
+  const isCustomer = currentUser?.role === "customer";
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -125,12 +155,12 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
         // silent fallback
       }
     };
-    if (currentUser?.role !== "customer") {
+    if (!isCustomer) {
       fetchCounts();
       const interval = setInterval(fetchCounts, 5000);
       return () => clearInterval(interval);
     }
-  }, [currentUser?.role]);
+  }, [isCustomer]);
 
   const isLinkActive = (href: string) => {
     if (href === "/dashboard") {
@@ -138,6 +168,11 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
     }
     return pathname.startsWith(href);
   };
+
+  // Menu Manajemen Jaringan — hanya tampil jika user punya permission read
+  const visibleMainItems = mainNavItems.filter(
+    (item) => !item.permission || hasPermission(currentUser, item.permission),
+  );
 
   return (
     <aside
@@ -166,57 +201,59 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
 
       {/* Navigation Sections */}
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        {/* Main Section */}
-        <div className="space-y-1">
-          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Manajemen Jaringan
-          </div>
-          {mainNavItems.map((item) => {
-            const active = isLinkActive(item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onItemClick}
-                className={cn(
-                  "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-blue-50 text-blue-600 font-semibold dark:bg-blue-950/50 dark:text-blue-400 shadow-xs"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-colors",
-                      active
-                        ? "text-blue-600 dark:text-blue-400"
-                        : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
-                    )}
-                  />
-                  <span>{item.title}</span>
-                </div>
+        {/* Main Section — hanya menu yang user punya permission read-nya */}
+        {!isCustomer && visibleMainItems.length > 0 && (
+          <div className="space-y-1">
+            <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Manajemen Jaringan
+            </div>
+            {visibleMainItems.map((item) => {
+              const active = isLinkActive(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onItemClick}
+                  className={cn(
+                    "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-blue-50 text-blue-600 font-semibold dark:bg-blue-950/50 dark:text-blue-400 shadow-xs"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon
+                      className={cn(
+                        "h-4 w-4 shrink-0 transition-colors",
+                        active
+                          ? "text-blue-600 dark:text-blue-400"
+                          : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
+                      )}
+                    />
+                    <span>{item.title}</span>
+                  </div>
 
-                {item.badgeKey === "activeSessions" && (
-                  <span
-                    className={cn(
-                      "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold transition-all",
-                      activeSessionCount > 0
-                        ? "bg-emerald-500 text-white shadow-xs"
-                        : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
-                    )}
-                  >
-                    {activeSessionCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </div>
+                  {item.badgeKey === "activeSessions" && (
+                    <span
+                      className={cn(
+                        "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold transition-all",
+                        activeSessionCount > 0
+                          ? "bg-emerald-500 text-white shadow-xs"
+                          : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+                      )}
+                    >
+                      {activeSessionCount}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
 
         {/* Portal Pelanggan Section */}
-        {currentUser?.role === "customer" && (
+        {isCustomer && (
           <div className="space-y-1">
             <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Portal Pelanggan
@@ -255,41 +292,43 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
           </div>
         )}
 
-        {/* System Settings Section (Separated visual group) */}
-        <div className="mt-8 space-y-1">
-          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Pengaturan Sistem
+        {/* System Settings Section (Separated visual group) — hanya Admin */}
+        {canShowSystemItem(currentUser) && (
+          <div className="mt-8 space-y-1">
+            <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Pengaturan Sistem
+            </div>
+            {systemNavItems.map((item) => {
+              const active = isLinkActive(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onItemClick}
+                  className={cn(
+                    "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-purple-50 text-purple-600 font-semibold dark:bg-purple-950/50 dark:text-purple-400"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon
+                      className={cn(
+                        "h-4 w-4 shrink-0 transition-colors",
+                        active
+                          ? "text-purple-600 dark:text-purple-400"
+                          : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
+                      )}
+                    />
+                    <span>{item.title}</span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
-          {systemNavItems.map((item) => {
-            const active = isLinkActive(item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onItemClick}
-                className={cn(
-                  "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-purple-50 text-purple-600 font-semibold dark:bg-purple-950/50 dark:text-purple-400"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-colors",
-                      active
-                        ? "text-purple-600 dark:text-purple-400"
-                        : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
-                    )}
-                  />
-                  <span>{item.title}</span>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+        )}
       </div>
 
       {/* User Footer Profile */}
@@ -304,7 +343,9 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                 {currentUser?.name || "App User"}
               </p>
               <p className="text-[11px] capitalize text-slate-500 dark:text-slate-400">
-                {currentUser?.role || "operator"}
+                {currentUser?.roleId === "role-manager"
+                  ? "Manager"
+                  : currentUser?.role || "User"}
               </p>
             </div>
           </div>

@@ -31,11 +31,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { deleteUser, getUsers, updateUser } from "@/lib/api/users";
 import { useAuth } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import type { AppUser, AppUserStatus } from "@/lib/types";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 export default function UsersPage() {
   const { currentUser } = useAuth();
+  const canManageUsers = hasPermission(currentUser, "user.create");
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
@@ -87,7 +89,11 @@ export default function UsersPage() {
         u.name.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q);
       const matchStatus = statusFilter === "all" || u.status === statusFilter;
-      const matchRole = roleFilter === "all" || u.role === roleFilter;
+      const matchRole =
+        roleFilter === "all" ||
+        (roleFilter === "manager"
+          ? u.roleId === "role-manager"
+          : u.role === roleFilter);
       return matchSearch && matchStatus && matchRole;
     });
   }, [users, search, statusFilter, roleFilter]);
@@ -161,12 +167,14 @@ export default function UsersPage() {
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>
-          <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">
-            <Link href="/users/new">
-              <Plus className="h-4 w-4" />
-              Tambah Pengguna Baru
-            </Link>
-          </Button>
+          {canManageUsers && (
+            <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">
+              <Link href="/users/new">
+                <Plus className="h-4 w-4" />
+                Tambah Pengguna Baru
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -208,7 +216,7 @@ export default function UsersPage() {
                 </Select>
               </div>
 
-              <div className="w-40">
+              <div className="w-44">
                 <Select
                   value={roleFilter}
                   onValueChange={(v) => {
@@ -222,6 +230,7 @@ export default function UsersPage() {
                   <SelectContent>
                     <SelectItem value="all">Semua Role</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="operator">Operator</SelectItem>
                     <SelectItem value="customer">Pelanggan</SelectItem>
                   </SelectContent>
@@ -293,8 +302,10 @@ export default function UsersPage() {
                             ? "Tidak ada pengguna yang sesuai dengan filter atau pencarian Anda."
                             : "Tambahkan pengguna baru untuk mengelola sistem."
                         }
-                        actionLabel="Tambah Pengguna Pertama"
-                        actionHref="/users/new"
+                        actionLabel={
+                          canManageUsers ? "Tambah Pengguna Pertama" : undefined
+                        }
+                        actionHref={canManageUsers ? "/users/new" : undefined}
                       />
                     </td>
                   </tr>
@@ -324,7 +335,10 @@ export default function UsersPage() {
                           {user.email}
                         </td>
                         <td className="py-3.5 px-4">
-                          <AppUserRoleBadge role={user.role} />
+                          <AppUserRoleBadge
+                            role={user.role}
+                            roleId={user.roleId}
+                          />
                         </td>
                         <td className="py-3.5 px-4">
                           <AppUserStatusBadge status={user.status} />
@@ -334,40 +348,48 @@ export default function UsersPage() {
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleStatus(user)}
-                              disabled={isSelf}
-                              title={
-                                user.status === "active"
-                                  ? "Nonaktifkan"
-                                  : "Aktifkan"
-                              }
-                              className="h-8 px-2 text-xs text-slate-600 hover:text-slate-900"
-                            >
-                              {user.status === "active" ? "Blokir" : "Aktifkan"}
-                            </Button>
-                            <Button
-                              asChild
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 px-2 text-xs"
-                            >
-                              <Link href={`/users/${user.id}/edit`}>
-                                <Edit className="h-3.5 w-3.5 mr-1" />
-                                Edit
-                              </Link>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={isSelf}
-                              onClick={() => setDeleteTarget(user)}
-                              className="h-8 px-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 disabled:opacity-40"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            {hasPermission(currentUser, "user.update") && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleToggleStatus(user)}
+                                disabled={isSelf}
+                                title={
+                                  user.status === "active"
+                                    ? "Nonaktifkan"
+                                    : "Aktifkan"
+                                }
+                                className="h-8 px-2 text-xs text-slate-600 hover:text-slate-900"
+                              >
+                                {user.status === "active"
+                                  ? "Blokir"
+                                  : "Aktifkan"}
+                              </Button>
+                            )}
+                            {hasPermission(currentUser, "user.update") && (
+                              <Button
+                                asChild
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-xs"
+                              >
+                                <Link href={`/users/${user.id}/edit`}>
+                                  <Edit className="h-3.5 w-3.5 mr-1" />
+                                  Edit
+                                </Link>
+                              </Button>
+                            )}
+                            {hasPermission(currentUser, "user.delete") && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={isSelf}
+                                onClick={() => setDeleteTarget(user)}
+                                className="h-8 px-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 disabled:opacity-40"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

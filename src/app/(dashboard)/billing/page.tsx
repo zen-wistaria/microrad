@@ -57,6 +57,8 @@ import {
 } from "@/lib/api/billing";
 import { getCustomers } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
+import { useAuth } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import type {
   BandwidthProfile,
   BillingSummary,
@@ -104,6 +106,9 @@ function BillingContent() {
     parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+
+  const { currentUser } = useAuth();
+  const canCreateBilling = hasPermission(currentUser, "billing.create");
 
   // Dialog states
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null);
@@ -242,24 +247,28 @@ function BillingContent() {
             Refresh
           </Button>
 
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setBulkOpen(true)}
-            className="gap-1.5 text-xs shadow-xs"
-          >
-            <Zap className="h-4 w-4 text-amber-500" />
-            Generate Massal
-          </Button>
+          {canCreateBilling && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setBulkOpen(true)}
+              className="gap-1.5 text-xs shadow-xs"
+            >
+              <Zap className="h-4 w-4 text-amber-500" />
+              Generate Massal
+            </Button>
+          )}
 
-          <Button
-            size="sm"
-            onClick={() => setCreateOpen(true)}
-            className="gap-1.5 text-xs shadow-sm bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Plus className="h-4 w-4" />
-            Buat Tagihan Baru
-          </Button>
+          {canCreateBilling && (
+            <Button
+              size="sm"
+              onClick={() => setCreateOpen(true)}
+              className="gap-1.5 text-xs shadow-sm bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Plus className="h-4 w-4" />
+              Buat Tagihan Baru
+            </Button>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,15 @@
 "use client";
 
-import { Home, Loader2, Lock, Mail, Radio, Shield, User } from "lucide-react";
+import {
+  Briefcase,
+  Home,
+  Loader2,
+  Lock,
+  Mail,
+  Radio,
+  Shield,
+  User,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useState } from "react";
@@ -27,6 +36,37 @@ export default function LoginPage() {
   const [email, setEmail] = useState("admin@microrad.net");
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
+
+  const demoAccounts = [
+    {
+      email: "admin@microrad.net",
+      label: "Admin",
+      sub: "Akses Penuh",
+      icon: Shield,
+      color: "text-purple-600",
+    },
+    {
+      email: "manager@microrad.net",
+      label: "Manager",
+      sub: "Operasional & Keuangan",
+      icon: Briefcase,
+      color: "text-blue-600",
+    },
+    {
+      email: "operator@microrad.net",
+      label: "Operator",
+      sub: "NOC & Monitoring",
+      icon: User,
+      color: "text-sky-600",
+    },
+    {
+      email: "budi.santoso@mail.com",
+      label: "Pelanggan",
+      sub: "Portal Pelanggan",
+      icon: Home,
+      color: "text-emerald-600",
+    },
+  ];
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,56 +195,25 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Quick Demo Access Buttons */}
+            {/* Quick Demo Access Buttons (RBAC) */}
             <div className="grid grid-cols-2 gap-2.5">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleDemoLogin("admin@microrad.net")}
-                className="flex items-center justify-center gap-1.5 h-auto py-2.5 px-3 text-xs"
-              >
-                <Shield className="h-4 w-4 text-purple-600" />
-                <div className="text-left leading-tight">
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">
-                    Admin
+              {demoAccounts.map((demo) => (
+                <Button
+                  key={demo.email}
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleDemoLogin(demo.email)}
+                  className="flex items-center justify-center gap-1.5 h-auto py-2.5 px-3 text-xs"
+                >
+                  <demo.icon className={`h-4 w-4 ${demo.color}`} />
+                  <div className="text-left leading-tight">
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">
+                      {demo.label}
+                    </div>
+                    <div className="text-[10px] text-slate-500">{demo.sub}</div>
                   </div>
-                  <div className="text-[10px] text-slate-500">Akses Penuh</div>
-                </div>
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleDemoLogin("operator@microrad.net")}
-                className="flex items-center justify-center gap-1.5 h-auto py-2.5 px-3 text-xs"
-              >
-                <User className="h-4 w-4 text-blue-600" />
-                <div className="text-left leading-tight">
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">
-                    Operator
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    NOC & Monitoring
-                  </div>
-                </div>
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleDemoLogin("budi.santoso@mail.com")}
-                className="flex items-center justify-center gap-1.5 h-auto py-2.5 px-3 text-xs"
-              >
-                <Home className="h-4 w-4 text-emerald-600" />
-                <div className="text-left leading-tight">
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">
-                    Pelanggan
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    Portal Pelanggan
-                  </div>
-                </div>
-              </Button>
+                </Button>
+              ))}
             </div>
           </CardContent>
           <CardFooter className="border-t border-slate-100 pt-4 text-center text-xs text-slate-500 dark:border-slate-800/80">

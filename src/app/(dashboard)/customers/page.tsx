@@ -48,10 +48,13 @@ import {
   updateCustomer,
 } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
+import { useAuth } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import type { BandwidthProfile, Customer, CustomerStatus } from "@/lib/types";
 import { formatRelativeTime, getErrorMessage } from "@/lib/utils";
 
 export default function CustomersPage() {
+  const { currentUser } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -216,12 +219,14 @@ export default function CustomersPage() {
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>
-          <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">
-            <Link href="/customers/new">
-              <Plus className="h-4 w-4" />
-              Tambah Pelanggan
-            </Link>
-          </Button>
+          {hasPermission(currentUser, "customer.create") && (
+            <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">
+              <Link href="/customers/new">
+                <Plus className="h-4 w-4" />
+                Tambah Pelanggan
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -447,15 +452,6 @@ export default function CustomersPage() {
                                 asChild
                                 className="cursor-pointer text-xs"
                               >
-                                <Link href={`/customers/${customer.id}/edit`}>
-                                  <Edit className="mr-2 h-4 w-4 text-slate-500" />
-                                  Edit Akun
-                                </Link>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                asChild
-                                className="cursor-pointer text-xs"
-                              >
                                 <Link
                                   href={`/billing?search=${encodeURIComponent(customer.username)}`}
                                 >
@@ -463,40 +459,71 @@ export default function CustomersPage() {
                                   Lihat Tagihan
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleToggleStatus(customer)}
-                                className="cursor-pointer text-xs"
-                              >
-                                {customer.status === "active" ? (
-                                  <>
-                                    <AlertCircle className="mr-2 h-4 w-4 text-amber-500" />
-                                    Suspend (Isolir)
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
-                                    Aktifkan Kembali
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                              {isOnline && (
-                                <DropdownMenuItem
-                                  onClick={() => setDisconnectTarget(customer)}
-                                  className="cursor-pointer text-xs text-amber-600 focus:text-amber-600"
-                                >
-                                  <PowerOff className="mr-2 h-4 w-4" />
-                                  Putuskan Koneksi
-                                </DropdownMenuItem>
+                              {hasPermission(
+                                currentUser,
+                                "customer.update",
+                              ) && (
+                                <>
+                                  <DropdownMenuItem
+                                    asChild
+                                    className="cursor-pointer text-xs"
+                                  >
+                                    <Link
+                                      href={`/customers/${customer.id}/edit`}
+                                    >
+                                      <Edit className="mr-2 h-4 w-4 text-slate-500" />
+                                      Edit Akun
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleToggleStatus(customer)}
+                                    className="cursor-pointer text-xs"
+                                  >
+                                    {customer.status === "active" ? (
+                                      <>
+                                        <AlertCircle className="mr-2 h-4 w-4 text-amber-500" />
+                                        Suspend (Isolir)
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
+                                        Aktifkan Kembali
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
                               )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => setDeleteTarget(customer)}
-                                className="cursor-pointer text-xs text-rose-600 focus:text-rose-600"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Hapus Pelanggan
-                              </DropdownMenuItem>
+                              {isOnline &&
+                                hasPermission(
+                                  currentUser,
+                                  "session.update",
+                                ) && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setDisconnectTarget(customer)
+                                    }
+                                    className="cursor-pointer text-xs text-amber-600 focus:text-amber-600"
+                                  >
+                                    <PowerOff className="mr-2 h-4 w-4" />
+                                    Putuskan Koneksi
+                                  </DropdownMenuItem>
+                                )}
+                              {hasPermission(
+                                currentUser,
+                                "customer.delete",
+                              ) && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setDeleteTarget(customer)}
+                                    className="cursor-pointer text-xs text-rose-600 focus:text-rose-600"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Hapus Pelanggan
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>

@@ -64,6 +64,8 @@ import {
   getCustomerActiveSession,
   getCustomerSessions,
 } from "@/lib/api/sessions";
+import { useAuth } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import type {
   BandwidthProfile,
   Customer,
@@ -93,6 +95,7 @@ export default function CustomerDetailPage({
   const resolvedParams = use(params);
   const customerId = resolvedParams.id;
   const router = useRouter();
+  const { currentUser } = useAuth();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [profile, setProfile] = useState<BandwidthProfile | null>(null);
@@ -333,9 +336,9 @@ export default function CustomerDetailPage({
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons (dibatasi permission RBAC) */}
         <div className="flex flex-wrap items-center gap-2">
-          {isOnline && (
+          {isOnline && hasPermission(currentUser, "session.update") && (
             <Button
               variant="destructive"
               size="sm"
@@ -347,36 +350,40 @@ export default function CustomerDetailPage({
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleToggleStatus}
-            className="gap-1.5 text-xs text-slate-700 dark:text-slate-300"
-          >
-            {customer.status === "active" ? (
-              <>
-                <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
-                Suspend (Isolir)
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                Aktifkan Kembali
-              </>
-            )}
-          </Button>
+          {hasPermission(currentUser, "customer.update") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleToggleStatus}
+              className="gap-1.5 text-xs text-slate-700 dark:text-slate-300"
+            >
+              {customer.status === "active" ? (
+                <>
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+                  Suspend (Isolir)
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  Aktifkan Kembali
+                </>
+              )}
+            </Button>
+          )}
 
-          <Button
-            asChild
-            size="sm"
-            variant="default"
-            className="gap-1.5 text-xs"
-          >
-            <Link href={`/customers/${customer.id}/edit`}>
-              <Edit className="h-3.5 w-3.5" />
-              Edit Akun
-            </Link>
-          </Button>
+          {hasPermission(currentUser, "customer.update") && (
+            <Button
+              asChild
+              size="sm"
+              variant="default"
+              className="gap-1.5 text-xs"
+            >
+              <Link href={`/customers/${customer.id}/edit`}>
+                <Edit className="h-3.5 w-3.5" />
+                Edit Akun
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 

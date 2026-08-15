@@ -8,6 +8,7 @@ import { MobileNav } from "@/components/layout/mobile-nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { useAuth } from "@/lib/auth";
+import { canAccessRoute } from "@/lib/rbac";
 
 export default function DashboardLayout({
   children,
@@ -15,15 +16,26 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { isAuthenticated, isLoading } = useAuth();
+  const { currentUser, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
+  // RBAC: jika belum login → /login; jika role tidak berhak akses halaman ini
+  // → redirect ke halaman awal yang diizinkan.
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && pathname !== "/login") {
+    if (isLoading) return;
+    if (!isAuthenticated) {
       router.push("/login");
+      return;
     }
-  }, [isAuthenticated, isLoading, pathname, router]);
+    if (!canAccessRoute(currentUser, pathname)) {
+      if (currentUser?.role === "customer") {
+        router.push("/portal");
+      } else {
+        router.push("/dashboard");
+      }
+    }
+  }, [isAuthenticated, isLoading, pathname, router, currentUser]);
 
   if (isLoading) {
     return (

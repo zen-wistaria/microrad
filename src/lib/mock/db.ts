@@ -1,5 +1,6 @@
 import type {
   AppUser,
+  AppUserRole,
   BandwidthProfile,
   CompanyProfile,
   Customer,
@@ -7,6 +8,8 @@ import type {
   CustomerMonthlyUsage,
   DashboardStats,
   NasRouter,
+  Permission,
+  Role,
   Session,
   UsageTrendPoint,
 } from "../types";
@@ -16,12 +19,14 @@ import {
   type GlobalLogEntry,
 } from "./global-logs";
 import { initialProfiles } from "./profiles.mock";
+import { initialRoles } from "./roles.mock";
 import { initialRouters } from "./routers.mock";
 import { initialSessions } from "./sessions.mock";
 import { initialCompanyProfile } from "./settings.mock";
 import { initialUsers } from "./users.mock";
 
 const STORAGE_KEYS = {
+  ROLES: "microrad_roles",
   CUSTOMERS: "microrad_customers",
   PROFILES: "microrad_profiles",
   ROUTERS: "microrad_routers",
@@ -60,6 +65,7 @@ class MockDatabase {
       this.routers = [...initialRouters];
       this.sessions = [...initialSessions];
       this.users = [...initialUsers];
+      this.roles = [...initialRoles];
       this.companyProfile = { ...initialCompanyProfile };
       this.isLoaded = true;
       return;
@@ -75,6 +81,7 @@ class MockDatabase {
         const storedRouters = localStorage.getItem(STORAGE_KEYS.ROUTERS);
         const storedSessions = localStorage.getItem(STORAGE_KEYS.SESSIONS);
         const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
+        const storedRoles = localStorage.getItem(STORAGE_KEYS.ROLES);
 
         this.customers = storedCustomers
           ? JSON.parse(storedCustomers)
@@ -89,6 +96,7 @@ class MockDatabase {
           ? JSON.parse(storedSessions)
           : [...initialSessions];
         this.users = storedUsers ? JSON.parse(storedUsers) : [...initialUsers];
+        this.roles = storedRoles ? JSON.parse(storedRoles) : [...initialRoles];
         const storedProfile = localStorage.getItem(
           STORAGE_KEYS.COMPANY_PROFILE,
         );
@@ -121,6 +129,7 @@ class MockDatabase {
         JSON.stringify(this.sessions),
       );
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
+      localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(this.roles));
       localStorage.setItem(
         STORAGE_KEYS.COMPANY_PROFILE,
         JSON.stringify(this.companyProfile),
@@ -507,6 +516,117 @@ class MockDatabase {
     if (activeSession) {
       return this.disconnectSession(activeSession.id, "Admin-Reset");
     }
+    return false;
+  }
+
+  // --- Roles RBAC ---
+  private roles: Role[] = [];
+
+  public getRoles(): Role[] {
+    this.load();
+    return [...this.roles].sort((a, b) => {
+      const aSeeded = a.system ? 0 : 1;
+      const bSeeded = b.system ? 0 : 1;
+      return aSeeded - bSeeded || a.name.localeCompare(b.name);
+    });
+  }
+
+  public getRoleById(id: string): Role | undefined {
+    this.load();
+    return this.roles.find((r) => r.id === id);
+  }
+
+  public createRole(data: {
+    name: string;
+    description?: string;
+    permissions: Permission[];
+  }): Role {
+    this.load();
+    const id = `role-${Date.now()}`;
+    const newRole: Role = {
+      id,
+      name: data.name,
+      description: data.description,
+      permissions: [...data.permissions],
+      system: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.roles.push(newRole);
+    this.save();
+    return newRole;
+  }
+
+  public updateRole(
+    id: string,
+    updates: {
+      name?: string;
+      description?: string;
+      permissions?: Permission[];
+    },
+  ): Role | undefined {
+    this.load();
+    const index = this.roles.findIndex((r) => r.id === id);
+    if (index === -1) return undefined;
+
+    this.roles[index] = {
+      ...this.roles[index],
+      ...updates,
+      ...(updates.permissions ? { permissions: [...updates.permissions] } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    this.save();
+    return this.roles[index];
+  }
+
+  public deleteRole(id: string): { success: boolean; error?: string } {
+    this.load();
+    const role = this.roles.find((r) => r.id === id);
+    if (!role) return { success: false, error: "Role tidak ditemukan" };
+    if (role.system) {
+      return {
+        success: false,
+        error:
+          "Role bawaan sistem (Admin, Manager, Pelanggan) tidak dapat dihapus.",
+      };
+    }
+    const usedCount = this.users.filter((u) => u.roleId === id).length;
+    if (usedCount > 0) {
+      return {
+        success: false,
+        error: `Role ini masih digunakan oleh ${usedCount} pengguna. Pindahkan atau hapus pengguna tersebut terlebih dahulu.`,
+      };
+    }
+    this.roles = this.roles.filter((r) => r.id !== id);
+    this.save();
+    return { success: true };
+  }
+
+  getUserRole(user: AppUser | null): Role | undefined {
+    if (!user) return undefined;
+    if (user.roleId) {
+      const byId = this.roles.find((r) => r.id === user.roleId);
+      if (byId) return byId;
+    }
+    // Fallback legacy: role lama (admin/operator/customer) → role bawaan
+    const legacy: Record<AppUserRole, string> = {
+      admin: "role-admin",
+      operator: "role-manager",
+      customer: "role-customer",
+    };
+    return this.roles.find((r) => r.id === legacy[user.role]);
+  }
+
+  public userHasPermission(
+    user: AppUser | null,
+    permission: Permission,
+  ): boolean {
+    if (!user) return false;
+    const role = this.getUserRole(user);
+    if (!role) return false;
+    // Role bawaan Administrator selalu punya akses penuh (semua permission)
+    if (role.id === "role-admin") return true;
+    if (role.permissions.includes(permission)) return true;
     return false;
   }
 

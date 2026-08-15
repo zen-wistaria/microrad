@@ -26,13 +26,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createUser, updateUser } from "@/lib/api/users";
-import type { AppUser, AppUserRole, AppUserStatus } from "@/lib/types";
+import { initialRoles } from "@/lib/mock/roles.mock";
+import type { AppUser, AppUserRole, AppUserStatus, Role } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
 const appUserSchema = z.object({
   name: z.string().min(2, "Nama minimal 2 karakter"),
   email: z.string().email("Format email tidak valid"),
-  role: z.enum(["admin", "operator", "customer"]),
+  role: z.enum(["admin", "manager", "operator", "customer"]),
+  roleId: z.string().optional(),
   status: z.enum(["active", "disabled"]),
 });
 
@@ -50,6 +52,18 @@ export function AppUserForm({
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
 
+  // Kumpulan role yang dapat dipilih (bawaan + kustom dari localStorage)
+  const allRoles: Role[] = (() => {
+    if (typeof window === "undefined") return initialRoles;
+    try {
+      const raw = localStorage.getItem("microrad_roles");
+      const custom: Role[] = raw ? JSON.parse(raw) : [];
+      return [...initialRoles, ...custom.filter((r) => !r.system)];
+    } catch {
+      return initialRoles;
+    }
+  })();
+
   const {
     register,
     handleSubmit,
@@ -62,31 +76,42 @@ export function AppUserForm({
       name: initialData?.name || "",
       email: initialData?.email || "",
       role: initialData?.role || "operator",
+      roleId: initialData?.roleId || "role-manager",
       status: initialData?.status || "active",
     },
   });
 
-  const selectedRole = watch("role");
+  const selectedRoleId = watch("roleId");
   const selectedStatus = watch("status");
+
+  const handleRoleChange = (val: string) => {
+    setValue("roleId", val, { shouldValidate: true });
+    const role = allRoles.find((r) => r.id === val);
+    const legacy = role
+      ? role.id === "role-customer"
+        ? "customer"
+        : role.id === "role-admin"
+          ? "admin"
+          : "operator"
+      : "operator";
+    setValue("role", legacy as AppUserRole, { shouldValidate: true });
+  };
 
   const onSubmit = async (data: AppUserFormValues) => {
     try {
       setSubmitting(true);
+      const payload = {
+        name: data.name,
+        email: data.email,
+        role: data.role as AppUserRole,
+        roleId: data.roleId as string,
+        status: data.status as AppUserStatus,
+      };
       if (isEditing && initialData) {
-        await updateUser(initialData.id, {
-          name: data.name,
-          email: data.email,
-          role: data.role as AppUserRole,
-          status: data.status as AppUserStatus,
-        });
+        await updateUser(initialData.id, payload);
         toast.success(`Pengguna ${data.name} berhasil diperbarui.`);
       } else {
-        await createUser({
-          name: data.name,
-          email: data.email,
-          role: data.role as AppUserRole,
-          status: data.status as AppUserStatus,
-        });
+        await createUser(payload);
         toast.success(`Pengguna ${data.name} berhasil ditambahkan.`);
       }
       router.push("/users");
@@ -161,27 +186,28 @@ export function AppUserForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="role">Role / Hak Akses</Label>
-              <Select
-                value={selectedRole}
-                onValueChange={(val) =>
-                  setValue("role", val as AppUserRole, { shouldValidate: true })
-                }
-              >
+              <Select value={selectedRoleId} onValueChange={handleRoleChange}>
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Pilih Role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">
-                    🛡️ Administrator (Akses Penuh)
-                  </SelectItem>
-                  <SelectItem value="operator">
-                    👤 Operator / NOC (Monitoring & Operasional)
-                  </SelectItem>
-                  <SelectItem value="customer">
-                    🏠 Pelanggan (Portal Pelanggan)
-                  </SelectItem>
+                  {allRoles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.id === "role-admin"
+                        ? "🛡️ Administrator (Akses Penuh)"
+                        : r.id === "role-manager"
+                          ? "👔 Manager (Operasional & Keuangan)"
+                          : r.id === "role-customer"
+                            ? "🏠 Pelanggan (Portal Pelanggan)"
+                            : `⭐ ${r.name}`}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-[11px] text-slate-400">
+                Role kustom dapat dikelola oleh Administrator di menu Role &amp;
+                Permissions.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -204,6 +230,58 @@ export function AppUserForm({
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Ringkasan Hak Akses</Label>
+            <div className="rounded-lg border border-slate-100 p-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
+              {selectedRoleId === "role-admin" && (
+                <p>
+                  🛡️{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    Administrator
+                  </span>{" "}
+                  — Akses penuh ke semua modul: pelanggan, tagihan, sesi,
+                  router, pengaturan, pengguna aplikasi, dan role.
+                </p>
+              )}
+              {selectedRoleId === "role-manager" && (
+                <p>
+                  👔{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    Manager
+                  </span>{" "}
+                  — Mengelola operasional harian, laporan keuangan, serta
+                  pengawasan data pelanggan dan layanan dengan batasan izin
+                  lanjutan yang diatur oleh Administrator. Tidak dapat mengelola
+                  pengguna aplikasi, role, router NAS, atau pengaturan sistem.
+                </p>
+              )}
+              {selectedRoleId === "role-customer" && (
+                <p>
+                  🏠{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    Pelanggan
+                  </span>{" "}
+                  — Hanya dapat membuka portal pelanggan (informasi, pemakaian,
+                  tagihan, pembayaran, dan log pribadi). Tidak memiliki akses
+                  dashboard.
+                </p>
+              )}
+              {selectedRoleId &&
+                !["role-admin", "role-manager", "role-customer"].includes(
+                  selectedRoleId,
+                ) && (
+                  <p>
+                    ⭐{" "}
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      Role Kustom
+                    </span>{" "}
+                    — Permission read/create/update/delete sesuai konfigurasi
+                    role yang dibuat oleh Administrator.
+                  </p>
+                )}
             </div>
           </div>
         </CardContent>

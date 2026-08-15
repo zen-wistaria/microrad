@@ -135,11 +135,53 @@ export interface CompanyProfile {
 export type AppUserRole = "admin" | "operator" | "customer";
 export type AppUserStatus = "active" | "disabled";
 
+// RBAC: permission (baca / buat / ubah / hapus) per modul
+export type Permission =
+  | "customer.read"
+  | "customer.create"
+  | "customer.update"
+  | "customer.delete"
+  | "billing.read"
+  | "billing.create"
+  | "billing.update"
+  | "billing.delete"
+  | "session.read"
+  | "session.create"
+  | "session.update"
+  | "session.delete"
+  | "profile.read"
+  | "profile.create"
+  | "profile.update"
+  | "profile.delete"
+  | "router.read"
+  | "router.create"
+  | "router.update"
+  | "router.delete"
+  | "user.read"
+  | "user.create"
+  | "user.update"
+  | "user.delete"
+  | "log.read"
+  | "setting.read"
+  | "setting.update";
+
+export interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  permissions: Permission[];
+  /** Role bawaan sistem (Admin, Manager, Pelanggan) tidak dapat dihapus */
+  system: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppUser {
   id: string;
   name: string;
   email: string;
   role: AppUserRole;
+  roleId?: string; // relasi RBAC ke Role (id role_bawaan/role kustom)
   status: AppUserStatus;
   createdAt: string;
   lastLoginAt?: string;
