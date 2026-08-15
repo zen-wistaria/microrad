@@ -254,7 +254,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
         {/* System Settings Section (Separated visual group) */}
         <div className="mt-8 space-y-1">
           <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Profil Perusahaan
+            Pengaturan Sistem
           </div>
           {systemNavItems.map((item) => {
             const active = isLinkActive(item.href);
@@ -282,13 +282,6 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                   />
                   <span>{item.title}</span>
                 </div>
-                <ChevronRight
-                  className={cn(
-                    "h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100",
-                    active &&
-                      "opacity-100 text-purple-600 dark:text-purple-400",
-                  )}
-                />
               </Link>
             );
           })}
