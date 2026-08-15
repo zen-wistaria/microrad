@@ -268,6 +268,14 @@ export default function CustomerDetailPage({
     totalBytes: totalTraffic30d,
   };
 
+  // Akumulasi per tahun terpilih (mengikuti filter tahun di grafik per bulan)
+  const totalYearlyDown = monthlyUsage.reduce(
+    (acc, m) => acc + m.downloadBytes,
+    0,
+  );
+  const totalYearlyUp = monthlyUsage.reduce((acc, m) => acc + m.uploadBytes, 0);
+  const totalYearly = monthlyUsage.reduce((acc, m) => acc + m.totalBytes, 0);
+
   return (
     <div className="space-y-6">
       {/* Top Navigation & Quick Actions */}
@@ -641,8 +649,8 @@ export default function CustomerDetailPage({
 
         {/* Tab 3: Usage Statistics & 30-day Chart */}
         <TabsContent value="stats" className="space-y-6 pt-2">
-          {/* Summary KPIs */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          {/* Summary KPIs: 30 hari terakhir + pemakaian bulan ini */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="p-4">
                 <span className="text-xs text-slate-500">
@@ -655,21 +663,31 @@ export default function CustomerDetailPage({
             </Card>
             <Card>
               <CardContent className="p-4">
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  Akumulasi Download
+                <span className="text-xs text-slate-500">
+                  Pemakaian Bulan Ini (Download)
                 </span>
                 <p className="mt-1 text-xl font-bold text-blue-900 dark:text-blue-100">
-                  {formatBytes(totalDownload30d)}
+                  {formatBytes(currentMonth.downloadBytes)}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <span className="text-xs text-indigo-600 dark:text-indigo-400">
-                  Akumulasi Upload
+                <span className="text-xs text-slate-500">
+                  Pemakaian Bulan Ini (Upload)
                 </span>
                 <p className="mt-1 text-xl font-bold text-indigo-900 dark:text-indigo-100">
-                  {formatBytes(totalUpload30d)}
+                  {formatBytes(currentMonth.uploadBytes)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <span className="text-xs text-slate-500">
+                  Total Pemakaian Bulan Ini ({currentMonthLabel})
+                </span>
+                <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">
+                  {formatBytes(currentMonth.totalBytes)}
                 </p>
               </CardContent>
             </Card>
@@ -719,35 +737,35 @@ export default function CustomerDetailPage({
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Akumulasi bulan berjalan — diambil dari data bulanan tahun terpilih */}
+              {/* Akumulasi 1 tahun — mengikuti tahun terpilih pada filter */}
               <div className="grid gap-4 sm:grid-cols-3">
                 <Card>
                   <CardContent className="p-4">
                     <span className="text-xs text-slate-500">
-                      Akumulasi Bulan Ini (Download)
+                      Akumulasi {selectedYear} (Download)
                     </span>
                     <p className="mt-1 text-xl font-bold text-blue-900 dark:text-blue-100">
-                      {formatBytes(currentMonth.downloadBytes)}
+                      {formatBytes(totalYearlyDown)}
                     </p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4">
                     <span className="text-xs text-slate-500">
-                      Akumulasi Bulan Ini (Upload)
+                      Akumulasi {selectedYear} (Upload)
                     </span>
                     <p className="mt-1 text-xl font-bold text-indigo-900 dark:text-indigo-100">
-                      {formatBytes(currentMonth.uploadBytes)}
+                      {formatBytes(totalYearlyUp)}
                     </p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4">
                     <span className="text-xs text-slate-500">
-                      Akumulasi Bulan Ini ({currentMonthLabel})
+                      Total Akumulasi {selectedYear}
                     </span>
                     <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">
-                      {formatBytes(currentMonth.totalBytes)}
+                      {formatBytes(totalYearly)}
                     </p>
                   </CardContent>
                 </Card>
