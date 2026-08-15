@@ -8,7 +8,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import React from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -49,8 +49,14 @@ const routeTitles: Record<string, string> = {
 
 export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { currentUser, login, logout } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+
+  const handleLogout = () => {
+    logout(); // hapus sesi login (localStorage)
+    router.replace("/login"); // langsung redirect ke halaman login
+  };
 
   // Generate breadcrumb items
   const pathSegments = pathname.split("/").filter(Boolean);
@@ -214,7 +220,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
-              onClick={logout}
+              onClick={handleLogout}
               className="text-xs cursor-pointer text-rose-600 dark:text-rose-400 focus:text-rose-600 dark:focus:text-rose-400 px-3 py-2 rounded-lg"
             >
               <LogOut className="mr-2 h-4 w-4" />

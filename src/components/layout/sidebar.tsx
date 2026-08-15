@@ -17,7 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getActiveSessions } from "@/lib/api/sessions";
@@ -142,9 +142,15 @@ interface SidebarProps {
 
 export function Sidebar({ className = "", onItemClick }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { currentUser, logout } = useAuth();
   const [activeSessionCount, setActiveSessionCount] = useState<number>(0);
   const isCustomer = currentUser?.role === "customer";
+
+  const handleLogout = () => {
+    logout(); // hapus sesi login (localStorage)
+    router.replace("/login"); // langsung redirect ke halaman login
+  };
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -352,7 +358,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={logout}
+            onClick={handleLogout}
             title="Keluar"
             className="h-8 w-8 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
           >
