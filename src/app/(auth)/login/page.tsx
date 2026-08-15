@@ -8,12 +8,12 @@ import {
   Mail,
   Radio,
   Shield,
-  User,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/common/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -51,13 +51,6 @@ export default function LoginPage() {
       sub: "Operasional & Keuangan",
       icon: Briefcase,
       color: "text-blue-600",
-    },
-    {
-      email: "operator@microrad.net",
-      label: "Operator",
-      sub: "NOC & Monitoring",
-      icon: User,
-      color: "text-sky-600",
     },
     {
       email: "budi.santoso@mail.com",
@@ -110,6 +103,11 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-slate-50 p-4 dark:bg-slate-950 sm:p-8">
+      {/* Tombol switch tema (pojok kanan atas) */}
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+
       {/* Background ambient accents */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 left-1/3 -translate-x-1/2 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -133,7 +131,7 @@ export default function LoginPage() {
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Login App User</CardTitle>
             <CardDescription>
-              Masuk dengan akun administrator atau operator NOC Anda.
+              Masuk dengan akun administrator, Manager, atau pelanggan.
             </CardDescription>
           </CardHeader>
           <CardContent>
