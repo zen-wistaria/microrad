@@ -11,6 +11,10 @@ import type {
   UsageTrendPoint,
 } from "../types";
 import { initialCustomers } from "./customers.mock";
+import {
+  getGlobalLogs as buildGlobalLogs,
+  type GlobalLogEntry,
+} from "./global-logs";
 import { initialProfiles } from "./profiles.mock";
 import { initialRouters } from "./routers.mock";
 import { initialSessions } from "./sessions.mock";
@@ -528,6 +532,50 @@ class MockDatabase {
   public getUsers(): AppUser[] {
     this.load();
     return [...this.users];
+  }
+
+  /** Log login global semua pengguna — dengan filter pencarian/sumber/rentang waktu */
+  public getGlobalLogs(filter?: {
+    search?: string;
+    source?: string;
+    from?: string;
+    to?: string;
+  }): GlobalLogEntry[] {
+    this.load();
+    let logs = buildGlobalLogs(this.users);
+
+    if (filter?.search) {
+      const q = filter.search.toLowerCase().trim();
+      logs = logs.filter(
+        (l) =>
+          l.userName.toLowerCase().includes(q) ||
+          l.ipAddress.includes(q) ||
+          l.userAgent.toLowerCase().includes(q),
+      );
+    }
+
+    if (filter?.source && filter.source !== "all") {
+      logs = logs.filter((l) => l.source === filter.source);
+    }
+
+    if (filter?.from) {
+      const fromMs = new Date(filter.from).getTime();
+      if (!Number.isNaN(fromMs)) {
+        logs = logs.filter((l) => new Date(l.timestamp).getTime() >= fromMs);
+      }
+    }
+
+    if (filter?.to) {
+      // Sertakan seluruh hari "to" (00:00–23:59)
+      const toEnd = new Date(filter.to);
+      toEnd.setHours(23, 59, 59, 999);
+      const toMs = toEnd.getTime();
+      if (!Number.isNaN(toMs)) {
+        logs = logs.filter((l) => new Date(l.timestamp).getTime() <= toMs);
+      }
+    }
+
+    return logs;
   }
 
   /** Resolve customer akun login: via user.customerId, lalu fallback email sama

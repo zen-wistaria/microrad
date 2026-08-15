@@ -2,7 +2,6 @@
 
 import {
   Activity,
-  ChevronRight,
   Home,
   LayoutDashboard,
   LogOut,
@@ -71,6 +70,11 @@ const systemNavItems = [
     href: "/settings",
     icon: Settings2,
   },
+  {
+    title: "Log Global",
+    href: "/logs",
+    icon: ScrollText,
+  }
 ];
 
 const portalNavItems = [
