@@ -83,6 +83,8 @@ export const GET = asyncApi(async (req: Request) => {
     ...inflateLive(s),
     inputBytes: undefined,
     outputBytes: undefined,
+    customerId: s.customerId, // bisa null (sesi tak dikenal dari RouterOS)
+    extKey: s.extKey ?? undefined,
     startedAt: s.startedAt.toISOString(),
     stoppedAt: s.stoppedAt ? s.stoppedAt.toISOString() : undefined,
   }));

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
+import { syncCustomerRadius } from "@/lib/radsync";
 
 interface CustomersQuery {
   search?: string;
@@ -72,20 +73,31 @@ export const POST = asyncApi(async (req: Request) => {
   });
   if (dup) throw new Error(`Username PPPoE '${username}' sudah terdaftar.`);
 
-  const customer = await prisma.customer.create({
-    data: {
-      id: `cust-${Date.now()}`,
-      username,
-      password: body.password || undefined,
-      fullName: body.fullName?.trim() || undefined,
-      email: body.email?.trim() || undefined,
-      phone: body.phone?.trim() || undefined,
-      address: body.address,
-      status: body.status ?? "active",
-      profileId: body.profileId ?? undefined,
-      staticIp: body.staticIp?.trim() || undefined,
-      nasId: body.nasId ?? undefined,
-    },
+  const customer = await prisma.$transaction(async (tx) => {
+    const created = await tx.customer.create({
+      data: {
+        id: `cust-${Date.now()}`,
+        username,
+        password: body.password || undefined,
+        fullName: body.fullName?.trim() || undefined,
+        email: body.email?.trim() || undefined,
+        phone: body.phone?.trim() || undefined,
+        address: body.address,
+        status: body.status ?? "active",
+        profileId: body.profileId ?? undefined,
+        staticIp: body.staticIp?.trim() || undefined,
+        nasId: body.nasId ?? undefined,
+      },
+    });
+    // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
+    const profile = created.profileId
+      ? await tx.bandwidthProfile.findUnique({
+          where: { id: created.profileId },
+          select: { rateLimitDown: true, rateLimitUp: true },
+        })
+      : null;
+    await syncCustomerRadius(tx, created, profile, body.password ?? undefined);
+    return created;
   });
   return NextResponse.json({ data: customer }, { status: 201 });
 });

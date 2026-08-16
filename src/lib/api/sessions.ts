@@ -32,6 +32,15 @@ export async function getSessions(
   return fetchSessions(params);
 }
 
+/** Sesi PPPoE live dari RouterOS (sync mikrotik) — idempotent. */
+export async function getSessionByExtKey(
+  nasId: string,
+  extKey: string,
+): Promise<Session | null> {
+  const sessions = await fetchSessions({ nasId, limit: 1000 });
+  return sessions.find((s) => s.extKey === extKey) ?? null;
+}
+
 export async function getActiveSessions(
   params?: Omit<GetSessionsParams, "activeOnly">,
 ): Promise<Session[]> {

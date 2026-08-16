@@ -28,6 +28,7 @@
         "next": "16.3.0",
         "next-themes": "^0.4.6",
         "nextjs-toploader": "^3.9.17",
+        "node-routeros": "^1.6.9",
         "nuqs": "^2.9.5",
         "pg": "^8.23.0",
         "prisma": "^7.9.1",
@@ -948,6 +949,8 @@
     "nextjs-toploader": ["nextjs-toploader@3.9.17", "", { "dependencies": { "nprogress": "^0.2.0", "prop-types": "^15.8.1" }, "peerDependencies": { "next": ">= 6.0.0", "react": ">= 16.0.0", "react-dom": ">= 16.0.0" } }, "sha512-9OF0KSSLtoSAuNg2LZ3aTl4hR9mBDj5L9s9DZiFCbMlXehyICGjkIz5dVGzuATU2bheJZoBdFgq9w07AKSuQQw=="],
 
     "node-releases": ["node-releases@2.0.53", "", {}, "sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ=="],
+
+    "node-routeros": ["node-routeros@1.6.9", "", { "dependencies": { "debug": "*", "iconv-lite": "*" } }, "sha512-/dW1yDNvTxkd3KjTFgRYlVWPg3MHAcuPNKh9v0j+0ilK9G3/drgiAZ5NiKj3egHjNcxMxQ9L3KY8BKIfd3x75Q=="],
 
     "npm-run-path": ["npm-run-path@6.0.0", "", { "dependencies": { "path-key": "^4.0.0", "unicorn-magic": "^0.3.0" } }, "sha512-9qny7Z9DsQU8Ou39ERsPU4OZQlSTP47ShQzuKZ6PRXpYLtIFgl/DEBYEXKlvcEa+9tHVcK8CF81Y2V72qaZhWA=="],
 

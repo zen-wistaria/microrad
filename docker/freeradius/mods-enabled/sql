@@ -1,0 +1,58 @@
+# Konfigurasi modul SQL FreeRADIUS — file PENUH (menggantikan symlink
+# mods-enabled/sql bawaan paket alpine).
+sql {
+	driver = "rlm_sql_postgresql"
+	dialect = "postgresql"
+
+	server = "postgres"
+	port = 5432
+	login = "microrad"
+	password = "microrad"
+	radius_db = "microrad"
+
+	read_clients = yes
+	client_table = "nas"
+
+	accounting = yes
+	check_safe_characters = yes
+	delete_stale_sessions = yes
+
+	read_groups = yes
+
+	num_sql_socks = 4
+	query_timeout = 10
+	lifetime = 0
+	max_queries = 10000
+
+	# Nama tabel — HARUS didefinisikan sebelum $INCLUDE di bawah, karena
+	# queries.conf resolve ${..xxx} saat file itu sendiri diproses.
+	authcheck_table  = "radcheck"
+	authreply_table  = "radreply"
+	groupcheck_table = "radgroupcheck"
+	groupreply_table = "radgroupreply"
+	usergroup_table  = "radusergroup"
+	acct_table1      = "radacct"
+	acct_table2      = "radacct"
+	postauth_table   = "radpostauth"
+
+	# queries.conf memakai ${..class.column_name} (postgres) — default
+	# kosong; kita TIDAK pakai kolom IPv6 tambahan (FramedIPv6* / Class
+	# ada di schema resmi tapi query colum_list kita sudah mencetaknya —
+	# kolom2 tsb wajib ada di tabel; biarkan kosong via NULLIF).
+	# class {
+	# 	column_name = ""
+	# }
+
+	# Kolom tabel radacct kita mengikuti nama di schema Prisma
+	# (mixed-case, perlu quoting). Override nama kolom yang dipakai
+	# queries.conf agar cocok dengan model:
+	#   AcctSessionId → "acctSessionId"  (dst.)
+
+	# Tetap wajib ada walau read_groups=no — dipakai sebagai string di
+	# queries.conf yang di-parse unconditional, bukan cuma saat runtime.
+	group_attribute = "${.:instance}-Group"
+
+	# Query bawaan FreeRADIUS (authorize_check, reply, accounting
+	# start/update/stop, postauth). Harus di baris paling akhir.
+	$INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+}

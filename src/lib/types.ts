@@ -110,7 +110,7 @@ export interface NasRouter {
 
 export interface Session {
   id: string;
-  customerId: string;
+  customerId: string | null; // null = sesi PPPoE tak dikenal (dari RouterOS)
   customerUsername: string;
   nasId: string;
   nasIpAddress: string;
@@ -120,6 +120,7 @@ export interface Session {
   durationSeconds: number; // live-update jika online
   inputBytes: number; // AcctInputOctets (upload dari sisi customer)
   outputBytes: number; // AcctOutputOctets (download dari sisi customer)
+  extKey?: string; // session-id asli RouterOS (sinkronisasi poller)
   terminateCause?: string; // "User-Request" | "Lost-Carrier" | "Admin-Reset" dsb
 }
 

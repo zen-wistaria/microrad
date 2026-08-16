@@ -218,9 +218,19 @@ model NasRouter {
   ipAddress String  @unique // nasname
   location  String?
   type      String  @default("mikrotik")
-  status    String  @default("online") // online | offline | unknown
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // status DERIVED dari poller/ping nyata — bukan input manual
+  status    String  @default("unknown") // online | offline | unknown
+  // ── Kredensial & integrasi RouterOS (node-routeros) ──
+  apiUsername  String? // user admin API RouterOS
+  apiPassword  String? // password API RouterOS
+  apiPort      Int      @default(8728) // port API RouterOS (8728 = api)
+  radiusSecret String? // shared secret RADIUS → kolom nas.secret di FreeRADIUS
+  radiusEnabled Boolean  @default(false) // sudah di-point ke FreeRADIUS (use-radius=yes)?
+  syncEnabled  Boolean  @default(true) // ikut poller sinkronisasi sesi?
+  lastSeenAt   DateTime? // heartbeat terakhir (poller/ping sukses/gagal)
+  lastSyncedAt DateTime? // tick poller terakhir sukses
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   sessions  Session[]
   customers Customer[]
@@ -230,7 +240,9 @@ model NasRouter {
 
 model Session {
   id               String    @id
-  customerId       String
+  // nullable: sesi PPPoE dari MikroTik yang usernamenya TIDAK terdaftar
+  // di master pelanggan tetap dicatat (dashboard "Sesi Tak Dikenal")
+  customerId       String?
   customerUsername String
   nasId            String
   nasIpAddress     String
@@ -241,15 +253,17 @@ model Session {
   inputBytes       BigInt // AcctInputOctets (upload)
   outputBytes      BigInt // AcctOutputOctets (download)
   terminateCause   String?
+  extKey           String? // session-id asli dari RouterOS (sinkronisasi poller)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   router   NasRouter @relation(fields: [nasId], references: [id], onDelete: Cascade)
 
   @@index([customerId, startedAt])
   @@index([nasId])
   @@index([stoppedAt])
+  @@index([nasId, extKey])
   @@map("session")
 }
 
@@ -385,4 +399,146 @@ model WaTemplate {
   updatedAt DateTime @updatedAt
 
   @@map("wa_template")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TABEL SHARED FreeRADIUS v3 (rlm_sql + driver postgresql)
+// Kolom = persis schema default FreeRADIUS mods-config/sql/main/postgresql/
+// schema.sql — FreeRADIUS membaca/menulis langsung, app tidak boleh
+// menyimpang dari bentuk ini. App mengelola isinya (radsync).
+// ═══════════════════════════════════════════════════════════════
+
+// rlm_sql authorize — check attributes (Cleartext-Password dsb)
+model RadCheck {
+  id        Int    @id @default(autoincrement())
+  username  String
+  attribute String
+  op        String @default(":=")
+  value     String
+
+  @@unique([username, attribute]) // upsert radsync
+  @@index([username])
+  @@map("radcheck")
+}
+
+// rlm_sql authorize — reply attributes (Framed-IP-Address, Mikrotik-Rate-Limit)
+model RadReply {
+  id        Int    @id @default(autoincrement())
+  username  String
+  attribute String
+  op        String @default(":=")
+  value     String
+
+  @@unique([username, attribute]) // upsert radsync
+  @@index([username])
+  @@map("radreply")
+}
+
+// Dipakai query bawaan FreeRADIUS (authorize_group_check / reply / users)
+model RadGroupCheck {
+  id        Int    @id @default(autoincrement())
+  groupname String
+  attribute String
+  op        String @default(":=")
+  value     String
+
+  @@index([groupname])
+  @@map("radgroupcheck")
+}
+
+model RadGroupReply {
+  id        Int    @id @default(autoincrement())
+  groupname String
+  attribute String
+  op        String @default(":=")
+  value     String
+
+  @@index([groupname])
+  @@map("radgroupreply")
+}
+
+model RadUserGroup {
+  id        Int    @id @default(autoincrement())
+  username  String
+  groupname String
+  priority  Int    @default(1)
+
+  @@index([username])
+  @@map("radusergroup")
+}
+
+// rlm_sql accounting — DITULIS FreeRADIUS (start/interim/stop);
+// app hanya membaca (terminateCause, statistik). Tanpa relasi FK —
+// FreeRADIUS insert row mentah.
+//
+// PENTING: query bawaan FreeRADIUS menulis identifier TANPA tanda kutip
+// (AcctSessionId, AcctUniqueId, ...) → PostgreSQL men-fold semuanya ke
+// lowercase. Karena itu SEMUA kolom tabel ini harus LOWERCASE di DB
+// (setara hasil unquote schema.sql resmi), bukan mixed-case.
+model RadAcct {
+  radAcctId           BigInt   @id @default(autoincrement()) @map("radacctid")
+  acctSessionId       String   @map("acctsessionid")
+  acctUniqueId        String   @unique @map("acctuniqueid")
+  username            String?  @map("username")
+  groupname           String?  @map("groupname")
+  realm               String?  @map("realm")
+  nasIpAddress        String?  @map("nasipaddress") @db.Inet
+  nasPortId           String?  @map("nasportid")
+  nasPortType         String?  @map("nasporttype")
+  acctStartTime       DateTime? @map("acctstarttime") @db.Timestamptz(6)
+  acctUpdateTime      DateTime? @map("acctupdatetime") @db.Timestamptz(6)
+  acctStopTime        DateTime? @map("acctstoptime") @db.Timestamptz(6)
+  acctInterval        BigInt?  @map("acctinterval")
+  acctSessionTime     BigInt?  @map("acctsessiontime")
+  acctAuthentic       String?  @map("acctauthentic")
+  connectInfoStart    String?  @map("connectinfo_start")
+  connectInfoStop     String?  @map("connectinfo_stop")
+  acctInputOctets     BigInt?  @map("acctinputoctets")
+  acctOutputOctets    BigInt?  @map("acctoutputoctets")
+  calledStationId     String?  @map("calledstationid")
+  callingStationId    String?  @map("callingstationid")
+  acctTerminateCause  String?  @map("acctterminatecause")
+  serviceType         String?  @map("servicetype")
+  framedProtocol      String?  @map("framedprotocol")
+  framedIpAddress     String?  @map("framedipaddress") @db.Inet
+  framedIpv6Address   String?  @map("framedipv6address") @db.Inet
+  framedIpv6Prefix    String?  @map("framedipv6prefix") @db.Inet
+  framedInterfaceId   String?  @map("framedinterfaceid")
+  delegatedIpv6Prefix String?  @map("delegatedipv6prefix") @db.Inet
+  class               String?  @map("class")
+
+  @@index([acctStartTime, username], map: "radacct_start_user_idx")
+  @@map("radacct")
+}
+
+// rlm_sql post-auth — hasil Access-Accept/Reject tiap autentikasi
+// (template resmi: id bigserial; kolom lowercase hasil unquote).
+model RadPostAuth {
+  id               BigInt   @id @default(autoincrement()) @map("id")
+  username         String   @map("username")
+  pass             String?  @map("pass")
+  reply            String?  @map("reply")
+  calledStationId  String?  @map("calledstationid")
+  callingStationId String?  @map("callingstationid")
+  authDate         DateTime @default(now()) @map("authdate") @db.Timestamptz(6)
+  class            String?  @map("class")
+
+  @@index([username], map: "radpostauth_username_idx")
+  @@index([class], map: "radpostauth_class_idx")
+  @@map("radpostauth")
+}
+
+// FreeRADIUS read_clients=yes — daftar NAS/RADIUS client dari DB
+model Nas {
+  id          Int    @id @default(autoincrement())
+  nasname     String @unique // IP NAS (MikroTik) — client yang boleh akses
+  shortname   String?
+  type        String?
+  ports       Int?
+  secret      String // shared secret RADIUS
+  server      String?
+  community   String?
+  description String?
+
+  @@map("nas")
 }

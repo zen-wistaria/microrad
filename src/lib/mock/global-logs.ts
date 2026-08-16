@@ -42,7 +42,9 @@ const USER_AGENTS = [
   "Mozilla/5.0 (Linux; Android 13; Redmi Note 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36",
 ];
 
-const SOURCES: GlobalLogEntry["source"][] = ["portal", "app", "api"];
+// Sumber login: hanya 2 label yang dipakai UI (Aplikasi / Portal Langganan);
+// "api" dicadangkan utk akses sistem di masa depan.
+const SOURCES: GlobalLogEntry["source"][] = ["portal", "app"];
 
 function hashOf(id: string): number {
   return id.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);

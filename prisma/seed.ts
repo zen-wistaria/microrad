@@ -66,6 +66,15 @@ async function main() {
   await prisma.paymentRecord.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.session.deleteMany();
+  // tabel RADIUS bersama (dikelola app + FreeRADIUS)
+  await prisma.radAcct.deleteMany();
+  await prisma.radPostAuth.deleteMany();
+  await prisma.radCheck.deleteMany();
+  await prisma.radReply.deleteMany();
+  await prisma.radGroupCheck.deleteMany();
+  await prisma.radGroupReply.deleteMany();
+  await prisma.radUserGroup.deleteMany();
+  await prisma.nas.deleteMany();
   await prisma.portalSessionLog.deleteMany();
   await prisma.portalLoginLog.deleteMany();
   await prisma.globalLog.deleteMany();
@@ -116,6 +125,8 @@ async function main() {
   console.log(`✓ ${initialProfiles.length} profil bandwidth`);
 
   // ── 3. Router NAS ──
+  // nas-1 diberi kredensial demo (sesuaikan dengan CHR yang di-init).
+  // Status di-set "unknown" — poller/ping nyata yang menentukan.
   for (const r of initialRouters) {
     await prisma.nasRouter.create({
       data: {
@@ -124,11 +135,43 @@ async function main() {
         ipAddress: r.ipAddress,
         location: r.location,
         type: r.type,
-        status: r.status,
+        status: "unknown",
+        ...(r.id === "nas-1"
+          ? {
+              apiUsername: "admin",
+              apiPassword: "admin",
+              apiPort: 8728,
+              radiusSecret: "testing123",
+            }
+          : {}),
       },
     });
   }
-  console.log(`✓ ${initialRouters.length} router NAS`);
+  console.log(
+    `✓ ${initialRouters.length} router NAS (nas-1 + kredensial demo)`,
+  );
+
+  // radsync: daftarkan nas-1 ke tabel `nas` (read_clients FreeRADIUS)
+  const nas1 = initialRouters.find((r) => r.id === "nas-1");
+  if (nas1) {
+    await prisma.nas.upsert({
+      where: { nasname: nas1.ipAddress },
+      update: {
+        shortname: nas1.name,
+        type: "mikrotik",
+        ports: 1812,
+        secret: "testing123",
+      },
+      create: {
+        nasname: nas1.ipAddress,
+        shortname: nas1.name,
+        type: "mikrotik",
+        ports: 1812,
+        secret: "testing123",
+        description: nas1.location,
+      },
+    });
+  }
 
   // ── 4. Customers (tanggal dire-resolve) ──
   for (const c of initialCustomers) {
@@ -136,7 +179,7 @@ async function main() {
       data: {
         id: c.id,
         username: c.username,
-        password: c.password,
+        password: c.password ?? null,
         fullName: c.fullName,
         email: c.email,
         phone: c.phone,
@@ -153,6 +196,76 @@ async function main() {
     });
   }
   console.log(`✓ ${initialCustomers.length} pelanggan`);
+
+  // radsync: radcheck (Cleartext-Password) + radreply (Framed-IP-Address,
+  // Mikrotik-Rate-Limit) — dibaca FreeRADIUS untuk otentikasi PPPoE.
+  const profiles = await prisma.bandwidthProfile.findMany();
+  const profileMap = new Map(profiles.map((p) => [p.id, p]));
+  let radCount = 0;
+  for (const c of await prisma.customer.findMany()) {
+    const mock = initialCustomers.find((m) => m.id === c.id);
+    if (!mock) continue;
+    // Password PPPoE pelanggan: pakai bentuk yang konsisten (demo)
+    const password =
+      mock.username === "budi_santoso" ? "pass123" : "password123";
+    if (c.status === "active") {
+      await prisma.radCheck.upsert({
+        where: {
+          username_attribute: {
+            username: c.username,
+            attribute: "Cleartext-Password",
+          },
+        },
+        update: { value: password, op: ":=" },
+        create: {
+          username: c.username,
+          attribute: "Cleartext-Password",
+          op: ":=",
+          value: password,
+        },
+      });
+      radCount += 1;
+    }
+    if (c.staticIp) {
+      await prisma.radReply.upsert({
+        where: {
+          username_attribute: {
+            username: c.username,
+            attribute: "Framed-IP-Address",
+          },
+        },
+        update: { value: c.staticIp, op: ":=" },
+        create: {
+          username: c.username,
+          attribute: "Framed-IP-Address",
+          op: ":=",
+          value: c.staticIp,
+        },
+      });
+      radCount += 1;
+    }
+    const prof = c.profileId ? profileMap.get(c.profileId) : null;
+    if (prof) {
+      const rate = `${Math.round(prof.rateLimitDown)}M/${Math.round(prof.rateLimitUp)}M`;
+      await prisma.radReply.upsert({
+        where: {
+          username_attribute: {
+            username: c.username,
+            attribute: "Mikrotik-Rate-Limit",
+          },
+        },
+        update: { value: rate },
+        create: {
+          username: c.username,
+          attribute: "Mikrotik-Rate-Limit",
+          op: ":=",
+          value: rate,
+        },
+      });
+      radCount += 1;
+    }
+  }
+  console.log(`✓ ${radCount} baris RADIUS (radcheck/radreply)`);
 
   // ── 5. Sessions ──
   for (const s of initialSessions) {
