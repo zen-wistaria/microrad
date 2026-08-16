@@ -1,25 +1,29 @@
-import { mockDb } from "../mock/db";
-import type { CompanyProfile } from "../types";
-
-const delay = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms));
+import type { CompanyProfile } from "@/lib/types";
+import { apiFetch } from "./client";
 
 export async function getCompanyProfile(): Promise<CompanyProfile> {
-  await delay();
-  return mockDb.getCompanyProfile();
+  return apiFetch<{ data: CompanyProfile }>("/settings").then((r) => r.data);
 }
 
 export async function updateCompanyProfile(
   updates: Partial<CompanyProfile>,
 ): Promise<CompanyProfile> {
-  await delay();
-  if (
-    updates.brandName !== undefined &&
-    updates.brandName.trim().length === 0
-  ) {
-    throw new Error("Nama brand tidak boleh kosong.");
-  }
-  if (updates.fullName !== undefined && updates.fullName.trim().length === 0) {
-    throw new Error("Nama panjang perusahaan tidak boleh kosong.");
-  }
-  return mockDb.updateCompanyProfile(updates);
+  return apiFetch<{ data: CompanyProfile }>("/settings", {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  }).then((r) => r.data);
+}
+
+/** Template WhatsApp (disimpan server, tidak dihapus saat reset) */
+export async function getWaTemplate(): Promise<string> {
+  return apiFetch<{ data: string }>("/settings/wa-template").then(
+    (r) => r.data,
+  );
+}
+
+export async function saveWaTemplate(template: string): Promise<string> {
+  return apiFetch<{ data: string }>("/settings/wa-template", {
+    method: "PUT",
+    body: JSON.stringify({ template }),
+  }).then((r) => r.data);
 }

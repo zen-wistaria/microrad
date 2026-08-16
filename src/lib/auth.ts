@@ -1,69 +1,57 @@
-"use client";
+import { prismaAdapter } from "@better-auth/prisma-adapter";
+import { betterAuth } from "better-auth";
+import { username } from "better-auth/plugins";
+import { prisma } from "./prisma";
 
-import { useEffect, useState } from "react";
-import { initialUsers } from "./mock/users.mock";
-import type { AppUser } from "./types";
+/**
+ * Better Auth — INSTANCE #1: user SISTEM (admin/operator).
+ * RBAC via `roleId` → Role. Plugin username untuk login pakai username.
+ * Pakai tabel terpisah (app_user, app_session, ...) via modelName.
+ */
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, {
+    provider: "postgresql",
+  }),
+  basePath: "/api/auth",
+  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  emailAndPassword: {
+    enabled: true,
+  },
+  plugins: [username()],
+  user: {
+    modelName: "appUser",
+    fields: {
+      name: "name",
+      email: "email",
+      emailVerified: "emailVerified",
+      image: "image",
+      createdAt: "createdAt",
+      updatedAt: "updatedAt",
+    },
+    additionalFields: {
+      role: { type: "string", required: false, input: false },
+      roleId: { type: "string", required: false, input: false },
+      status: { type: "string", required: false, input: false },
+      lastLoginAt: { type: "date", required: false, input: false },
+    },
+  },
+  session: {
+    modelName: "appSession",
+    cookieCache: { enabled: true, maxAge: 60 * 60 },
+  },
+  account: {
+    modelName: "appAccount",
+  },
+  verification: {
+    modelName: "appVerification",
+  },
+  advanced: {
+    cookiePrefix: "microrad_app",
+    defaultCookieAttributes: {
+      sameSite: "lax",
+    },
+  },
+});
 
-const AUTH_STORAGE_KEY = "microrad_auth_user";
-
-export function getStoredUser(): AppUser | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const item = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!item) {
-      // Default to first user (Admin) if not set
-      const defaultUser = initialUsers[0];
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(defaultUser));
-      return defaultUser;
-    }
-    return JSON.parse(item);
-  } catch {
-    return initialUsers[0];
-  }
-}
-
-export function setStoredUser(user: AppUser | null): void {
-  if (typeof window === "undefined") return;
-  if (user) {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-  }
-}
-
-export function useAuth() {
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const user = getStoredUser();
-    setCurrentUser(user);
-    setIsLoading(false);
-
-    const handleStorageChange = () => {
-      setCurrentUser(getStoredUser());
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
-
-  const login = (user: AppUser) => {
-    setStoredUser(user);
-    setCurrentUser(user);
-  };
-
-  const logout = () => {
-    setStoredUser(null);
-    setCurrentUser(null);
-  };
-
-  return {
-    currentUser,
-    isLoading,
-    isAuthenticated: !!currentUser,
-    isAdmin: currentUser?.role === "admin",
-    login,
-    logout,
-  };
-}
+export type AppSession = typeof auth.$Infer.Session;

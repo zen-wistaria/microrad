@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: microrad-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: microrad
+      POSTGRES_PASSWORD: microrad
+      POSTGRES_DB: microrad
+    ports:
+      - "5432:5432"
+    volumes:
+      - microrad_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U microrad -d microrad"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  microrad_pgdata:

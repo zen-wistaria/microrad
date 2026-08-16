@@ -30,9 +30,9 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { deleteUser, getUsers, updateUser } from "@/lib/api/users";
-import { useAuth } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import type { AppUser, AppUserStatus } from "@/lib/types";
+import { useAuth } from "@/lib/use-auth";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 export default function UsersPage() {

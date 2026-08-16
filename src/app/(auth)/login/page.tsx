@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  Briefcase,
-  Home,
-  Loader2,
-  Lock,
-  Mail,
-  Radio,
-  Shield,
-} from "lucide-react";
+import { Loader2, Lock, Mail, Radio } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useState } from "react";
@@ -25,9 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getUserByEmail } from "@/lib/api/users";
-import { useAuth } from "@/lib/auth";
-import { initialUsers } from "@/lib/mock/users.mock";
+import { useAuth } from "@/lib/use-auth";
 import { getErrorMessage } from "@/lib/utils";
 
 export default function LoginPage() {
@@ -37,67 +27,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
 
-  const demoAccounts = [
-    {
-      email: "admin@microrad.net",
-      label: "Admin",
-      sub: "Akses Penuh",
-      icon: Shield,
-      color: "text-purple-600",
-    },
-    {
-      email: "manager@microrad.net",
-      label: "Manager",
-      sub: "Operasional & Keuangan",
-      icon: Briefcase,
-      color: "text-blue-600",
-    },
-    {
-      email: "budi.santoso@mail.com",
-      label: "Pelanggan",
-      sub: "Portal Pelanggan",
-      icon: Home,
-      color: "text-emerald-600",
-    },
-  ];
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Find matching user from mock
-      const user = await getUserByEmail(email);
-      if (!user) {
-        toast.error("Email tidak ditemukan di sistem.");
-        setLoading(false);
-        return;
-      }
-
-      if (user.status === "disabled") {
-        toast.error("Akun Anda telah dinonaktifkan oleh Administrator.");
-        setLoading(false);
-        return;
-      }
-
-      login(user);
-      toast.success(`Selamat datang kembali, ${user.name}!`);
-      router.push(user.role === "customer" ? "/portal" : "/dashboard");
+      const result = await login(email, password);
+      const area = result?.area ?? "app";
+      toast.success(
+        area === "portal"
+          ? "Selamat datang di Portal Pelanggan!"
+          : "Login berhasil!",
+      );
+      router.push(area === "portal" ? "/portal" : "/dashboard");
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err) || "Gagal melakukan login.");
+      toast.error(getErrorMessage(err) || "Email atau password salah.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword("password123");
-    const user = initialUsers.find((u) => u.email === demoEmail);
-    if (user) {
-      login(user);
-      toast.success(`Login demo berhasil sebagai ${user.name}!`);
-      router.push(user.role === "customer" ? "/portal" : "/dashboard");
     }
   };
 
@@ -181,38 +127,6 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200 dark:border-slate-800" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-                  Atau Coba Akun Demo
-                </span>
-              </div>
-            </div>
-
-            {/* Quick Demo Access Buttons (RBAC) */}
-            <div className="grid grid-cols-2 gap-2.5">
-              {demoAccounts.map((demo) => (
-                <Button
-                  key={demo.email}
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleDemoLogin(demo.email)}
-                  className="flex items-center justify-center gap-1.5 h-auto py-2.5 px-3 text-xs"
-                >
-                  <demo.icon className={`h-4 w-4 ${demo.color}`} />
-                  <div className="text-left leading-tight">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100">
-                      {demo.label}
-                    </div>
-                    <div className="text-[10px] text-slate-500">{demo.sub}</div>
-                  </div>
-                </Button>
-              ))}
-            </div>
           </CardContent>
           <CardFooter className="border-t border-slate-100 pt-4 text-center text-xs text-slate-500 dark:border-slate-800/80">
             MicroRAD v0.2 • FreeRADIUS Free Mock Environment

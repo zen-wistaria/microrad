@@ -1,16 +1,12 @@
-import { mockDb } from "../mock/db";
-import type { Permission, Role } from "../types";
-
-const delay = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms));
+import type { Permission, Role } from "@/lib/types";
+import { apiFetch } from "./client";
 
 export async function getRoles(): Promise<Role[]> {
-  await delay();
-  return mockDb.getRoles();
+  return apiFetch<{ data: Role[] }>("/roles").then((r) => r.data);
 }
 
 export async function getRoleById(id: string): Promise<Role | null> {
-  await delay();
-  return mockDb.getRoleById(id) ?? null;
+  return apiFetch<{ data: Role | null }>(`/roles/${id}`).then((r) => r.data);
 }
 
 export async function createRole(data: {
@@ -18,29 +14,35 @@ export async function createRole(data: {
   description?: string;
   permissions: Permission[];
 }): Promise<Role> {
-  await delay();
-  return mockDb.createRole(data);
+  return apiFetch<{ data: Role }>("/roles", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }).then((r) => r.data);
 }
 
 export async function updateRole(
   id: string,
-  updates: {
-    name?: string;
-    description?: string;
-    permissions?: Permission[];
-  },
+  updates: { name?: string; description?: string; permissions?: Permission[] },
 ): Promise<Role> {
-  await delay();
-  const role = mockDb.updateRole(id, updates);
-  if (!role) {
-    throw new Error("Role tidak ditemukan.");
-  }
-  return role;
+  return apiFetch<{ data: Role }>(`/roles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  }).then((r) => r.data);
 }
 
-export async function deleteRole(
-  id: string,
-): Promise<{ success: boolean; error?: string }> {
-  await delay();
-  return mockDb.deleteRole(id);
+export async function deleteRole(id: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const res = await apiFetch<{ success: boolean }>(`/roles/${id}`, {
+      method: "DELETE",
+    });
+    return { success: res.success };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Gagal menghapus role.",
+    };
+  }
 }

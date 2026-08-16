@@ -1,75 +1,85 @@
-import { mockDb } from "../mock/db";
-import type { Customer } from "../types";
-
-// Simulated network latency
-const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
+import type { Customer } from "@/lib/types";
+import { apiFetch, paginated } from "./client";
 
 export interface GetCustomersParams {
   search?: string;
   status?: string;
   profileId?: string;
+  page?: number;
+  limit?: number;
 }
 
+/** List pelanggan — query param: search, status, profileId→profile, page, limit */
 export async function getCustomers(
   params?: GetCustomersParams,
 ): Promise<Customer[]> {
-  await delay();
-  return mockDb.getCustomers(params);
+  if (params?.page !== undefined && params?.limit !== undefined) {
+    const res = await paginated<Customer>("/customers", {
+      search: params.search,
+      status: params.status,
+      profile: params.profileId,
+      page: params.page,
+      limit: params.limit,
+    });
+    return res.data;
+  }
+  // Tanpa pagination eksplisit → ambil semua (limit besar)
+  const res = await apiFetch<{ data: Customer[] }>(
+    `/customers${toQueryAll(params)}`,
+  );
+  return res.data;
+}
+
+function toQueryAll(params?: GetCustomersParams) {
+  const search = new URLSearchParams();
+  if (params?.search) search.set("search", params.search);
+  if (params?.status && params.status !== "all")
+    search.set("status", params.status);
+  if (params?.profileId && params.profileId !== "all")
+    search.set("profile", params.profileId);
+  search.set("limit", "1000");
+  const s = search.toString();
+  return s ? `?${s}` : "";
 }
 
 export async function getCustomerById(id: string): Promise<Customer | null> {
-  await delay();
-  const customer = mockDb.getCustomerById(id);
-  return customer || null;
+  return apiFetch<{ data: Customer | null }>(`/customers/${id}`).then(
+    (r) => r.data,
+  );
 }
 
 export async function createCustomer(
   data: Omit<Customer, "id" | "createdAt" | "updatedAt">,
 ): Promise<Customer> {
-  await delay();
-  // Uniqueness check for username
-  const existing = mockDb.getCustomerByUsername(data.username);
-  if (existing) {
-    throw new Error(`Username PPPoE '${data.username}' sudah terdaftar.`);
-  }
-  return mockDb.createCustomer(data);
+  return apiFetch<{ data: Customer }>("/customers", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }).then((r) => r.data);
 }
 
 export async function updateCustomer(
   id: string,
   updates: Partial<Customer>,
 ): Promise<Customer> {
-  await delay();
-  if (updates.username) {
-    const existing = mockDb.getCustomerByUsername(updates.username);
-    if (existing && existing.id !== id) {
-      throw new Error(
-        `Username PPPoE '${updates.username}' sudah digunakan pelanggan lain.`,
-      );
-    }
-  }
-  const updated = mockDb.updateCustomer(id, updates);
-  if (!updated) {
-    throw new Error("Pelanggan tidak ditemukan.");
-  }
-  return updated;
+  return apiFetch<{ data: Customer }>(`/customers/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  }).then((r) => r.data);
 }
 
 export async function deleteCustomer(
   id: string,
 ): Promise<{ success: boolean }> {
-  await delay();
-  const ok = mockDb.deleteCustomer(id);
-  if (!ok) {
-    throw new Error("Gagal menghapus pelanggan.");
-  }
-  return { success: true };
+  return apiFetch<{ success: boolean }>(`/customers/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function disconnectCustomer(
   id: string,
 ): Promise<{ success: boolean }> {
-  await delay();
-  const ok = mockDb.disconnectCustomer(id);
-  return { success: ok };
+  return apiFetch<{ success: boolean }>(`/customers/${id}/disconnect`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }

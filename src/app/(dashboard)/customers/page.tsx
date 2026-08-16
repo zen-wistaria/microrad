@@ -48,9 +48,9 @@ import {
   updateCustomer,
 } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
-import { useAuth } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import type { BandwidthProfile, Customer, CustomerStatus } from "@/lib/types";
+import { useAuth } from "@/lib/use-auth";
 import { formatRelativeTime, getErrorMessage } from "@/lib/utils";
 
 export default function CustomersPage() {

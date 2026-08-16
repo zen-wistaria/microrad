@@ -21,8 +21,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { resetDemoData } from "@/lib/api/dashboard";
-import { useAuth } from "@/lib/auth";
 import { initialUsers } from "@/lib/mock/users.mock";
+import { useAuth } from "@/lib/use-auth";
 import { AppUserRoleBadge } from "../common/status-badge";
 import { ThemeToggle } from "../common/theme-toggle";
 
@@ -74,7 +74,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const handleSwitchUser = (userId: string) => {
     const user = initialUsers.find((u) => u.id === userId);
     if (user) {
-      login(user);
+      login(user.email, "password123");
       toast.info(`Beralih akun ke: ${user.name} (${user.role})`);
     }
   };

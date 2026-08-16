@@ -1,33 +1,36 @@
-import { mockDb } from "../mock/db";
 import type {
   CustomerDailyUsage,
   CustomerMonthlyUsage,
   DashboardStats,
-} from "../types";
-
-const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
+} from "@/lib/types";
+import { apiFetch } from "./client";
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  await delay();
-  return mockDb.getDashboardStats();
+  return apiFetch<{ data: DashboardStats }>("/dashboard").then((r) => r.data);
 }
 
 export async function getCustomerUsageHistory(
   customerId: string,
 ): Promise<CustomerDailyUsage[]> {
-  await delay();
-  return mockDb.getCustomerUsageHistory(customerId);
+  return apiFetch<{ data: { history: CustomerDailyUsage[] } }>(
+    `/dashboard/customers/${customerId}/usage`,
+  ).then((r) => r.data.history);
 }
 
 export async function getCustomerMonthlyUsage(
   customerId: string,
   year?: number,
 ): Promise<CustomerMonthlyUsage[]> {
-  await delay();
-  return mockDb.getCustomerMonthlyUsage(customerId, year);
+  const q = year ? `?year=${year}` : "";
+  return apiFetch<{ data: { monthly: CustomerMonthlyUsage[] } }>(
+    `/dashboard/customers/${customerId}/usage${q}`,
+  ).then((r) => r.data.monthly);
 }
 
+/** Reset Demo — bersihkan & seed ulang data (admin) */
 export async function resetDemoData(): Promise<void> {
-  await delay();
-  mockDb.resetToDefaults();
+  await apiFetch<{ success: boolean }>("/demo/reset", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }

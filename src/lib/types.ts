@@ -136,7 +136,7 @@ export interface CompanyProfile {
   updatedAt?: string;
 }
 
-export type AppUserRole = "admin" | "operator" | "customer";
+export type AppUserRole = "admin" | "operator";
 export type AppUserStatus = "active" | "disabled";
 
 // RBAC: permission (baca / buat / ubah / hapus) per modul
@@ -189,7 +189,7 @@ export interface AppUser {
   status: AppUserStatus;
   createdAt: string;
   lastLoginAt?: string;
-  /** Jika role = "customer", merujuk ke id Customer di tabel pelanggan */
+  /** Legacy: akun portal pelanggan kini terpisah (PortalUser) — hanya di mock seed */
   customerId?: string;
 }
 

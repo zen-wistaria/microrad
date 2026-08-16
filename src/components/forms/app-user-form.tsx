@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Loader2, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getRoles } from "@/lib/api/roles";
 import { createUser, updateUser } from "@/lib/api/users";
 import { initialRoles } from "@/lib/mock/roles.mock";
 import type { AppUser, AppUserRole, AppUserStatus, Role } from "@/lib/types";
@@ -52,17 +53,16 @@ export function AppUserForm({
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
 
-  // Kumpulan role yang dapat dipilih (bawaan + kustom dari localStorage)
-  const allRoles: Role[] = (() => {
-    if (typeof window === "undefined") return initialRoles;
-    try {
-      const raw = localStorage.getItem("microrad_roles");
-      const custom: Role[] = raw ? JSON.parse(raw) : [];
-      return [...initialRoles, ...custom.filter((r) => !r.system)];
-    } catch {
-      return initialRoles;
-    }
-  })();
+  // Kumpulan role yang dapat dipilih — dari API (server)
+  const [allRoles, setAllRoles] = useState<Role[]>(initialRoles);
+
+  useEffect(() => {
+    getRoles()
+      .then((roles) => setAllRoles(roles))
+      .catch(() => {
+        // fallback ke role bawaan
+      });
+  }, []);
 
   const {
     register,
@@ -87,14 +87,9 @@ export function AppUserForm({
   const handleRoleChange = (val: string) => {
     setValue("roleId", val, { shouldValidate: true });
     const role = allRoles.find((r) => r.id === val);
-    const legacy = role
-      ? role.id === "role-customer"
-        ? "customer"
-        : role.id === "role-admin"
-          ? "admin"
-          : "operator"
-      : "operator";
-    setValue("role", legacy as AppUserRole, { shouldValidate: true });
+    const legacy =
+      role?.id === "role-admin" ? "admin" : ("operator" as AppUserRole);
+    setValue("role", legacy, { shouldValidate: true });
   };
 
   const onSubmit = async (data: AppUserFormValues) => {

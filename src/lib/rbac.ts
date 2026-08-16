@@ -19,12 +19,9 @@ export const RESOURCE_LABELS: Record<ResourceKey, string> = {
   user: "Pengguna Aplikasi",
 };
 
-/** Route (/dashboard/...) yang boleh diakses oleh pelanggan */
-export const CUSTOMER_ROUTES = ["/portal"];
-
 /**
  * Cek akses rute. Administrator selalu boleh; selain itu periksa
- * role pelanggan (hanya /portal) atau permission "read" modul terkait.
+ * permission "read" modul terkait.
  */
 export function canAccessRoute(
   user: AppUser | null,
@@ -33,16 +30,9 @@ export function canAccessRoute(
   if (!user) return false;
   const role = getUserRoleById(user.roleId);
 
-  // Role Pelanggan: HANYA /portal (dan sub-halamannya)
-  if (role?.id === "role-customer") {
-    return CUSTOMER_ROUTES.some(
-      (r) => pathname === r || pathname.startsWith(`${r}/`),
-    );
-  }
-
-  // Administrator: akses penuh, KECUALI /portal (khusus pelanggan)
+  // Administrator: akses penuh
   if (role?.id === "role-admin") {
-    return !pathname.startsWith("/portal");
+    return true;
   }
 
   // Halaman admin-only: kelola role (RBAC) & pengaturan sistem
@@ -184,16 +174,6 @@ export const BUILT_IN_ROLES: Record<string, Role> = {
       "log.read",
       "setting.read",
     ],
-    system: true,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  },
-  "role-customer": {
-    id: "role-customer",
-    name: "Pelanggan",
-    description:
-      "Hanya dapat mengakses portal pelanggan (informasi, pemakaian, tagihan, pembayaran, dan log pribadi).",
-    permissions: [],
     system: true,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",

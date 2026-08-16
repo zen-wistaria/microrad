@@ -19,9 +19,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { getCompanyProfile } from "@/lib/api/settings";
+import {
+  getCompanyProfile,
+  getWaTemplate,
+  saveWaTemplate,
+} from "@/lib/api/settings";
 import type { CompanyProfile, Invoice } from "@/lib/types";
-import { formatDate, formatRupiah } from "@/lib/utils";
+import { formatDate, formatRupiah, getErrorMessage } from "@/lib/utils";
 
 interface ReminderDialogProps {
   invoice: Invoice | null;
@@ -100,11 +104,19 @@ export function ReminderDialog({
 
   useEffect(() => {
     if (!invoice) return;
-    const tpl = loadTemplate();
-    setTemplate(tpl);
-    setMessage(buildMessage(tpl, invoice, brand));
+    let cancelled = false;
+    getWaTemplate()
+      .catch(() => loadTemplate())
+      .then((tpl) => {
+        if (cancelled) return;
+        setTemplate(tpl);
+        setMessage(buildMessage(tpl, invoice, brand));
+      });
     setCopied(false);
     setSaved(false);
+    return () => {
+      cancelled = true;
+    };
   }, [invoice, brand]);
 
   if (!invoice) return null;
@@ -116,11 +128,15 @@ export function ReminderDialog({
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const handleSaveTemplate = () => {
-    localStorage.setItem(WA_TEMPLATE_KEY, template);
-    setSaved(true);
-    toast.success("Template pesan WhatsApp disimpan.");
-    setTimeout(() => setSaved(false), 2000);
+  const handleSaveTemplate = async () => {
+    try {
+      await saveWaTemplate(template);
+      setSaved(true);
+      toast.success("Template pesan WhatsApp disimpan.");
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal menyimpan template.");
+    }
   };
 
   const handleResetTemplate = () => {

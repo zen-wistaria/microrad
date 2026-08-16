@@ -64,7 +64,6 @@ import {
   getCustomerActiveSession,
   getCustomerSessions,
 } from "@/lib/api/sessions";
-import { useAuth } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import type {
   BandwidthProfile,
@@ -76,6 +75,7 @@ import type {
   NasRouter,
   Session,
 } from "@/lib/types";
+import { useAuth } from "@/lib/use-auth";
 import {
   formatBytes,
   formatDate,

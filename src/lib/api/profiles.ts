@@ -1,45 +1,41 @@
-import { mockDb } from "../mock/db";
-import type { BandwidthProfile } from "../types";
-
-const delay = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms));
+import type { BandwidthProfile } from "@/lib/types";
+import { apiFetch } from "./client";
 
 export async function getProfiles(): Promise<BandwidthProfile[]> {
-  await delay();
-  return mockDb.getProfiles();
+  return apiFetch<{ data: BandwidthProfile[] }>("/profiles").then(
+    (r) => r.data,
+  );
 }
 
 export async function getProfileById(
   id: string,
 ): Promise<BandwidthProfile | null> {
-  await delay();
-  const profile = mockDb.getProfileById(id);
-  return profile || null;
+  return apiFetch<{ data: BandwidthProfile | null }>(`/profiles/${id}`).then(
+    (r) => r.data,
+  );
 }
 
 export async function createProfile(
   data: Omit<BandwidthProfile, "id" | "customerCount">,
 ): Promise<BandwidthProfile> {
-  await delay();
-  return mockDb.createProfile(data);
+  return apiFetch<{ data: BandwidthProfile }>("/profiles", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }).then((r) => r.data);
 }
 
 export async function updateProfile(
   id: string,
   updates: Partial<BandwidthProfile>,
 ): Promise<BandwidthProfile> {
-  await delay();
-  const updated = mockDb.updateProfile(id, updates);
-  if (!updated) {
-    throw new Error("Profil bandwidth tidak ditemukan.");
-  }
-  return updated;
+  return apiFetch<{ data: BandwidthProfile }>(`/profiles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  }).then((r) => r.data);
 }
 
 export async function deleteProfile(id: string): Promise<{ success: boolean }> {
-  await delay();
-  const result = mockDb.deleteProfile(id);
-  if (!result.success) {
-    throw new Error(result.error || "Gagal menghapus profil bandwidth.");
-  }
-  return { success: true };
+  return apiFetch<{ success: boolean }>(`/profiles/${id}`, {
+    method: "DELETE",
+  });
 }

@@ -1,71 +1,42 @@
-import { initialInvoices, initialPayments } from "../mock/billing.mock";
-import { relMonthsAgo, relNow } from "../mock/relative-dates";
 import type {
   BillingSummary,
   Invoice,
   PaymentMethod,
   PaymentRecord,
-} from "../types";
-import { getCustomers } from "./customers";
-import { getProfiles } from "./profiles";
+} from "@/lib/types";
+import { apiFetch, paginated } from "./client";
 
-const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const INVOICES_STORAGE_KEY = "microrad_invoices_mock";
-const PAYMENTS_STORAGE_KEY = "microrad_payments_mock";
-
-/**
- * Tanggal relatif mock tersimpan sebagai string literal di file source
- * (mis. "relMonthsAgoIso(7, 8, 30)"). Setelah diserialisasi ke JSON,
- * string tersebut tidak lagi tervalidasi — resolve ke Date nyata.
- */
-function resolveMockDateString(dateStr?: string | null): string {
-  if (!dateStr) return dateStr || "";
-  const months = dateStr.match(
-    /^relMonthsAgoIso\(([\d.]+),\s*(\d+),\s*(\d+)\)$/,
-  );
-  if (months) {
-    return relMonthsAgo(
-      Number(months[1]),
-      Number(months[2]),
-      Number(months[3]),
-    ).toISOString();
-  }
-  const nowMatch = dateStr.match(/^relNowIso\((\d+),\s*(\d+)(?:,\s*(\d+))?\)$/);
-  if (nowMatch) {
-    return relNow(
-      Number(nowMatch[1]),
-      Number(nowMatch[2]),
-      Number(nowMatch[3] ?? 0),
-    ).toISOString();
-  }
-  return dateStr;
+export interface GetInvoicesParams {
+  search?: string;
+  status?: string;
+  month?: string;
+  paysearch?: string;
+  tab?: string;
+  page?: number;
+  limit?: number;
 }
 
-/**
- * Tanggal jatuh tempo otomatis: TANGGAL PERIODE + 1 bulan.
- * (mis. tagihan periode Agustus 2026 → jatuh tempo September 2026;
- * hari pakai tanggal registrasi pelanggan, fallback ke 10 bila tidak ada)
- */
-export function getDueDateFromPeriod(
-  year: number,
-  month: number,
-  createdAt?: string | null,
-): string {
-  const raw = resolveMockDateString(createdAt);
-  const reg = new Date(raw);
-  const regDate = Number.isNaN(reg.getTime()) ? 10 : reg.getDate();
-  const due = new Date(year, month, regDate, 23, 59, 59);
-  // Normalisasi: jika tanggal tidak ada di bulan jatuh (mis. 31 Feb), JS
-  // melimpahkan ke bulan berikutnya — force ke hari terakhir bulan jatuh.
-  if (due.getMonth() !== month % 12) {
-    due.setDate(0);
-    due.setHours(23, 59, 59, 0);
+export function getInvoices(params?: GetInvoicesParams): Promise<Invoice[]> {
+  if (params?.page !== undefined && params?.limit !== undefined) {
+    return paginated<Invoice>("/billing", {
+      search: params.search,
+      status: params.status,
+      month: params.month,
+      tab: "invoices",
+      page: params.page,
+      limit: params.limit,
+    }).then((r) => r.data);
   }
-  return [
-    `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`,
-    `${String(due.getHours()).padStart(2, "0")}:${String(due.getMinutes()).padStart(2, "0")}`,
-  ].join("T");
+  // Tanpa pagination → semua invoice
+  return apiFetch<{ data: Invoice[]; total: number }>(
+    `/billing?tab=invoices&limit=1000`,
+  ).then((r) => r.data);
+}
+
+export async function getInvoiceById(id: string): Promise<Invoice | null> {
+  return apiFetch<{ data: Invoice | null }>(`/billing/${id}`).then(
+    (r) => r.data,
+  );
 }
 
 export interface CreateInvoiceInput {
@@ -91,157 +62,52 @@ export interface CreateInvoiceInput {
   notes?: string;
 }
 
+/** Buat invoice manual — server hitung due date (periode + 1 bulan) & nomor */
 export async function createInvoiceForCustomer(
   data: CreateInvoiceInput,
 ): Promise<Invoice> {
-  const customers = await getCustomers();
-  const existingCustomer = customers.find((c) => c.id === data.customerId);
-  if (!existingCustomer) {
-    throw new Error("Pelanggan tidak ditemukan.");
-  }
-
-  // Jatuh tempo otomatis: periode + 1 bulan.
-  const dueFromPeriod = getDueDateFromPeriod(
-    data.periodYear,
-    data.periodMonth,
-    existingCustomer.createdAt,
-  );
-  const dueDate = (dueFromPeriod || data.dueDate) as string;
-
-  return createInvoice({
-    ...data,
-    dueDate,
-    issueDate: data.issueDate || new Date().toISOString(),
-  });
-}
-
-function loadInvoicesFromStorage(): Invoice[] {
-  if (typeof window === "undefined") return initialInvoices;
-  try {
-    const raw = localStorage.getItem(INVOICES_STORAGE_KEY);
-    const invoices = raw ? JSON.parse(raw) : initialInvoices;
-    return invoices.map((inv: Invoice) => ({
-      ...inv,
-      installationFee: inv.installationFee ?? 0,
-      taxPercent: inv.taxPercent ?? 0,
-    }));
-  } catch {
-    return initialInvoices;
-  }
-}
-
-function saveInvoicesToStorage(invoices: Invoice[]) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(invoices));
-  }
-}
-
-function loadPaymentsFromStorage(): PaymentRecord[] {
-  if (typeof window === "undefined") return initialPayments;
-  try {
-    const raw = localStorage.getItem(PAYMENTS_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(
-        PAYMENTS_STORAGE_KEY,
-        JSON.stringify(initialPayments),
-      );
-      return initialPayments;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return initialPayments;
-  }
-}
-
-function savePaymentsToStorage(payments: PaymentRecord[]) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(payments));
-  }
-}
-
-export async function getInvoices(): Promise<Invoice[]> {
-  await delay(120);
-  return loadInvoicesFromStorage();
-}
-
-export async function getInvoiceById(id: string): Promise<Invoice | null> {
-  await delay(100);
-  const invoices = loadInvoicesFromStorage();
-  return invoices.find((inv) => inv.id === id) || null;
+  return apiFetch<{ data: Invoice }>("/billing", {
+    method: "POST",
+    body: JSON.stringify({
+      customerId: data.customerId,
+      periodMonth: data.periodMonth,
+      periodYear: data.periodYear,
+      subtotal: data.subtotal,
+      tax: data.tax,
+      discount: data.discount,
+      adminFee: data.adminFee,
+      installationFee: data.installationFee,
+      taxPercent: data.taxPercent,
+      totalAmount: data.totalAmount,
+      dueDate: data.dueDate,
+      notes: data.notes,
+    }),
+  }).then((r) => r.data);
 }
 
 export async function createInvoice(
   payload: Omit<Invoice, "id" | "invoiceNumber" | "createdAt" | "updatedAt">,
 ): Promise<Invoice> {
-  await delay(200);
-  const invoices = loadInvoicesFromStorage();
-
-  // Validasi duplikat: tidak boleh ada 2 tagihan utk pelanggan yang sama
-  // pada periode bulan yang sama.
-  const currentYear = payload.periodYear || new Date().getFullYear();
-  const currentMonth = payload.periodMonth || new Date().getMonth() + 1;
-  const hasInvoiceThisMonth = invoices.some(
-    (inv) =>
-      inv.customerId === payload.customerId &&
-      inv.periodYear === currentYear &&
-      inv.periodMonth === currentMonth,
-  );
-  if (hasInvoiceThisMonth) {
-    throw new Error(
-      `Pelanggan '${payload.customerUsername}' sudah memiliki tagihan pada periode ini. Hapus atau lunasi tagihan tersebut terlebih dahulu sebelum membuat tagihan baru.`,
-    );
-  }
-
-  const year = currentYear;
-  const month = String(currentMonth).padStart(2, "0");
-  const countThisMonth = invoices.filter(
-    (i) => i.periodYear === year && i.periodMonth === Number(month),
-  ).length;
-
-  const invoiceNumber = `INV/${year}/${month}/${String(countThisMonth + 1).padStart(3, "0")}`;
-  const id = `inv-${Date.now()}`;
-  const now = new Date().toISOString();
-
-  const newInvoice: Invoice = {
-    ...payload,
-    id,
-    invoiceNumber,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  const updated = [newInvoice, ...invoices];
-  saveInvoicesToStorage(updated);
-  return newInvoice;
+  return createInvoiceForCustomer(payload as CreateInvoiceInput);
 }
 
 export async function updateInvoice(
   id: string,
   payload: Partial<Invoice>,
 ): Promise<Invoice> {
-  await delay(180);
-  const invoices = loadInvoicesFromStorage();
-  const index = invoices.findIndex((i) => i.id === id);
-  if (index === -1) throw new Error("Invoice tidak ditemukan");
-
-  const updatedItem: Invoice = {
-    ...invoices[index],
-    ...payload,
-    updatedAt: new Date().toISOString(),
-  };
-
-  invoices[index] = updatedItem;
-  saveInvoicesToStorage(invoices);
-  return updatedItem;
+  return apiFetch<{ data: Invoice }>(`/billing/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  }).then((r) => r.data);
 }
 
 export async function deleteInvoice(id: string): Promise<void> {
-  await delay(150);
-  const invoices = loadInvoicesFromStorage();
-  const filtered = invoices.filter((i) => i.id !== id);
-  saveInvoicesToStorage(filtered);
+  await apiFetch<{ success: boolean }>(`/billing/${id}`, {
+    method: "DELETE",
+  });
 }
 
+/** Tandai lunas — server transaksional: update invoice + insert payment record */
 export async function markInvoiceAsPaid(
   id: string,
   paymentData: {
@@ -251,47 +117,10 @@ export async function markInvoiceAsPaid(
     notes?: string;
   },
 ): Promise<Invoice> {
-  await delay(200);
-  const invoices = loadInvoicesFromStorage();
-  const index = invoices.findIndex((i) => i.id === id);
-  if (index === -1) throw new Error("Invoice tidak ditemukan");
-
-  const inv = invoices[index];
-  const now = paymentData.paidAt || new Date().toISOString();
-
-  const updatedInv: Invoice = {
-    ...inv,
-    status: "paid",
-    paidAt: now,
-    paymentMethod: paymentData.paymentMethod,
-    paymentReference:
-      paymentData.paymentReference || `PAY-${Date.now().toString().slice(-6)}`,
-    notes: paymentData.notes || inv.notes,
-    updatedAt: now,
-  };
-
-  invoices[index] = updatedInv;
-  saveInvoicesToStorage(invoices);
-
-  // Add to Payment Record history
-  const payments = loadPaymentsFromStorage();
-  const newPayment: PaymentRecord = {
-    id: `pay-${Date.now()}`,
-    invoiceId: inv.id,
-    invoiceNumber: inv.invoiceNumber,
-    customerId: inv.customerId,
-    customerName: inv.customerFullName || inv.customerUsername,
-    amount: inv.totalAmount,
-    paymentMethod: paymentData.paymentMethod,
-    paymentReference: updatedInv.paymentReference,
-    paidAt: now,
-    receivedBy: "Operator Dashboard",
-    notes: paymentData.notes,
-  };
-
-  savePaymentsToStorage([newPayment, ...payments]);
-
-  return updatedInv;
+  return apiFetch<{ data: Invoice }>(`/billing/${id}/pay`, {
+    method: "POST",
+    body: JSON.stringify(paymentData),
+  }).then((r) => r.data);
 }
 
 export interface BulkGenerateResult {
@@ -305,143 +134,22 @@ export async function bulkGenerateInvoices(
   month: number,
   year: number,
 ): Promise<BulkGenerateResult> {
-  await delay(300);
-  const [customers, profiles, existingInvoices] = await Promise.all([
-    getCustomers(),
-    getProfiles(),
-    getInvoices(),
-  ]);
-
-  const activeCustomers = customers.filter((c) => c.status === "active");
-  const newlyCreated: Invoice[] = [];
-  const failedCustomers: string[] = [];
-  let skippedCount = 0;
-  const now = new Date().toISOString();
-
-  const dueMonthStr = String(month).padStart(2, "0");
-  const dueYear = month === 12 ? year + 1 : year;
-  const dueMonthZero = month === 12 ? 0 : month + 1 - 1;
-  const dueMonth = dueMonthZero + 1;
-
-  for (const customer of activeCustomers) {
-    // Skip jika tagihan untuk pelanggan ini di periode tersebut sudah ada
-    const exists = existingInvoices.some(
-      (inv) =>
-        inv.customerId === customer.id &&
-        inv.periodMonth === month &&
-        inv.periodYear === year,
-    );
-    if (exists) {
-      skippedCount += 1;
-      continue;
-    }
-
-    const profile = profiles.find((p) => p.id === customer.profileId);
-    // Pelanggan aktif tanpa paket (profileId kosong / tidak ditemukan) gagal
-    if (!profile || !customer.profileId) {
-      failedCustomers.push(customer.username);
-      continue;
-    }
-
-    // Jatuh tempo otomatis: akhir periode + 1 bulan
-    // (mis. generate untuk September 2026 → jatuh tempo Oktober 2026;
-    //  hari memakai tanggal registrasi pelanggan, fallback ke 10)
-    const dueFromPeriod = getDueDateFromPeriod(year, month, customer.createdAt);
-    const dueDate = dueFromPeriod
-      ? new Date(dueFromPeriod).toISOString()
-      : `${dueYear}-${String(dueMonth).padStart(2, "0")}-10T23:59:59Z`;
-
-    const subtotal = profile.price ?? 0;
-    const adminFee = 2500;
-    const totalAmount = subtotal + adminFee;
-    const seq = existingInvoices.length + newlyCreated.length + 1;
-    const invoiceNumber = `INV/${year}/${dueMonthStr}/${String(seq).padStart(3, "0")}`;
-
-    const inv: Invoice = {
-      id: `inv-${Date.now()}-${customer.id}`,
-      invoiceNumber,
-      customerId: customer.id,
-      customerUsername: customer.username,
-      customerFullName: customer.fullName,
-      customerPhone: customer.phone,
-      customerAddress: customer.address,
-      profileId: customer.profileId,
-      profileName: profile.name,
-      periodMonth: month,
-      periodYear: year,
-      subtotal,
-      tax: 0,
-      discount: 0,
-      adminFee,
-      installationFee: 0,
-      taxPercent: 0,
-      totalAmount,
-      status: "unpaid",
-      issueDate: `${year}-${dueMonthStr}-01T08:00:00Z`,
-      dueDate,
-      createdAt: now,
-      updatedAt: now,
-    };
-    newlyCreated.push(inv);
-  }
-
-  const allInvoices = [...newlyCreated, ...existingInvoices];
-  saveInvoicesToStorage(allInvoices);
-
-  return {
-    createdCount: newlyCreated.length,
-    failedCount: failedCustomers.length,
-    skippedCount,
-    invoices: allInvoices,
-  };
+  return apiFetch<{ data: BulkGenerateResult }>("/billing/bulk-generate", {
+    method: "POST",
+    body: JSON.stringify({ month, year }),
+  }).then((r) => r.data);
 }
 
 export async function getPayments(): Promise<PaymentRecord[]> {
-  await delay(100);
-  return loadPaymentsFromStorage();
+  return apiFetch<{ data: PaymentRecord[]; total: number }>(
+    `/billing?tab=payments&limit=1000`,
+  ).then((r) => r.data);
 }
 
 export async function getBillingSummary(): Promise<BillingSummary> {
-  const invoices = await getInvoices();
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
-
-  let totalRevenueThisMonth = 0;
-  let totalPendingAmount = 0;
-  let totalOverdueAmount = 0;
-  let paidCount = 0;
-  let unpaidCount = 0;
-  let overdueCount = 0;
-
-  for (const inv of invoices) {
-    if (inv.periodMonth === currentMonth && inv.periodYear === currentYear) {
-      if (inv.status === "paid") {
-        totalRevenueThisMonth += inv.totalAmount;
-        paidCount++;
-      } else if (inv.status === "unpaid") {
-        totalPendingAmount += inv.totalAmount;
-        unpaidCount++;
-      } else if (inv.status === "overdue") {
-        totalOverdueAmount += inv.totalAmount;
-        overdueCount++;
-      }
-    } else {
-      // Historical or future
-      if (inv.status === "paid") paidCount++;
-      else if (inv.status === "unpaid") unpaidCount++;
-      else if (inv.status === "overdue") overdueCount++;
-    }
-  }
-
-  return {
-    totalRevenueThisMonth,
-    totalPendingAmount,
-    totalOverdueAmount,
-    paidCount,
-    unpaidCount,
-    overdueCount,
-    totalInvoicesCount: invoices.length,
-  };
+  return apiFetch<{ data: BillingSummary }>("/billing/summary").then(
+    (r) => r.data,
+  );
 }
 
 export async function sendInvoiceReminder(id: string): Promise<{
@@ -450,22 +158,34 @@ export async function sendInvoiceReminder(id: string): Promise<{
   phone?: string;
   text: string;
 }> {
-  await delay(250);
-  const inv = await getInvoiceById(id);
-  if (!inv) throw new Error("Invoice tidak ditemukan");
+  return apiFetch<{
+    data: { success: boolean; message: string; phone?: string; text: string };
+  }>(`/billing/${id}/reminder`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  }).then((r) => r.data);
+}
 
-  const formattedAmount = new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(inv.totalAmount);
-
-  const text = `Halo *${inv.customerFullName || inv.customerUsername}*,\n\nIni adalah pengingat tagihan internet PPPoE (${inv.profileName}) untuk periode *Bulan ${inv.periodMonth}/${inv.periodYear}* sebesar *${formattedAmount}*.\n\nNomor Tagihan: *${inv.invoiceNumber}*\nJatuh Tempo: *${new Date(inv.dueDate).toLocaleDateString("id-ID")}*\n\nSilakan lakukan pembayaran melalui Transfer Bank atau QRIS. Terima kasih!`;
-
-  return {
-    success: true,
-    message: `Pengingat WhatsApp berhasil dikirim ke ${inv.customerPhone || "nomor pelanggan"}`,
-    phone: inv.customerPhone,
-    text,
-  };
+/**
+ * Due date otomatis (PURE — dipakai dialog untuk preview):
+ * periode + 1 bulan; hari = tanggal registrasi pelanggan (fallback 10);
+ * jam 23:59:59; normalisasi akhir bulan.
+ */
+export function getDueDateFromPeriod(
+  year: number,
+  month: number,
+  createdAt?: string | null,
+): string {
+  const reg = createdAt ? new Date(createdAt) : new Date();
+  const regDate = Number.isNaN(reg.getTime()) ? 10 : reg.getDate();
+  const due = new Date(year, month, regDate, 23, 59, 59);
+  if (due.getMonth() !== month % 12) {
+    due.setDate(0);
+    due.setHours(23, 59, 59, 0);
+  }
+  const mm = String(due.getMonth() + 1).padStart(2, "0");
+  const dd = String(due.getDate()).padStart(2, "0");
+  const hh = String(due.getHours()).padStart(2, "0");
+  const mi = String(due.getMinutes()).padStart(2, "0");
+  return `${due.getFullYear()}-${mm}-${dd}T${hh}:${mi}`;
 }

@@ -57,7 +57,6 @@ import {
 } from "@/lib/api/billing";
 import { getCustomers } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
-import { useAuth } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import type {
   BandwidthProfile,
@@ -66,6 +65,7 @@ import type {
   Invoice,
   PaymentRecord,
 } from "@/lib/types";
+import { useAuth } from "@/lib/use-auth";
 import { formatDate, formatRupiah, getErrorMessage } from "@/lib/utils";
 
 function BillingContent() {

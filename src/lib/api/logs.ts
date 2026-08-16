@@ -1,7 +1,5 @@
-import { mockDb } from "../mock/db";
-import type { GlobalLogEntry } from "../mock/global-logs";
-
-const delay = (ms = 150) => new Promise((resolve) => setTimeout(resolve, ms));
+import type { GlobalLogEntry } from "@/lib/mock/global-logs";
+import { paginated } from "./client";
 
 export interface GlobalLogFilter {
   search?: string;
@@ -10,10 +8,16 @@ export interface GlobalLogFilter {
   to?: string;
 }
 
-/** Ambil log login global dengan filter (pencarian nama, sumber, rentang waktu) */
 export async function getGlobalLogs(
   filter?: GlobalLogFilter,
 ): Promise<GlobalLogEntry[]> {
-  await delay();
-  return mockDb.getGlobalLogs(filter);
+  const res = await paginated<GlobalLogEntry>("/logs", {
+    search: filter?.search,
+    source: filter?.source,
+    from: filter?.from,
+    to: filter?.to,
+    page: 1,
+    limit: 1000,
+  });
+  return res.data;
 }

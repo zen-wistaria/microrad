@@ -1,7 +1,6 @@
 import {
   AlertCircle,
   CheckCircle2,
-  Home,
   Shield,
   User,
   Wifi,
@@ -90,26 +89,12 @@ export function AppUserRoleBadge({
   role: AppUserRole;
   roleId?: string;
 }) {
-  // Role kustom (bukan bawaan) → tampilkan nama dari localStorage roles
-  if (
-    roleId &&
-    !["role-admin", "role-manager", "role-customer"].includes(roleId)
-  ) {
-    let customName = "Role Kustom";
-    try {
-      const raw = localStorage.getItem("microrad_roles");
-      if (raw) {
-        const roles = JSON.parse(raw) as { id: string; name: string }[];
-        const found = roles.find((r) => r.id === roleId);
-        if (found) customName = found.name;
-      }
-    } catch {
-      // fallback
-    }
+  // Role kustom (bukan bawaan) → tampilkan nama dari API roles
+  if (roleId && !["role-admin", "role-manager"].includes(roleId)) {
     return (
       <Badge variant="purple" className="font-medium">
         <Shield className="h-3 w-3" />
-        {customName}
+        Role Kustom
       </Badge>
     );
   }
@@ -118,17 +103,6 @@ export function AppUserRoleBadge({
       <Badge variant="purple" className="font-medium">
         <Shield className="h-3 w-3" />
         Manager
-      </Badge>
-    );
-  }
-  if (role === "customer") {
-    return (
-      <Badge
-        variant="secondary"
-        className="font-medium text-emerald-600 dark:text-emerald-400"
-      >
-        <Home className="h-3 w-3" />
-        Pelanggan
       </Badge>
     );
   }

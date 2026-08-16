@@ -2,7 +2,6 @@
 
 import {
   Activity,
-  Home,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -13,7 +12,6 @@ import {
   Settings2,
   ShieldCheck,
   Users,
-  Wallet,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -21,9 +19,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getActiveSessions } from "@/lib/api/sessions";
-import { useAuth } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import type { Permission } from "@/lib/types";
+import { useAuth } from "@/lib/use-auth";
 import { cn } from "@/lib/utils";
 
 /** Sysadmin/System Settings item hanya tampil untuk role Admin */
@@ -106,35 +104,6 @@ const systemNavItems = [
   },
 ];
 
-const portalNavItems = [
-  {
-    title: "Informasi Pelanggan",
-    href: "/portal",
-    icon: Home,
-    matchExact: true,
-  },
-  {
-    title: "Pemakaian",
-    href: "/portal/usage",
-    icon: Activity,
-  },
-  {
-    title: "Tagihan",
-    href: "/portal/billing",
-    icon: Receipt,
-  },
-  {
-    title: "Pembayaran",
-    href: "/portal/payments",
-    icon: Wallet,
-  },
-  {
-    title: "Log",
-    href: "/portal/logs",
-    icon: ScrollText,
-  },
-];
-
 interface SidebarProps {
   className?: string;
   onItemClick?: () => void;
@@ -145,8 +114,6 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
   const router = useRouter();
   const { currentUser, logout } = useAuth();
   const [activeSessionCount, setActiveSessionCount] = useState<number>(0);
-  const isCustomer = currentUser?.role === "customer";
-
   const handleLogout = () => {
     logout(); // hapus sesi login (localStorage)
     router.replace("/login"); // langsung redirect ke halaman login
@@ -161,12 +128,10 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
         // silent fallback
       }
     };
-    if (!isCustomer) {
-      fetchCounts();
-      const interval = setInterval(fetchCounts, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [isCustomer]);
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const isLinkActive = (href: string) => {
     if (href === "/dashboard") {
@@ -208,7 +173,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
       {/* Navigation Sections */}
       <div className="flex-1 overflow-y-auto px-3 py-4">
         {/* Main Section — hanya menu yang user punya permission read-nya */}
-        {!isCustomer && visibleMainItems.length > 0 && (
+        {visibleMainItems.length > 0 && (
           <div className="space-y-1">
             <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               Manajemen Jaringan
@@ -252,46 +217,6 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                       {activeSessionCount}
                     </span>
                   )}
-                </Link>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Portal Pelanggan Section */}
-        {isCustomer && (
-          <div className="space-y-1">
-            <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Portal Pelanggan
-            </div>
-            {portalNavItems.map((item) => {
-              const active = item.matchExact
-                ? pathname === item.href
-                : isLinkActive(item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onItemClick}
-                  className={cn(
-                    "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    active
-                      ? "bg-emerald-50 text-emerald-600 font-semibold dark:bg-emerald-950/50 dark:text-emerald-400 shadow-xs"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon
-                      className={cn(
-                        "h-4 w-4 shrink-0 transition-colors",
-                        active
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
-                      )}
-                    />
-                    <span>{item.title}</span>
-                  </div>
                 </Link>
               );
             })}

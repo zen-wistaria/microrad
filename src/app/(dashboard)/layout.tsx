@@ -7,8 +7,8 @@ import { useEffect, useState } from "react";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
-import { useAuth } from "@/lib/auth";
 import { canAccessRoute } from "@/lib/rbac";
+import { useAuth } from "@/lib/use-auth";
 
 export default function DashboardLayout({
   children,
@@ -29,11 +29,7 @@ export default function DashboardLayout({
       return;
     }
     if (!canAccessRoute(currentUser, pathname)) {
-      if (currentUser?.role === "customer") {
-        router.push("/portal");
-      } else {
-        router.push("/dashboard");
-      }
+      router.push("/dashboard");
     }
   }, [isAuthenticated, isLoading, pathname, router, currentUser]);
 

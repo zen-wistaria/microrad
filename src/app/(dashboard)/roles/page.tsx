@@ -38,9 +38,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createRole, deleteRole, getRoles, updateRole } from "@/lib/api/roles";
-import { useAuth } from "@/lib/auth";
 import { RESOURCE_KEYS, RESOURCE_LABELS, type ResourceKey } from "@/lib/rbac";
 import type { Permission, Role } from "@/lib/types";
+import { useAuth } from "@/lib/use-auth";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 /** Permission read/create/update/delete per resource */

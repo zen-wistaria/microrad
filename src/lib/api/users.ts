@@ -1,65 +1,65 @@
-import { mockDb } from "../mock/db";
-import type { AppUser } from "../types";
+import type { AppUser } from "@/lib/types";
+import { apiFetch, paginated } from "./client";
 
-const delay = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export async function getUsers(): Promise<AppUser[]> {
-  await delay();
-  return mockDb.getUsers();
+export async function getUsers(params?: {
+  search?: string;
+  status?: string;
+  role?: string;
+  page?: number;
+  limit?: number;
+}): Promise<AppUser[]> {
+  if (params?.page !== undefined && params?.limit !== undefined) {
+    const res = await paginated<AppUser>("/users", {
+      search: params.search,
+      status: params.status,
+      role: params.role,
+      page: params.page,
+      limit: params.limit,
+    });
+    return res.data;
+  }
+  // Tanpa pagination → semua (limit besar)
+  const q = new URLSearchParams();
+  if (params?.search) q.set("search", params.search);
+  if (params?.status && params.status !== "all") q.set("status", params.status);
+  if (params?.role && params.role !== "all") q.set("role", params.role);
+  q.set("limit", "1000");
+  const res = await apiFetch<{ data: AppUser[] }>(`/users?${q.toString()}`);
+  return res.data;
 }
 
 export async function getUserById(id: string): Promise<AppUser | null> {
-  await delay();
-  const user = mockDb.getUserById(id);
-  return user || null;
+  return apiFetch<{ data: AppUser | null }>(`/users/${id}`).then((r) => r.data);
 }
 
 export async function getUserByEmail(email: string): Promise<AppUser | null> {
-  await delay();
-  const user = mockDb.getUserByEmail(email);
-  return user || null;
+  const users = await getUsers();
+  return (
+    users.find((u) => u.email.toLowerCase() === email.toLowerCase()) ?? null
+  );
 }
 
 export async function createUser(
   data: Omit<AppUser, "id" | "createdAt">,
 ): Promise<AppUser> {
-  await delay();
-  const existing = mockDb.getUserByEmail(data.email);
-  if (existing) {
-    throw new Error(
-      `Email '${data.email}' sudah terdaftar untuk pengguna lain.`,
-    );
-  }
-  return mockDb.createUser(data);
+  return apiFetch<{ data: AppUser }>("/users", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }).then((r) => r.data);
 }
 
 export async function updateUser(
   id: string,
   updates: Partial<AppUser>,
 ): Promise<AppUser> {
-  await delay();
-  if (updates.email) {
-    const existing = mockDb.getUserByEmail(updates.email);
-    if (existing && existing.id !== id) {
-      throw new Error(
-        `Email '${updates.email}' sudah digunakan oleh akun lain.`,
-      );
-    }
-  }
-  const updated = mockDb.updateUser(id, updates);
-  if (!updated) {
-    throw new Error("Pengguna aplikasi tidak ditemukan.");
-  }
-  return updated;
+  return apiFetch<{ data: AppUser }>(`/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  }).then((r) => r.data);
 }
 
 export async function deleteUser(id: string): Promise<{ success: boolean }> {
-  await delay();
-  const ok = mockDb.deleteUser(id);
-  if (!ok) {
-    throw new Error(
-      "Tidak dapat menghapus satu-satunya akun pengguna yang tersisa.",
-    );
-  }
-  return { success: true };
+  return apiFetch<{ success: boolean }>(`/users/${id}`, {
+    method: "DELETE",
+  });
 }
