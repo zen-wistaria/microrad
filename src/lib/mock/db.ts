@@ -195,6 +195,15 @@ class MockDatabase {
     if (this.isBrowser()) {
       localStorage.setItem(STORAGE_KEYS.INITIALIZED, "true");
       this.save();
+      // Reset data mock billing juga (invoice & riwayat pembayaran) —
+      // storage invoice terpisah dari db utama, jadi harus dihapus agar
+      // invoice hasil generate/create manual tidak dipertahankan.
+      try {
+        localStorage.removeItem("microrad_invoices_mock");
+        localStorage.removeItem("microrad_payments_mock");
+      } catch (e) {
+        console.error("Failed to reset billing storage", e);
+      }
     }
   }
 
