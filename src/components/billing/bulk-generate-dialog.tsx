@@ -57,7 +57,6 @@ export function BulkGenerateDialog({
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [dueDay, setDueDay] = useState(10);
 
   const activeCustomerCount = customers.filter(
     (c) => c.status === "active",
@@ -66,17 +65,35 @@ export function BulkGenerateDialog({
   const handleGenerate = async () => {
     try {
       setLoading(true);
-      const res = await bulkGenerateInvoices(month, year, dueDay);
+      const res = await bulkGenerateInvoices(month, year);
+      const periodLabel = `${MONTH_NAMES[month - 1]} ${year}`;
+
+      // Rangkuman hasil: berhasil / gagal / di-skip karena sudah ada
+      const parts: string[] = [];
       if (res.createdCount > 0) {
-        toast.success(
-          `Berhasil membuat ${res.createdCount} tagihan baru untuk periode ${MONTH_NAMES[month - 1]} ${year}.`,
+        parts.push(`${res.createdCount} berhasil dibuat`);
+      }
+      if (res.failedCount > 0) {
+        parts.push(`${res.failedCount} gagal`);
+      }
+      if (res.skippedCount > 0) {
+        parts.push(`${res.skippedCount} di-skip (sudah ada)`);
+      }
+      if (parts.length === 0) {
+        toast.info(
+          `Tidak ada tagihan yang dibuat untuk periode ${periodLabel}: semua pelanggan aktif sudah memiliki tagihan.`,
         );
       } else {
-        toast.info(
-          `Semua pelanggan aktif sudah memiliki tagihan untuk periode ${MONTH_NAMES[month - 1]} ${year}.`,
+        toast.success(
+          `Generate massal periode ${periodLabel} selesai: ${parts.join(", ")}.`,
         );
       }
       onSuccess(res.invoices, res.createdCount);
+      if (res.createdCount === 0) {
+        // Tidak ada yang dibuat — biarkan dialog terbuka agar user bisa
+        // mengubah bulan/tahun target atau membatalkannya sendiri.
+        return;
+      }
       onOpenChange(false);
     } catch (err: unknown) {
       toast.error(
@@ -157,24 +174,12 @@ export function BulkGenerateDialog({
             </div>
           </div>
 
-          {/* Due Day */}
-          <div className="space-y-1.5">
-            <Label htmlFor="bulk-due-day">
-              Tanggal Batas Jatuh Tempo (Tiap Bulan)
-            </Label>
-            <Input
-              id="bulk-due-day"
-              type="number"
-              min={1}
-              max={31}
-              value={dueDay}
-              onChange={(e) => setDueDay(Number(e.target.value))}
-              placeholder="Contoh: 10"
-              className="h-9 font-mono"
-            />
-            <p className="text-[11px] text-slate-500">
-              Semua invoice yang digenerate akan memiliki tanggal jatuh tempo
-              tgl {dueDay} {MONTH_NAMES[month - 1]} {year}.
+          {/* Info jatuh tempo otomatis */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              📅 Tanggal jatuh tempo setiap tagihan otomatis diambil dari
+              tanggal registrasi pertama pelanggan + 1 bulan — tidak perlu
+              diatur manual.
             </p>
           </div>
         </div>

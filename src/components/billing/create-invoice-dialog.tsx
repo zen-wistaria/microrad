@@ -26,17 +26,38 @@ import {
 } from "@/components/ui/select";
 import {
   createInvoiceForCustomer,
-  getDueDateFromRegistration,
+  getDueDateFromPeriod,
 } from "@/lib/api/billing";
 import type { BandwidthProfile, Customer, Invoice } from "@/lib/types";
 import { formatRupiah, getErrorMessage } from "@/lib/utils";
+
+export interface InvoiceFormValues {
+  customerId: string;
+  customerUsername: string;
+  customerFullName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  profileId: string;
+  profileName: string;
+  month: number;
+  year: number;
+  subtotal: number;
+  tax: number;
+  taxPercent: number;
+  discount: number;
+  adminFee: number;
+  installationFee: number;
+  totalAmount: number;
+  dueDate: string;
+  notes?: string;
+}
 
 interface CreateInvoiceDialogProps {
   customers: Customer[];
   profiles: BandwidthProfile[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: (newInvoice: Invoice) => void;
+  onSuccess: (invoice: Invoice, values: InvoiceFormValues) => void;
 }
 
 const MONTH_NAMES = [
@@ -95,12 +116,13 @@ export function CreateInvoiceDialog({
     (p) => p.id === selectedCustomer?.profileId,
   );
 
-  // Jatuh tempo otomatis: tanggal registrasi pelanggan + 1 bulan.
-  // (Nomor hari tetap, mis. registrasi tgl 15 → jatuh tempo tgl 15 bulan
-  // berikutnya; jika bulan berikutnya lebih pendek, dipakai hari terakhir.)
-  const autoDueDate = selectedCustomer
-    ? getDueDateFromRegistration(selectedCustomer.createdAt)
-    : "";
+  // Jatuh tempo otomatis: periode + 1 bulan.
+  // (mis. periode Agustus 2026 → jatuh tempo September 2026; hari memakai
+  // tanggal registrasi pelanggan, fallback ke 10.)
+  const autoDueDate =
+    selectedCustomer && year > 0 && month >= 1 && month <= 12
+      ? getDueDateFromPeriod(year, month, selectedCustomer.createdAt)
+      : "";
 
   useEffect(() => {
     if (open) {
@@ -196,7 +218,26 @@ export function CreateInvoiceDialog({
       });
 
       toast.success(`Invoice ${created.invoiceNumber} berhasil dibuat!`);
-      onSuccess(created);
+      onSuccess(created, {
+        customerId: selectedCustomer.id,
+        customerUsername: selectedCustomer.username,
+        customerFullName: selectedCustomer.fullName,
+        customerPhone: selectedCustomer.phone,
+        customerAddress: selectedCustomer.address,
+        profileId: selectedCustomer.profileId,
+        profileName: selectedProfile?.name || "Paket Standar",
+        month,
+        year,
+        subtotal,
+        tax: taxAmount,
+        taxPercent: safeTaxPercent,
+        discount,
+        adminFee,
+        installationFee,
+        totalAmount,
+        dueDate,
+        notes: notes.trim() || undefined,
+      });
       onOpenChange(false);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal membuat invoice");
@@ -379,9 +420,10 @@ export function CreateInvoiceDialog({
                 className="h-9"
               />
               <p className="text-[11px] text-slate-400">
-                Otomatis = tanggal registrasi pelanggan + 1 bulan
+                Otomatis = akhir periode + 1 bulan (hari mengikuti tanggal
+                registrasi pelanggan)
                 {selectedCustomer
-                  ? ` (registrasi ${new Date(selectedCustomer.createdAt).getDate()} — jatuh tempo ${dueDate || "—"})`
+                  ? ` (registrasi tgl ${new Date(selectedCustomer.createdAt).getDate()} — jatuh tempo ${dueDate || "—"})`
                   : "."}
               </p>
             </div>

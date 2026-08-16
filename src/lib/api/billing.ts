@@ -43,23 +43,25 @@ function resolveMockDateString(dateStr?: string | null): string {
 }
 
 /**
- * Tanggal jatuh tempo otomatis: tanggal registrasi pelanggan ditambah
- * satu bulan (hari tetap sama; jika hari tersebut tidak ada di bulan
- * berikutnya, dipakai hari terakhir bulan tersebut).
+ * Tanggal jatuh tempo otomatis: TANGGAL PERIODE + 1 bulan.
+ * (mis. tagihan periode Agustus 2026 → jatuh tempo September 2026;
+ * hari pakai tanggal registrasi pelanggan, fallback ke 10 bila tidak ada)
  */
-export function getDueDateFromRegistration(createdAt?: string | null): string {
+export function getDueDateFromPeriod(
+  year: number,
+  month: number,
+  createdAt?: string | null,
+): string {
   const raw = resolveMockDateString(createdAt);
   const reg = new Date(raw);
-  if (Number.isNaN(reg.getTime())) return "";
-  const base = new Date(reg); // bentuk "YYYY-MM-DD" utk input date
-  const due = new Date(
-    base.getFullYear(),
-    base.getMonth() + 1,
-    base.getDate(),
-    23,
-    59,
-    59,
-  );
+  const regDate = Number.isNaN(reg.getTime()) ? 10 : reg.getDate();
+  const due = new Date(year, month, regDate, 23, 59, 59);
+  // Normalisasi: jika tanggal tidak ada di bulan jatuh (mis. 31 Feb), JS
+  // melimpahkan ke bulan berikutnya — force ke hari terakhir bulan jatuh.
+  if (due.getMonth() !== month % 12) {
+    due.setDate(0);
+    due.setHours(23, 59, 59, 0);
+  }
   return [
     `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`,
     `${String(due.getHours()).padStart(2, "0")}:${String(due.getMinutes()).padStart(2, "0")}`,
@@ -98,22 +100,17 @@ export async function createInvoiceForCustomer(
     throw new Error("Pelanggan tidak ditemukan.");
   }
 
-  // Jatuh tempo otomatis: tanggal registrasi pelanggan + 1 bulan.
-  const dueFromReg = getDueDateFromRegistration(existingCustomer.createdAt);
-  const dueDate = (
-    dueFromReg ? new Date(dueFromReg).toISOString() : data.dueDate
-  ) as string;
-
-  // Periodenya mengikuti bulan jatuh tempo otomatis di atas.
-  const dueFallback = dueDate ? new Date(dueDate) : new Date();
-  const periodYear = data.periodYear || dueFallback.getFullYear();
-  const periodMonth = data.periodMonth || dueFallback.getMonth() + 1;
+  // Jatuh tempo otomatis: periode + 1 bulan.
+  const dueFromPeriod = getDueDateFromPeriod(
+    data.periodYear,
+    data.periodMonth,
+    existingCustomer.createdAt,
+  );
+  const dueDate = (dueFromPeriod || data.dueDate) as string;
 
   return createInvoice({
     ...data,
     dueDate,
-    periodYear,
-    periodMonth,
     issueDate: data.issueDate || new Date().toISOString(),
   });
 }
@@ -297,11 +294,17 @@ export async function markInvoiceAsPaid(
   return updatedInv;
 }
 
+export interface BulkGenerateResult {
+  createdCount: number;
+  failedCount: number;
+  skippedCount: number;
+  invoices: Invoice[];
+}
+
 export async function bulkGenerateInvoices(
   month: number,
   year: number,
-  dueDateDay = 10,
-): Promise<{ createdCount: number; invoices: Invoice[] }> {
+): Promise<BulkGenerateResult> {
   await delay(300);
   const [customers, profiles, existingInvoices] = await Promise.all([
     getCustomers(),
@@ -311,56 +314,75 @@ export async function bulkGenerateInvoices(
 
   const activeCustomers = customers.filter((c) => c.status === "active");
   const newlyCreated: Invoice[] = [];
+  const failedCustomers: string[] = [];
+  let skippedCount = 0;
   const now = new Date().toISOString();
 
   const dueMonthStr = String(month).padStart(2, "0");
-  const dueDayStr = String(dueDateDay).padStart(2, "0");
-  const dueDate = `${year}-${dueMonthStr}-${dueDayStr}T23:59:59Z`;
+  const dueYear = month === 12 ? year + 1 : year;
+  const dueMonthZero = month === 12 ? 0 : month + 1 - 1;
+  const dueMonth = dueMonthZero + 1;
 
   for (const customer of activeCustomers) {
-    // Check if invoice already exists for this customer in this period
+    // Skip jika tagihan untuk pelanggan ini di periode tersebut sudah ada
     const exists = existingInvoices.some(
       (inv) =>
         inv.customerId === customer.id &&
         inv.periodMonth === month &&
         inv.periodYear === year,
     );
-
-    if (!exists) {
-      const profile = profiles.find((p) => p.id === customer.profileId);
-      const subtotal = profile?.price || 0;
-      const adminFee = 2500;
-      const totalAmount = subtotal + adminFee;
-      const seq = existingInvoices.length + newlyCreated.length + 1;
-      const invoiceNumber = `INV/${year}/${dueMonthStr}/${String(seq).padStart(3, "0")}`;
-
-      const inv: Invoice = {
-        id: `inv-${Date.now()}-${customer.id}`,
-        invoiceNumber,
-        customerId: customer.id,
-        customerUsername: customer.username,
-        customerFullName: customer.fullName,
-        customerPhone: customer.phone,
-        customerAddress: customer.address,
-        profileId: customer.profileId,
-        profileName: profile?.name || "Paket Internet",
-        periodMonth: month,
-        periodYear: year,
-        subtotal,
-        tax: 0,
-        discount: 0,
-        adminFee,
-        installationFee: 0,
-        taxPercent: 0,
-        totalAmount,
-        status: "unpaid",
-        issueDate: `${year}-${dueMonthStr}-01T08:00:00Z`,
-        dueDate,
-        createdAt: now,
-        updatedAt: now,
-      };
-      newlyCreated.push(inv);
+    if (exists) {
+      skippedCount += 1;
+      continue;
     }
+
+    const profile = profiles.find((p) => p.id === customer.profileId);
+    // Pelanggan aktif tanpa paket (profileId kosong / tidak ditemukan) gagal
+    if (!profile || !customer.profileId) {
+      failedCustomers.push(customer.username);
+      continue;
+    }
+
+    // Jatuh tempo otomatis: akhir periode + 1 bulan
+    // (mis. generate untuk September 2026 → jatuh tempo Oktober 2026;
+    //  hari memakai tanggal registrasi pelanggan, fallback ke 10)
+    const dueFromPeriod = getDueDateFromPeriod(year, month, customer.createdAt);
+    const dueDate = dueFromPeriod
+      ? new Date(dueFromPeriod).toISOString()
+      : `${dueYear}-${String(dueMonth).padStart(2, "0")}-10T23:59:59Z`;
+
+    const subtotal = profile.price ?? 0;
+    const adminFee = 2500;
+    const totalAmount = subtotal + adminFee;
+    const seq = existingInvoices.length + newlyCreated.length + 1;
+    const invoiceNumber = `INV/${year}/${dueMonthStr}/${String(seq).padStart(3, "0")}`;
+
+    const inv: Invoice = {
+      id: `inv-${Date.now()}-${customer.id}`,
+      invoiceNumber,
+      customerId: customer.id,
+      customerUsername: customer.username,
+      customerFullName: customer.fullName,
+      customerPhone: customer.phone,
+      customerAddress: customer.address,
+      profileId: customer.profileId,
+      profileName: profile.name,
+      periodMonth: month,
+      periodYear: year,
+      subtotal,
+      tax: 0,
+      discount: 0,
+      adminFee,
+      installationFee: 0,
+      taxPercent: 0,
+      totalAmount,
+      status: "unpaid",
+      issueDate: `${year}-${dueMonthStr}-01T08:00:00Z`,
+      dueDate,
+      createdAt: now,
+      updatedAt: now,
+    };
+    newlyCreated.push(inv);
   }
 
   const allInvoices = [...newlyCreated, ...existingInvoices];
@@ -368,6 +390,8 @@ export async function bulkGenerateInvoices(
 
   return {
     createdCount: newlyCreated.length,
+    failedCount: failedCustomers.length,
+    skippedCount,
     invoices: allInvoices,
   };
 }

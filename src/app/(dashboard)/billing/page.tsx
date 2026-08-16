@@ -216,8 +216,15 @@ function BillingContent() {
     setSummary(sumData);
   };
 
-  const handleBulkSuccess = async (allInvoices: Invoice[]) => {
-    setInvoices(allInvoices);
+  const handleBulkSuccess = async (_allInvoices: Invoice[]) => {
+    // Selalu baca langsung dari storage — ini sumber kebenaran tunggal.
+    // Argumen onSuccess tidak digunakan karena bisa berisi daftar yang
+    // tidak lengkap (mis. bila render ulang terjadi di tengah proses).
+    const fresh = await getInvoices();
+    setInvoices(fresh);
+    // Reset ke halaman 1 agar baris hasil generate langsung terlihat
+    // (bulan hasil generate bisa tidak ada di halaman aktif sebelumnya).
+    setPage(1);
     const sumData = await getBillingSummary();
     setSummary(sumData);
   };
@@ -438,9 +445,20 @@ function BillingContent() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Semua Bulan</SelectItem>
-                        <SelectItem value="8">Agustus</SelectItem>
-                        <SelectItem value="7">Juli</SelectItem>
-                        <SelectItem value="6">Juni</SelectItem>
+                        {/* Opsi bulan diambil dinamis dari data invoice yang
+                            tersedia (termasuk hasil generate massal) */}
+                        {Array.from(
+                          new Set(invoices.map((inv) => inv.periodMonth)),
+                        )
+                          .sort((a, b) => b - a)
+                          .map((m) => (
+                            <SelectItem key={m} value={String(m)}>
+                              {new Date(2026, m - 1, 1).toLocaleDateString(
+                                "id-ID",
+                                { month: "long" },
+                              )}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -899,9 +917,31 @@ function BillingContent() {
         profiles={profiles}
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onSuccess={(newInv) => {
-          setInvoices((prev) => [newInv, ...prev]);
+        onSuccess={(_newInv, values) => {
+          // Pastikan state selalu segar — sumber kebenaran tunggal di localStorage.
+          getInvoices().then((fresh) => {
+            setInvoices(fresh);
+            setPage(1);
+          });
           getBillingSummary().then(setSummary);
+
+          // Pelanggan sekarang punya tagihan di bulan ini — sinkronkan juga
+          // di state customers agar dialog tidak salah "keburu edit" saat
+          // bulan target jatuh pada periode yang sama dengan registrasi.
+          const dueM = new Date(`${values.dueDate}T00:00:00`).getMonth() + 1;
+          const dueY = new Date(`${values.dueDate}T00:00:00`).getFullYear();
+          if (
+            values.month === dueM &&
+            values.year === dueY // bukan periode lain yang sengaja dipilih
+          ) {
+            setCustomers((prev) =>
+              prev.map((c) =>
+                c.id === values.customerId
+                  ? { ...c, hasInvoiceInPeriod: true }
+                  : c,
+              ),
+            );
+          }
         }}
       />
 
