@@ -10,6 +10,7 @@
 import { hashPassword } from "@better-auth/utils/password";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma";
+import { LOG_SOURCE_APP, LOG_SOURCE_PORTAL } from "../src/lib/api-auth";
 import { initialInvoices, initialPayments } from "../src/lib/mock/billing.mock";
 import { initialCustomers } from "../src/lib/mock/customers.mock";
 import { getGlobalLogs } from "../src/lib/mock/global-logs";
@@ -380,7 +381,8 @@ async function main() {
         ipAddress: log.ipAddress,
         userAgent: log.userAgent,
         userName: log.userName,
-        source: log.source,
+        // Sumber login: 2 label (Aplikasi / Portal Langganan); "api" → "Aplikasi"
+        source: log.source === "api" ? LOG_SOURCE_APP : log.source,
       },
     });
   }
@@ -404,7 +406,7 @@ async function main() {
           loginAt: new Date(log.loginAt),
           ipAddress: log.ipAddress,
           userAgent: log.userAgent,
-          source: log.source ?? "portal",
+          source: log.source === "admin" ? LOG_SOURCE_APP : LOG_SOURCE_PORTAL,
         },
       });
     }

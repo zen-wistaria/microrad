@@ -1,5 +1,6 @@
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { betterAuth } from "better-auth";
+import { recordPortalLogin } from "./api-auth";
 import { prisma } from "./prisma";
 
 /**
@@ -42,6 +43,20 @@ export const authPortal = betterAuth({
     cookiePrefix: "microrad_portal",
     defaultCookieAttributes: {
       sameSite: "lax",
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          // Catat login portal pelanggan → PortalLoginLog ("Portal Langganan")
+          try {
+            await recordPortalLogin(session.userId);
+          } catch (err) {
+            console.error("[auth-portal] gagal catat login portal:", err);
+          }
+        },
+      },
     },
   },
 });

@@ -1,6 +1,7 @@
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { betterAuth } from "better-auth";
 import { username } from "better-auth/plugins";
+import { recordAppLogin } from "./api-auth";
 import { prisma } from "./prisma";
 
 /**
@@ -50,6 +51,24 @@ export const auth = betterAuth({
     cookiePrefix: "microrad_app",
     defaultCookieAttributes: {
       sameSite: "lax",
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          // Catat login sukses user sistem → GlobalLog ("Aplikasi")
+          try {
+            const user = await prisma.appUser.findUnique({
+              where: { id: session.userId },
+              select: { id: true, name: true, email: true },
+            });
+            if (user) await recordAppLogin(user);
+          } catch (err) {
+            console.error("[auth] gagal catat login app:", err);
+          }
+        },
+      },
     },
   },
 });

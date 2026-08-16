@@ -160,7 +160,9 @@ export default function PortalLogsPage() {
                         </td>
                         <td className="py-2.5">
                           <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            {log.source === "admin" ? "Admin" : "Portal"}
+                            {log.source === "admin"
+                              ? "Admin"
+                              : "Portal Langganan"}
                           </span>
                         </td>
                       </tr>

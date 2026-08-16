@@ -25,11 +25,24 @@ import { getGlobalLogs } from "@/lib/api/logs";
 import type { GlobalLogEntry } from "@/lib/mock/global-logs";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 
-const SOURCE_LABELS: Record<GlobalLogEntry["source"], string> = {
-  portal: "Portal Pelanggan",
-  app: "Aplikasi (Admin)",
+const SOURCE_LABELS: Record<string, string> = {
+  Aplikasi: "Aplikasi",
+  "Portal Langganan": "Portal Langganan",
+  API: "API",
+  // nilai legacy/key lama diterjemahkan
+  app: "Aplikasi",
+  portal: "Portal Langganan",
   api: "API",
 };
+const SOURCE_LABEL_FOR = (source: string) => SOURCE_LABELS[source] ?? source;
+
+// Opsi filter sumber — hanya 2 label (Aplikasi / Portal Langganan) + API (cadangan)
+const SOURCE_OPTIONS = [
+  { value: "all", label: "Semua Sumber" },
+  { value: "Aplikasi", label: "Aplikasi" },
+  { value: "Portal Langganan", label: "Portal Langganan" },
+  { value: "API", label: "API" },
+];
 
 export default function GlobalLogsPage() {
   const [logs, setLogs] = useState<GlobalLogEntry[]>([]);
@@ -98,10 +111,15 @@ export default function GlobalLogsPage() {
     return logs.slice(start, start + safeLimit);
   }, [logs, safePage, safeLimit]);
 
-  // Ringkasan jumlah per sumber
+  // Ringkasan jumlah per sumber (2 label: Aplikasi / Portal Langganan + API cadangan)
   const counts = useMemo(() => {
-    const c = { portal: 0, app: 0, api: 0 };
-    for (const l of logs) c[l.source] += 1;
+    const c = { app: 0, portal: 0, api: 0 };
+    for (const l of logs) {
+      const src = SOURCE_LABEL_FOR(l.source);
+      if (src === "Portal Langganan") c.portal += 1;
+      else if (src === "API") c.api += 1;
+      else c.app += 1;
+    }
     return c;
   }, [logs]);
 
@@ -144,7 +162,7 @@ export default function GlobalLogsPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="p-4">
-            <span className="text-xs text-slate-500">Portal Pelanggan</span>
+            <span className="text-xs text-slate-500">Portal Langganan</span>
             <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">
               {counts.portal}
             </p>
@@ -152,7 +170,7 @@ export default function GlobalLogsPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <span className="text-xs text-slate-500">Aplikasi (Admin)</span>
+            <span className="text-xs text-slate-500">Aplikasi</span>
             <p className="mt-1 text-xl font-bold text-blue-600 dark:text-blue-400">
               {counts.app}
             </p>
@@ -199,10 +217,11 @@ export default function GlobalLogsPage() {
                   <SelectValue placeholder="Semua Sumber" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua Sumber</SelectItem>
-                  <SelectItem value="portal">Portal Pelanggan</SelectItem>
-                  <SelectItem value="app">Aplikasi (Admin)</SelectItem>
-                  <SelectItem value="api">API</SelectItem>
+                  {SOURCE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -297,14 +316,14 @@ export default function GlobalLogsPage() {
                         <span
                           className={[
                             "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                            log.source === "portal"
+                            SOURCE_LABEL_FOR(log.source) === "Portal Langganan"
                               ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
-                              : log.source === "app"
+                              : SOURCE_LABEL_FOR(log.source) === "Aplikasi"
                                 ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400"
                                 : "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400",
                           ].join(" ")}
                         >
-                          {SOURCE_LABELS[log.source]}
+                          {SOURCE_LABEL_FOR(log.source)}
                         </span>
                       </td>
                     </tr>
