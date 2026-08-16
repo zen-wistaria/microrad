@@ -2,7 +2,7 @@
 
 import { ArrowUp, CalendarDays, RefreshCw } from "lucide-react";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { CustomerMonthlyUsageChart } from "@/components/charts/customer-monthly-usage-chart";
 import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getCustomerMonthlyUsage } from "@/lib/api/dashboard";
 import { usePortal } from "@/lib/portal-context";
 import type { CustomerDailyUsage, CustomerMonthlyUsage } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
@@ -54,23 +53,19 @@ export default function PortalUsagePage() {
     if (data) setDaily(data.usageHistory);
   }, [data]);
 
-  // Pemakaian per bulan — fetch per tahun terpilih (filter "Per Tahun")
-  const fetchMonthly = useCallback(async () => {
-    if (!data) return;
-    try {
-      setMonthlyLoading(true);
-      const res = await getCustomerMonthlyUsage(data.customer.id, selectedYear);
-      setMonthly(res);
-    } catch {
-      setMonthly([]);
-    } finally {
-      setMonthlyLoading(false);
-    }
-  }, [data, selectedYear]);
-
+  // Pemakaian per bulan — dari data portal (monthlyUsage, 12 bulan berjalan).
+  // Filter tahun terpilih dilakukan di client.
   useEffect(() => {
-    fetchMonthly();
-  }, [fetchMonthly]);
+    if (!data) return;
+    setMonthlyLoading(true);
+    const monthly = data.monthlyUsage ?? [];
+    const filtered =
+      selectedYear > 0
+        ? monthly.filter((m) => m.month.startsWith(`${selectedYear}-`))
+        : monthly;
+    setMonthly(filtered);
+    setMonthlyLoading(false);
+  }, [data, selectedYear]);
 
   // Akumulasi pemakaian bulan ini (bulan berjalan) dari data bulanan tahun
   // terpilih; fallback ke baris bulan berjalan dari 30 hari terakhir.

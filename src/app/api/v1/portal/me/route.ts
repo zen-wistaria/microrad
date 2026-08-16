@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePortalSession } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { getCustomerUsageHistory } from "@/lib/usage-synthetic";
+import {
+  getCustomerMonthlyUsage,
+  getCustomerUsageHistory,
+} from "@/lib/usage-synthetic";
 
 /**
  * GET /api/v1/portal/me — agregat data pelanggan yang login (sesi portal).
@@ -59,8 +62,9 @@ export const GET = asyncApi(async () => {
       }),
     ]);
 
-  // Summary
+  // Summary + riwayat penggunaan (30 hari) + bulanan 12 bulan berjalan
   const usageHistory = getCustomerUsageHistory(customerId);
+  const monthlyUsage = getCustomerMonthlyUsage(customerId);
   const totalDownload = usageHistory.reduce((a, p) => a + p.downloadBytes, 0);
   const totalUpload = usageHistory.reduce((a, p) => a + p.uploadBytes, 0);
   const activeInvoices = invoices.filter(
@@ -115,6 +119,7 @@ export const GET = asyncApi(async () => {
       profile,
       summary,
       usageHistory,
+      monthlyUsage,
       invoices: invoices.map(serializeInv),
       payments: payments.map((p) => ({
         ...p,

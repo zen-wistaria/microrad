@@ -3,6 +3,7 @@ import type {
   BandwidthProfile,
   Customer,
   CustomerDailyUsage,
+  CustomerMonthlyUsage,
   CustomerPortalSummary,
   Invoice,
   PaymentRecord,
@@ -15,6 +16,7 @@ export interface CustomerPortalData {
   profile: BandwidthProfile | null;
   summary: CustomerPortalSummary;
   usageHistory: CustomerDailyUsage[];
+  monthlyUsage: CustomerMonthlyUsage[];
   invoices: Invoice[];
   payments: PaymentRecord[];
   sessions: Session[];
