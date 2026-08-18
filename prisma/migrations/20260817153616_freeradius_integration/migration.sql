@@ -69,38 +69,38 @@ CREATE TABLE "radusergroup" (
 
 -- CreateTable
 CREATE TABLE "radacct" (
-    "RadAcctId" BIGSERIAL NOT NULL,
-    "AcctSessionId" TEXT NOT NULL,
-    "AcctUniqueId" TEXT NOT NULL,
-    "UserName" TEXT,
-    "GroupName" TEXT,
-    "Realm" TEXT,
-    "NASIPAddress" INET,
-    "NASPortId" TEXT,
-    "NASPortType" TEXT,
-    "AcctStartTime" TIMESTAMPTZ(6),
-    "AcctUpdateTime" TIMESTAMPTZ(6),
-    "AcctStopTime" TIMESTAMPTZ(6),
-    "AcctInterval" BIGINT,
-    "AcctSessionTime" BIGINT,
-    "AcctAuthentic" TEXT,
-    "ConnectInfo_start" TEXT,
-    "ConnectInfo_stop" TEXT,
-    "AcctInputOctets" BIGINT,
-    "AcctOutputOctets" BIGINT,
-    "CalledStationId" TEXT,
-    "CallingStationId" TEXT,
-    "AcctTerminateCause" TEXT,
-    "ServiceType" TEXT,
-    "FramedProtocol" TEXT,
-    "FramedIPAddress" INET,
-    "FramedIPv6Address" INET,
-    "FramedIPv6Prefix" INET,
-    "FramedInterfaceId" TEXT,
-    "DelegatedIPv6Prefix" INET,
-    "Class" TEXT,
+    "radacctid" BIGSERIAL NOT NULL,
+    "acctsessionid" TEXT NOT NULL,
+    "acctuniqueid" TEXT NOT NULL,
+    "username" TEXT,
+    "groupname" TEXT,
+    "realm" TEXT,
+    "nasipaddress" INET,
+    "nasportid" TEXT,
+    "nasporttype" TEXT,
+    "acctstarttime" TIMESTAMPTZ(6),
+    "acctupdatetime" TIMESTAMPTZ(6),
+    "acctstoptime" TIMESTAMPTZ(6),
+    "acctinterval" BIGINT,
+    "acctsessiontime" BIGINT,
+    "acctauthentic" TEXT,
+    "connectinfo_start" TEXT,
+    "connectinfo_stop" TEXT,
+    "acctinputoctets" BIGINT,
+    "acctoutputoctets" BIGINT,
+    "calledstationid" TEXT,
+    "callingstationid" TEXT,
+    "acctterminatecause" TEXT,
+    "servicetype" TEXT,
+    "framedprotocol" TEXT,
+    "framedipaddress" INET,
+    "framedipv6address" INET,
+    "framedipv6prefix" INET,
+    "framedinterfaceid" TEXT,
+    "delegatedipv6prefix" INET,
+    "class" TEXT,
 
-    CONSTRAINT "radacct_pkey" PRIMARY KEY ("RadAcctId")
+    CONSTRAINT "radacct_pkey" PRIMARY KEY ("radacctid")
 );
 
 -- CreateTable
@@ -109,10 +109,10 @@ CREATE TABLE "radpostauth" (
     "username" TEXT NOT NULL,
     "pass" TEXT,
     "reply" TEXT,
-    "CalledStationId" TEXT,
-    "CallingStationId" TEXT,
+    "calledstationid" TEXT,
+    "callingstationid" TEXT,
     "authdate" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "Class" TEXT,
+    "class" TEXT,
 
     CONSTRAINT "radpostauth_pkey" PRIMARY KEY ("id")
 );
@@ -154,16 +154,16 @@ CREATE INDEX "radgroupreply_groupname_idx" ON "radgroupreply"("groupname");
 CREATE INDEX "radusergroup_username_idx" ON "radusergroup"("username");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "radacct_AcctUniqueId_key" ON "radacct"("AcctUniqueId");
+CREATE UNIQUE INDEX "radacct_acctuniqueid_key" ON "radacct"("acctuniqueid");
 
 -- CreateIndex
-CREATE INDEX "radacct_start_user_idx" ON "radacct"("AcctStartTime", "UserName");
+CREATE INDEX "radacct_start_user_idx" ON "radacct"("acctstarttime", "username");
 
 -- CreateIndex
 CREATE INDEX "radpostauth_username_idx" ON "radpostauth"("username");
 
 -- CreateIndex
-CREATE INDEX "radpostauth_class_idx" ON "radpostauth"("Class");
+CREATE INDEX "radpostauth_class_idx" ON "radpostauth"("class");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "nas_nasname_key" ON "nas"("nasname");

@@ -47,19 +47,28 @@ services:
 
   # MikroTik RouterOS CHR — RADIUS client + PPPoE server.
   # Inisialisasi via konsol: `docker attach microrad-chr`.
-  chr:
-    image: mikrotik/chr
-    container_name: microrad-chr
-    restart: unless-stopped
-    privileged: true # wajib: veth/L2 + KVM
-    stdin_open: true # RouterOS console via docker attach
-    tty: true
-    ports:
-      - "8728:8728" # RouterOS API (node-routeros dari host/app)
-    networks:
-      - microrad-net
-      # microrad-net:
-      #   ipv4_address: 172.30.0.4
+  # routeros:
+  #   image: evilfreelancer/docker-routeros:latest
+  #   container_name: microrad-chr
+  #   restart: unless-stopped
+  #   cap_add:
+  #     - NET_ADMIN
+  #   devices:
+  #     - /dev/net/tun
+  #     - /dev/kvm # omit on Apple Silicon (no KVM there; container uses QEMU emulation)
+  #   ports:
+  #     - "2222:22"
+  #     - "2223:23"
+  #     - "8291:8291"
+  #     - "8728:8728"
+  #     - "8729:8729"
+  #   volumes:
+  #     - routeros:/data
+  #   networks:
+  #     - default
+  #     - microrad-net
+  #     # microrad-net:
+  #     #   ipv4_address: 172.30.0.4
 
 networks:
   microrad-net:
@@ -70,3 +79,4 @@ networks:
 
 volumes:
   microrad_pgdata:
+  # routeros:
