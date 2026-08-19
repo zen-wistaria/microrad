@@ -4,7 +4,9 @@ import { PrismaClient } from "@/generated/prisma";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrismaClient(): PrismaClient {
-  const databaseUrl = process.env.DATABASE_URL ?? "";
+  const databaseUrl =
+    process.env.DATABASE_URL ??
+    "postgresql://microrad:microrad@localhost:5432/microrad";
   const adapter = new PrismaPg({ connectionString: databaseUrl });
   return new PrismaClient({ adapter });
 }
