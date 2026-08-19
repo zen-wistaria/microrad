@@ -17,7 +17,7 @@ export const GET = asyncApi(async () => {
   const data = routers.map((r) => ({
     ...r,
     apiPassword: undefined, // jangan bocor ke client
-    apiPasswordSet: Boolean(r.apiPassword),
+    apiPasswordSet: r.apiPassword !== null,
     activeSessionCount: countMap.get(r.id) ?? 0,
   }));
   return NextResponse.json({ data });
@@ -52,7 +52,7 @@ export const POST = asyncApi(async (req: Request) => {
         location: body.location?.trim() || undefined,
         type: "mikrotik",
         apiUsername: body.apiUsername?.trim() || undefined,
-        apiPassword: body.apiPassword || undefined,
+        apiPassword: body.apiPassword ?? "", // kosong = default RouterOS
         apiPort: body.apiPort ?? 8728,
         radiusSecret: body.radiusSecret || undefined,
         syncEnabled: body.syncEnabled ?? true,
@@ -67,7 +67,7 @@ export const POST = asyncApi(async (req: Request) => {
       data: {
         ...router,
         apiPassword: undefined,
-        apiPasswordSet: Boolean(router.apiPassword),
+        apiPasswordSet: router.apiPassword !== null,
         activeSessionCount: 0,
       },
     },

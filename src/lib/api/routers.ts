@@ -11,9 +11,19 @@ export async function getRouterById(id: string): Promise<NasRouter | null> {
   );
 }
 
-export async function createRouter(
-  data: Omit<NasRouter, "id" | "activeSessionCount">,
-): Promise<NasRouter> {
+/** Payload pembuatan/perubahan router (termasuk kredensial yang tidak
+ * diekspos di NasRouter — dirahasiakan dari client) */
+export interface RouterPayload
+  extends Omit<NasRouter, "id" | "activeSessionCount"> {
+  apiUsername?: string;
+  apiPassword?: string;
+  apiPasswordSet?: never;
+  apiPort?: number;
+  radiusSecret?: string;
+  syncEnabled?: boolean;
+}
+
+export async function createRouter(data: RouterPayload): Promise<NasRouter> {
   return apiFetch<{ data: NasRouter }>("/routers", {
     method: "POST",
     body: JSON.stringify(data),
@@ -22,7 +32,7 @@ export async function createRouter(
 
 export async function updateRouter(
   id: string,
-  updates: Partial<NasRouter>,
+  updates: Partial<RouterPayload>,
 ): Promise<NasRouter> {
   return apiFetch<{ data: NasRouter }>(`/routers/${id}`, {
     method: "PUT",
@@ -36,12 +46,54 @@ export async function deleteRouter(id: string): Promise<{ success: boolean }> {
   });
 }
 
-export async function pingRouter(
-  id: string,
-): Promise<{ status: "online" | "offline"; latencyMs: number }> {
+export async function pingRouter(id: string): Promise<{
+  status: "online" | "offline";
+  latencyMs: number;
+  identity?: string;
+}> {
   return apiFetch<{
-    data: { status: "online" | "offline"; latencyMs: number };
+    data: {
+      status: "online" | "offline";
+      latencyMs: number;
+      identity?: string;
+    };
   }>(`/routers/${id}/ping`, { method: "POST", body: JSON.stringify({}) }).then(
     (r) => r.data,
   );
+}
+
+export async function connectRouterRadius(
+  id: string,
+): Promise<{ radiusEnabled: boolean; added: number; removed: number }> {
+  return apiFetch<{
+    data: { radiusEnabled: boolean; added: number; removed: number };
+  }>(`/routers/${id}/connect-radius`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  }).then((r) => r.data);
+}
+
+export async function disconnectRouterRadius(
+  id: string,
+): Promise<{ radiusEnabled: boolean; removed: number }> {
+  return apiFetch<{
+    data: { radiusEnabled: boolean; removed: number };
+  }>(`/routers/${id}/disconnect-radius`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  }).then((r) => r.data);
+}
+
+export async function syncRouterNow(id: string): Promise<{
+  created: number;
+  updated: number;
+  closed: number;
+  error?: string;
+}> {
+  return apiFetch<{
+    data: { created: number; updated: number; closed: number; error?: string };
+  }>(`/routers/${id}/sync-now`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  }).then((r) => r.data);
 }

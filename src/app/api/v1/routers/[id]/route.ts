@@ -15,7 +15,7 @@ async function routerWithCount(id: string) {
   return {
     ...router,
     apiPassword: undefined,
-    apiPasswordSet: Boolean(router.apiPassword),
+    apiPasswordSet: router.apiPassword !== null,
     activeSessionCount: active,
   };
 }
@@ -77,7 +77,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           ? { apiUsername: body.apiUsername.trim() || undefined }
           : {}),
         ...(body.apiPassword !== undefined
-          ? { apiPassword: body.apiPassword || undefined }
+          ? { apiPassword: body.apiPassword ?? "" } // kosong = default RouterOS
           : {}),
         ...(body.apiPort !== undefined
           ? { apiPort: Math.max(1, Math.min(body.apiPort, 65535)) }
@@ -108,7 +108,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     data: {
       ...router,
       apiPassword: undefined,
-      apiPasswordSet: Boolean(router.apiPassword),
+      apiPasswordSet: router.apiPassword !== null,
       activeSessionCount: active,
     },
   });

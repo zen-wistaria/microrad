@@ -106,6 +106,15 @@ export interface NasRouter {
   type: "mikrotik";
   status: NasRouterStatus;
   activeSessionCount: number; // derived jumlah sesi aktif di router ini
+  // ── Koneksi API RouterOS & RADIUS (backend /api/v1/routers) ──
+  apiUsername?: string;
+  apiPasswordSet?: boolean; // true = API password tersimpan di DB
+  apiPort?: number; // default 8728
+  radiusSecret?: string;
+  radiusEnabled?: boolean; // router sudah dihubungkan ke FreeRADIUS
+  syncEnabled?: boolean; // poller membaca /ppp/active dari router ini
+  lastSeenAt?: string; // terakhir kali API merespons (ping/sync)
+  lastSyncedAt?: string; // terakhir kali poller sinkronisasi selesai
 }
 
 export interface Session {

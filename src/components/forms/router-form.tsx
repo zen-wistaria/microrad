@@ -1,7 +1,12 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2, Router as RouterIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  KeyRound,
+  Loader2,
+  Router as RouterIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -25,7 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createRouter, updateRouter } from "@/lib/api/routers";
+import {
+  createRouter,
+  type RouterPayload,
+  updateRouter,
+} from "@/lib/api/routers";
 import type { NasRouter, NasRouterStatus } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -40,9 +49,24 @@ const routerSchema = z.object({
     .regex(ipv4Regex, "Format IPv4 tidak valid (contoh: 192.168.88.1)"),
   location: z.string().optional(),
   status: z.enum(["online", "offline", "unknown"]),
+  apiUsername: z.string().trim().optional(),
+  apiPassword: z.string().optional(),
+  apiPort: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z
+      .number({ message: "Port API harus angka (default 8728)" })
+      .int()
+      .min(1)
+      .max(65535),
+  ),
+  radiusSecret: z.string().trim().optional(),
+  syncEnabled: z.boolean().default(true),
 });
 
-type RouterFormValues = z.infer<typeof routerSchema>;
+// zod v4: preprocess mengubah input (string) → output (number), jadi kita
+// pakai generic 3-kali RHF: input type utk form state, output type utk submit.
+type RouterFormInput = z.input<typeof routerSchema>;
+type RouterFormValues = z.output<typeof routerSchema>;
 
 interface RouterFormProps {
   initialData?: NasRouter;
@@ -62,13 +86,18 @@ export function RouterForm({
     setValue,
     watch,
     formState: { errors },
-  } = useForm<RouterFormValues>({
+  } = useForm<RouterFormInput, unknown, RouterFormValues>({
     resolver: zodResolver(routerSchema),
     defaultValues: {
       name: initialData?.name || "",
       ipAddress: initialData?.ipAddress || "",
       location: initialData?.location || "",
       status: initialData?.status || "online",
+      apiUsername: initialData?.apiUsername || "",
+      apiPassword: "",
+      apiPort: initialData?.apiPort ?? 8728,
+      radiusSecret: initialData?.radiusSecret || "",
+      syncEnabled: initialData?.syncEnabled ?? true,
     },
   });
 
@@ -78,12 +107,19 @@ export function RouterForm({
     try {
       setSubmitting(true);
       if (isEditing && initialData) {
-        await updateRouter(initialData.id, {
+        // Hanya kirim apiPassword bila diisi ulang (jangan timpa tersimpan)
+        const payload: Partial<RouterPayload> = {
           name: data.name,
           ipAddress: data.ipAddress,
           location: data.location,
           status: data.status as NasRouterStatus,
-        });
+          apiUsername: data.apiUsername || undefined,
+          apiPort: data.apiPort,
+          radiusSecret: data.radiusSecret || undefined,
+          syncEnabled: data.syncEnabled,
+        };
+        if (data.apiPassword) payload.apiPassword = data.apiPassword;
+        await updateRouter(initialData.id, payload);
         toast.success(`Router ${data.name} berhasil diperbarui.`);
       } else {
         await createRouter({
@@ -92,6 +128,11 @@ export function RouterForm({
           location: data.location,
           type: "mikrotik",
           status: data.status as NasRouterStatus,
+          apiUsername: data.apiUsername || undefined,
+          apiPassword: data.apiPassword || undefined,
+          apiPort: data.apiPort,
+          radiusSecret: data.radiusSecret || undefined,
+          syncEnabled: data.syncEnabled,
         });
         toast.success(`Router NAS ${data.name} berhasil ditambahkan.`);
       }
@@ -131,7 +172,7 @@ export function RouterForm({
           </div>
           <CardDescription>
             Router MikroTik yang terdaftar di database FreeRADIUS (tabel{" "}
-            <code>nas</code>).
+            <code>nas</code>) — IP ini diizinkan mengirim Access-Request.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -157,7 +198,7 @@ export function RouterForm({
             </Label>
             <Input
               id="ipAddress"
-              placeholder="mis. 192.168.88.1"
+              placeholder="mis. 192.168.88.1 / 10.90.20.238"
               {...register("ipAddress")}
               className={errors.ipAddress ? "border-rose-500" : ""}
             />
@@ -199,6 +240,111 @@ export function RouterForm({
               </SelectContent>
             </Select>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+            <KeyRound className="h-5 w-5" />
+            <CardTitle className="text-base">
+              Koneksi API & FreeRADIUS
+            </CardTitle>
+          </div>
+          <CardDescription>
+            Kredensial API RouterOS untuk sinkronisasi sesi (Test Ping,
+            Sinkronkan, Hubungkan ke FreeRADIUS). Radius Secret harus sama
+            dengan shared secret di FreeRADIUS (<code>nas.secret</code>).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="apiUsername">API Username RouterOS</Label>
+              <Input
+                id="apiUsername"
+                placeholder="mis. zen / admin"
+                autoComplete="off"
+                {...register("apiUsername")}
+              />
+              <p className="text-xs text-slate-500">
+                User dengan hak <code>read</code>, <code>write</code>,{" "}
+                <code>policy</code>, <code>test</code>.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apiPassword">
+                API Password{" "}
+                {isEditing && initialData?.apiPasswordSet && (
+                  <span className="text-xs font-normal text-emerald-600">
+                    (tersimpan — kosongkan jika tidak diganti)
+                  </span>
+                )}
+              </Label>
+              <Input
+                id="apiPassword"
+                type="password"
+                autoComplete="new-password"
+                placeholder={
+                  isEditing && initialData?.apiPasswordSet
+                    ? "•••••••• (tidak diubah)"
+                    : "mis. mezen"
+                }
+                {...register("apiPassword")}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="apiPort">API Port</Label>
+              <Input
+                id="apiPort"
+                type="number"
+                placeholder="8728"
+                {...register("apiPort")}
+                className={errors.apiPort ? "border-rose-500" : ""}
+              />
+              {errors.apiPort && (
+                <p className="text-xs text-rose-500">
+                  {errors.apiPort.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="radiusSecret">RADIUS Shared Secret</Label>
+              <Input
+                id="radiusSecret"
+                type="password"
+                autoComplete="new-password"
+                placeholder={isEditing ? "testing123" : "isi secret FreeRADIUS"}
+                {...register("radiusSecret")}
+              />
+              <p className="text-xs text-slate-500">
+                Sama dengan <code>/radius secret</code> di router & FreeRADIUS.
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 p-3 cursor-pointer dark:border-slate-800">
+            <input
+              type="checkbox"
+              {...register("syncEnabled")}
+              className="mt-0.5 h-4 w-4 accent-blue-600"
+            />
+            <span className="text-sm leading-snug">
+              <span className="font-medium">
+                Sinkronisasi otomatis sesi PPPoE
+              </span>
+              <span className="block text-xs text-slate-500">
+                Poller membaca <code>/ppp/active</code> tiap 10 detik untuk
+                memperbarui sesi & traffic. Matikan jika hanya memakai RADIUS
+                accounting.
+              </span>
+            </span>
+          </label>
         </CardContent>
       </Card>
 

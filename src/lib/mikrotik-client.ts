@@ -98,7 +98,7 @@ export function connectRouterOS(router: {
   apiUsername?: string | null;
   apiPassword?: string | null;
 }): Promise<MikrotikConn> {
-  if (!router.apiUsername || !router.apiPassword) {
+  if (!router.apiUsername) {
     return Promise.reject(
       new Error("Kredensial API RouterOS belum diisi pada router ini."),
     );
@@ -160,11 +160,13 @@ export function connectRouterOS(router: {
     };
 
     const startLogin = () => {
-      // Login 6.43+ (name/password plaintext — didukung semua RouterOS)
+      // Login 6.43+ (name/password plaintext — didukung semua RouterOS).
+      // Password kosong (router default) → kirim string kosong, bukan null.
+      const password = router.apiPassword ?? "";
       const words = [
         "/login",
         `=name=${router.apiUsername}`,
-        `=password=${router.apiPassword}`,
+        `=password=${password}`,
       ];
       socket.write(encodeSentence(words));
     };
@@ -204,9 +206,7 @@ export function connectRouterOS(router: {
 
     socket.on("data", (d) => {
       buffer = Buffer.concat([buffer, d]);
-      if (!loggedIn && buffer.includes(Buffer.from("!done"))) {
-        // login beres — buang sampai !done + lanjut antrian
-        loggedIn = true;
+      if (!loggedIn) {
         processData();
         sendNext();
         return;

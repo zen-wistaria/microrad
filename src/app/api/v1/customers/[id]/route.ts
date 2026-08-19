@@ -217,7 +217,7 @@ async function kickMikrotikSession(session: {
         `?=name=${session.customerUsername}`,
       ]);
       for (const r of rows) {
-        const dotId = r["=.id"];
+        const dotId = r[".id"];
         if (dotId)
           await mikrotik.write("/ppp/active/remove", [`=.id=${dotId}`]);
       }

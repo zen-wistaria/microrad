@@ -8,16 +8,35 @@ import type { MikrotikConn } from "./mikrotik-client";
 
 const execAsync = promisify(exec);
 
-export const FREERADIUS_IP = () => process.env.FREERADIUS_IP ?? "172.30.0.3";
+/**
+ * IP FreeRADIUS yang dikirim ke MikroTik sebagai `address` pada
+ * /radius add. Ini di-parse RouterOS sebagai IPv4 — JANGAN pakai
+ * hostname docker ("freeradius"), karena RouterOS menolak hostname
+ * di field bertipe IP (error "invalid or unexpected argument base").
+ * Hostname hanya valid untuk koneksi antar-container (postgres/freeradius).
+ */
+export const FREERADIUS_IP = () => {
+  const v = process.env.FREERADIUS_IP;
+  if (!v) return "172.30.0.3";
+  // Bila env berisi hostname/domain, fallback ke IP docker default
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(v) ? v : "172.30.0.3";
+};
 
-/** SIGHUP ke FreeRADIUS agar read_clients=yes membaca ulang tabel nas. */
+/** Reload FreeRADIUS agar read_clients=yes membaca ulang tabel nas.
+ *  SIGHUP (kill -HUP 1) TIDAK cukup — radiusd menjawab "HUP - No files
+ *  changed. Ignoring" dan client dari tabel `nas` TIDAK di-reload.
+ *  Client SQL hanya dimuat saat start → kita restart container penuh. */
 export async function triggerRadiusReload(): Promise<boolean> {
   try {
     const { stdout, stderr } = await execAsync(
-      "docker exec microrad-freeradius kill -HUP 1",
-      { timeout: 10_000 },
+      "docker restart microrad-freeradius",
+      { timeout: 60_000 },
     );
-    console.log("[radius-reload] HUP terkirim:", stdout.trim(), stderr.trim());
+    console.log(
+      "[radius-reload] container di-restart:",
+      stdout.trim(),
+      stderr.trim(),
+    );
     return true;
   } catch (e) {
     console.warn("[radius-reload] gagal (lanjut tanpa reload):", e);
@@ -39,7 +58,7 @@ export async function configureRadiusOnRouter(
     `?address=${radiusIp}`,
   ]);
   for (const e of existing) {
-    const dotId = e["=.id"];
+    const dotId = e[".id"];
     if (dotId) {
       await mikrotik.write("/radius/remove", [`=.id=${dotId}`]);
     }
@@ -68,7 +87,7 @@ export async function removeRadiusFromRouter(
     `?address=${radiusIp}`,
   ]);
   for (const e of existing) {
-    const dotId = e["=.id"];
+    const dotId = e[".id"];
     if (dotId) {
       await mikrotik.write("/radius/remove", [`=.id=${dotId}`]);
     }

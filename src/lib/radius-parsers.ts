@@ -62,10 +62,10 @@ export function parseRouterBytes(value: string | number | undefined): bigint {
 export function parseActiveRow(
   row: Record<string, string>,
 ): ActivePppRow | null {
-  const name = row["=name"];
+  const name = row["name"];
   if (!name) return null;
   return {
-    dotId: row["=.id"] ?? "",
+    dotId: row[".id"] ?? "",
     name,
     callerId: row["=caller-id"] ?? undefined,
     address: row["=address"] ?? undefined,
