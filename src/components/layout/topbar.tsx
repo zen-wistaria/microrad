@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { resetDemoData } from "@/lib/api/dashboard";
-import { initialUsers } from "@/lib/mock/users.mock";
+import { getUsers } from "@/lib/api/users";
+import type { AppUser } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
 import { AppUserRoleBadge } from "../common/status-badge";
 import { ThemeToggle } from "../common/theme-toggle";
@@ -48,6 +49,12 @@ const routeTitles: Record<string, string> = {
 };
 
 export function Topbar({ onOpenMobileNav }: TopbarProps) {
+  const [demoUsers, setDemoUsers] = useState<AppUser[]>([]);
+  useEffect(() => {
+    getUsers()
+      .then((users) => setDemoUsers(users.slice(0, 4)))
+      .catch(() => setDemoUsers([]));
+  }, []);
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, login, logout } = useAuth();
@@ -72,7 +79,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
   };
 
   const handleSwitchUser = (userId: string) => {
-    const user = initialUsers.find((u) => u.id === userId);
+    const user = demoUsers.find((u) => u.id === userId);
     if (user) {
       login(user.email, "password123");
       toast.info(`Beralih akun ke: ${user.name} (${user.role})`);
@@ -189,7 +196,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
               Ganti Akun Cepat (Demo):
             </DropdownMenuLabel>
             {isAdmin &&
-              initialUsers.slice(0, 4).map((user) => (
+              demoUsers.map((user) => (
                 <DropdownMenuItem
                   key={user.id}
                   onClick={() => handleSwitchUser(user.id)}

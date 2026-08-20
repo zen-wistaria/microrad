@@ -1,4 +1,4 @@
-import type { GlobalLogEntry } from "@/lib/mock/global-logs";
+import type { GlobalLogEntry } from "@/lib/types";
 import { paginated } from "./client";
 
 export interface GlobalLogFilter {

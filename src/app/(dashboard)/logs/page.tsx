@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getGlobalLogs } from "@/lib/api/logs";
-import type { GlobalLogEntry } from "@/lib/mock/global-logs";
+import type { GlobalLogEntry } from "@/lib/types";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 
 const SOURCE_LABELS: Record<string, string> = {

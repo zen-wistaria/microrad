@@ -1,24 +1,83 @@
 /**
- * Agregasi data usage DARI SESI NYATA (tabel session / radacct).
+ * Agregasi data usage DARI RADIUS — tabel radacct (sumber kebenaran).
  *
- * Menggantikan data synthetic (usage-synthetic.ts) untuk:
- * - Detail pelanggan (30 hari + bulanan)
- * - Portal pelanggan (usage history)
+ * Digunakan: detail pelanggan (30 hari + bulanan), portal, dashboard trend.
  *
- * Akun baru tanpa sesi → hasil array kosong (grafik kosong), bukan angka
- * synthetic yang menyesatkan.
+ * FreeRADIUS/PostgreSQL menyimpan timestamptz (UTC). Untuk agregasi harian
+ * & bulanan kita pakai offset zona waktu server (WIB, +07) agar hari kalender
+ * konsisten. Baris tanpa acctStartTime dilewati.
  */
 import type { PrismaClient } from "@/generated/prisma";
-import type { CustomerDailyUsage, CustomerMonthlyUsage } from "./types";
+import type {
+  CustomerDailyUsage,
+  CustomerMonthlyUsage,
+  UsageTrendPoint,
+} from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function labelId(date: Date): string {
+/** Key hari UTC ("YYYY-MM-DD") — FreeRADIUS mencatat UTC, agregasi ikut UTC. */
+function dateKeyUTC(date: Date): string {
   return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
   ].join("-");
+}
+
+/** Key bulan UTC ("YYYY-MM") — sama prinsipnya. */
+function monthKeyUTC(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Label tanggal lokal (WIB) dari Date UTC — hanya untuk tampilan. */
+function localDateLabel(date: Date): string {
+  const offsetMin = -date.getTimezoneOffset();
+  const shifted = new Date(date.getTime() + offsetMin * 60_000);
+  return shifted.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+function localMonthLabel(date: Date): string {
+  const offsetMin = -date.getTimezoneOffset();
+  const shifted = new Date(date.getTime() + offsetMin * 60_000);
+  return shifted.toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Ambil sesi radacct (Start/Stop/interim) utk username sejak waktu UTC. */
+async function getRadacctSessionsFor(
+  prisma: PrismaClient,
+  username: string,
+  since: Date,
+): Promise<
+  Array<{
+    acctStartTime: Date;
+    acctInputOctets: bigint | null;
+    acctOutputOctets: bigint | null;
+  }>
+> {
+  const rows = await prisma.radAcct.findMany({
+    where: { username, acctStartTime: { gte: since } },
+    select: {
+      acctStartTime: true,
+      acctInputOctets: true,
+      acctOutputOctets: true,
+    },
+  });
+  return rows
+    .filter((r) => r.acctStartTime !== null)
+    .map((r) => ({
+      acctStartTime: r.acctStartTime as Date,
+      acctInputOctets: r.acctInputOctets,
+      acctOutputOctets: r.acctOutputOctets,
+    }));
 }
 
 /** Riwayat pemakaian harian N hari terakhir (termasuk hari tanpa sesi → 0). */
@@ -29,26 +88,25 @@ export async function getUsageHistoryFromSessions(
   now = new Date(),
 ): Promise<CustomerDailyUsage[]> {
   const since = new Date(now.getTime() - (days - 1) * DAY_MS);
-  since.setHours(0, 0, 0, 0);
+  since.setUTCHours(0, 0, 0, 0);
 
-  const sessions = await prisma.session.findMany({
-    where: { customerId, startedAt: { gte: since } },
-    select: {
-      startedAt: true,
-      inputBytes: true,
-      outputBytes: true,
-      durationSeconds: true,
-    },
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { username: true },
   });
+  if (!customer) return [];
+
+  const sessions = await getRadacctSessionsFor(
+    prisma,
+    customer.username,
+    since,
+  );
 
   const byDay = new Map<string, CustomerDailyUsage>();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * DAY_MS);
-    byDay.set(labelId(d), {
-      date: d.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "short",
-      }),
+    byDay.set(dateKeyUTC(d), {
+      date: localDateLabel(d),
       downloadBytes: 0,
       uploadBytes: 0,
       totalBytes: 0,
@@ -57,12 +115,13 @@ export async function getUsageHistoryFromSessions(
   }
 
   for (const s of sessions) {
-    const key = labelId(s.startedAt);
-    if (!byDay.has(key)) continue;
-    const day = byDay.get(key) as CustomerDailyUsage;
-    day.downloadBytes += Number(s.inputBytes);
-    day.uploadBytes += Number(s.outputBytes);
-    day.totalBytes += Number(s.inputBytes) + Number(s.outputBytes);
+    const key = dateKeyUTC(s.acctStartTime);
+    const day = byDay.get(key);
+    if (!day) continue;
+    day.downloadBytes += Number(s.acctOutputOctets ?? 0);
+    day.uploadBytes += Number(s.acctInputOctets ?? 0);
+    day.totalBytes +=
+      Number(s.acctInputOctets ?? 0) + Number(s.acctOutputOctets ?? 0);
     day.sessionsCount += 1;
   }
 
@@ -78,25 +137,27 @@ export async function getMonthlyUsageFromSessions(
 ): Promise<CustomerMonthlyUsage[]> {
   const startMonth = year ? 0 : now.getMonth() - 11;
   const startYear = year ?? now.getFullYear();
-  const start = new Date(startYear, startMonth, 1);
+  const start = new Date(Date.UTC(startYear, startMonth, 1));
 
-  const sessions = await prisma.session.findMany({
-    where: { customerId, startedAt: { gte: start } },
-    select: {
-      startedAt: true,
-      inputBytes: true,
-      outputBytes: true,
-      durationSeconds: true,
-    },
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { username: true },
   });
+  if (!customer) return [];
+
+  const sessions = await getRadacctSessionsFor(
+    prisma,
+    customer.username,
+    start,
+  );
 
   const months = new Map<string, CustomerMonthlyUsage>();
   for (let i = 0; i < 12; i++) {
-    const d = new Date(startYear, startMonth + i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const d = new Date(Date.UTC(startYear, startMonth + i, 1));
+    const key = monthKeyUTC(d);
     months.set(key, {
       month: key,
-      label: d.toLocaleDateString("id-ID", { month: "long", year: "numeric" }),
+      label: localMonthLabel(d),
       downloadBytes: 0,
       uploadBytes: 0,
       totalBytes: 0,
@@ -105,14 +166,69 @@ export async function getMonthlyUsageFromSessions(
   }
 
   for (const s of sessions) {
-    const key = `${s.startedAt.getFullYear()}-${String(s.startedAt.getMonth() + 1).padStart(2, "0")}`;
+    const key = monthKeyUTC(s.acctStartTime);
     const m = months.get(key);
     if (!m) continue;
-    m.downloadBytes += Number(s.inputBytes);
-    m.uploadBytes += Number(s.outputBytes);
-    m.totalBytes += Number(s.inputBytes) + Number(s.outputBytes);
+    m.downloadBytes += Number(s.acctOutputOctets ?? 0);
+    m.uploadBytes += Number(s.acctInputOctets ?? 0);
+    m.totalBytes +=
+      Number(s.acctInputOctets ?? 0) + Number(s.acctOutputOctets ?? 0);
     m.sessionsCount += 1;
   }
 
   return Array.from(months.values());
+}
+
+/** Tren penggunaan 7 hari terakhir di dashboard — agregasi nyata radacct. */
+export async function getUsageTrendFromRadacct(
+  prisma: PrismaClient,
+  days = 7,
+  now = new Date(),
+): Promise<UsageTrendPoint[]> {
+  const since = new Date(now.getTime() - (days - 1) * DAY_MS);
+  since.setUTCHours(0, 0, 0, 0);
+
+  const rows = await prisma.radAcct.findMany({
+    where: { acctStartTime: { gte: since } },
+    select: {
+      acctStartTime: true,
+      acctInputOctets: true,
+      acctOutputOctets: true,
+    },
+  });
+
+  const byDay = new Map<string, { download: number; upload: number }>();
+  const points: UsageTrendPoint[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * DAY_MS);
+    const key = dateKeyUTC(d);
+    byDay.set(key, { download: 0, upload: 0 });
+    points.push({
+      date: localDateLabel(d),
+      downloadBytes: 0,
+      uploadBytes: 0,
+      bytes: 0,
+    });
+  }
+
+  for (const r of rows) {
+    if (!r.acctStartTime) continue;
+    const key = dateKeyUTC(r.acctStartTime);
+    const day = byDay.get(key);
+    if (!day) continue;
+    day.download += Number(r.acctOutputOctets ?? 0);
+    day.upload += Number(r.acctInputOctets ?? 0);
+  }
+
+  return points.map((p, i) => {
+    const d = new Date(now.getTime() - (days - 1 - i) * DAY_MS);
+    const key = dateKeyUTC(d);
+    const day = byDay.get(key) ?? { download: 0, upload: 0 };
+    return {
+      ...p,
+      downloadBytes: day.download,
+      uploadBytes: day.upload,
+      bytes: day.download + day.upload,
+    };
+  });
 }

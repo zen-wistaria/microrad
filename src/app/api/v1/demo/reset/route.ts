@@ -15,10 +15,10 @@ export const POST = asyncApi(async () => {
     throw new Error("Anda tidak memiliki izin untuk melakukan tindakan ini");
 
   // Wipe urutan child → parent (auth portal/user ikut cascade via customer)
+  await prisma.radAcct.deleteMany();
+  await prisma.radPostAuth.deleteMany();
   await prisma.paymentRecord.deleteMany();
   await prisma.invoice.deleteMany();
-  await prisma.session.deleteMany();
-  await prisma.portalSessionLog.deleteMany();
   await prisma.portalLoginLog.deleteMany();
   await prisma.globalLog.deleteMany();
   await prisma.portalUser.deleteMany();

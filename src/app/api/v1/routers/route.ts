@@ -8,17 +8,21 @@ export const GET = asyncApi(async () => {
   const routers = await prisma.nasRouter.findMany({
     orderBy: { name: "asc" },
   });
-  const activeCounts = await prisma.session.groupBy({
-    by: ["nasId"],
-    where: { stoppedAt: null },
-    _count: { _all: true },
+  // Sesi aktif per router = radacct online count by NAS IP
+  const onlineAcct = await prisma.radAcct.findMany({
+    where: { acctStopTime: null },
+    select: { nasIpAddress: true },
   });
-  const countMap = new Map(activeCounts.map((c) => [c.nasId, c._count._all]));
+  const countByIp = new Map<string, number>();
+  for (const a of onlineAcct) {
+    if (!a.nasIpAddress) continue;
+    countByIp.set(a.nasIpAddress, (countByIp.get(a.nasIpAddress) ?? 0) + 1);
+  }
   const data = routers.map((r) => ({
     ...r,
     apiPassword: undefined, // jangan bocor ke client
     apiPasswordSet: r.apiPassword !== null,
-    activeSessionCount: countMap.get(r.id) ?? 0,
+    activeSessionCount: countByIp.get(r.ipAddress) ?? 0,
   }));
   return NextResponse.json({ data });
 });

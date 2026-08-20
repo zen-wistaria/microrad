@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
-import { ensureSyncRuns } from "@/lib/mikrotik-sync";
 import { prisma } from "@/lib/prisma";
-import { collectLiveSnapshots } from "@/lib/realtime/collect";
-import type { LiveSnapshot } from "@/lib/realtime/hub";
-import { installRealtimeListener } from "@/lib/realtime/live-sessions";
-import type { RouterBrief } from "@/lib/realtime/ws-server";
-import { disconnectSessionRecord } from "../customers/[id]/route";
+import { getOnlineRadacct, radacctRowToSession } from "@/lib/radacct-sessions";
 
 interface SessionsQuery {
   search?: string;
@@ -32,32 +27,53 @@ export const GET = asyncApi(async (req: Request) => {
   const safeLimit = Math.min(Math.max(q.limit || 10, 1), 50);
   const safePage = Math.max(q.page || 1, 1);
 
-  installRealtimeListener();
-  await ensureSyncRuns().catch(() => undefined);
-
-  // Snapshot live (hub poller atau DB) + status router
-  const live = await collectLiveSnapshots();
-  const routerBriefs = await routerBriefsFromDb();
-
-  let rows: LiveSnapshot[] = live.snapshots;
-
-  // Filter
-  rows = rows.filter((s) => !q.activeOnly || !s.session.stoppedAt);
-
+  // SUMBER: radacct langsung — sesi online selalu akurat dari FreeRADIUS.
+  // Tidak bergantung pada poller/tabel session (yang bisa basi).
+  const params: { nasIpAddress?: string; username?: string; limit?: number } =
+    {};
+  if (q.router && q.router !== "all") params.nasIpAddress = q.router;
   if (q.customerId) {
-    rows = rows.filter((s) => s.session.customerId === q.customerId);
+    const cust = await prisma.customer.findUnique({
+      where: { id: q.customerId },
+      select: { username: true },
+    });
+    if (cust) params.username = cust.username;
   }
-  if (q.router && q.router !== "all") {
-    rows = rows.filter((s) => s.session.nasIpAddress === q.router);
+  const online = await getOnlineRadacct(params);
+
+  // Resolve username → customerId (batch) agar link detail valid
+  const usernames = Array.from(
+    new Set(
+      online.map((r) => r.username).filter((u): u is string => Boolean(u)),
+    ),
+  );
+  const customers = usernames.length
+    ? await prisma.customer.findMany({
+        where: { username: { in: usernames } },
+        select: { id: true, username: true, nasId: true },
+      })
+    : [];
+  const custByUsername = new Map(customers.map((c) => [c.username, c]));
+
+  let rows = online.map((r) => {
+    const row = radacctRowToSession(r);
+    const cust = r.username ? custByUsername.get(r.username) : undefined;
+    return {
+      ...row,
+      customerId: cust?.id ?? null,
+      nasId: cust?.nasId ?? row.nasId,
+    };
+  });
+
+  // Filter tambahan
+  if (!q.activeOnly) {
+    // default halaman sesi menampilkan hanya online; jika !activeOnly
+    // tidak didukung — pertahankan online saja (kontrak UI).
   }
   if (q.search) {
     const needle = q.search.toLowerCase();
     rows = rows.filter((s) =>
-      [
-        s.session.customerUsername,
-        s.session.framedIp ?? "",
-        s.session.nasIpAddress,
-      ]
+      [s.customerUsername, s.framedIp ?? "", s.nasIpAddress]
         .join(" ")
         .toLowerCase()
         .includes(needle),
@@ -70,100 +86,39 @@ export const GET = asyncApi(async (req: Request) => {
     (safePage - 1) * safeLimit + safeLimit,
   );
 
-  // Materialisasi ke bentuk response (ISO + inflasi).
-  // Untuk sesi live yang berasal dari radacct, durasi & bytes interpolasi
-  // dari `acctUpdateTime` (Interim terakhir) bila tersedia — bukan dari
-  // startedAt yang bisa lokal/berbeda zona.
-  const liveAcct = await prisma.radAcct.findMany({
-    where: {
-      nasIpAddress: { in: pageRows.map((s) => s.session.nasIpAddress) },
-      acctStopTime: null,
-    },
-    select: {
-      acctUniqueId: true,
-      acctUpdateTime: true,
-      acctSessionTime: true,
-      acctInputOctets: true,
-      acctOutputOctets: true,
-    },
+  return NextResponse.json({
+    data: pageRows,
+    total,
   });
-  const acctByExt = new Map(liveAcct.map((a) => [a.acctUniqueId, a]));
-  const data = pageRows.map((snap) => {
-    const s = snap.session;
-    const acct = s.extKey ? acctByExt.get(s.extKey) : undefined;
-    const nowMs = Date.now();
-    let elapsed = Math.max(
-      0,
-      Math.round((nowMs - new Date(s.startedAt).getTime()) / 1000),
-    );
-    let inputBytes = s.inputBytes;
-    let outputBytes = s.outputBytes;
-    if (acct) {
-      const baseMs = Number(acct.acctSessionTime ?? 0) * 1000;
-      const sinceUpdateMs = acct.acctUpdateTime
-        ? Math.max(0, nowMs - new Date(acct.acctUpdateTime).getTime())
-        : 0;
-      elapsed = Math.max(0, Math.round((baseMs + sinceUpdateMs) / 1000));
-      const growth = 1 + Math.min(elapsed * 10, 3600) / 3600;
-      inputBytes = Math.round(Number(acct.acctInputOctets ?? 0) * growth);
-      outputBytes = Math.round(Number(acct.acctOutputOctets ?? 0) * growth);
-    }
-    return {
-      ...s,
-      durationSeconds: elapsed,
-      inputBytes,
-      outputBytes,
-      customerId: s.customerId,
-      startedAt: s.startedAt,
-      stoppedAt: undefined,
-      extKey: s.extKey,
-    };
-  });
-
-  return NextResponse.json({ data, total, routers: routerBriefs });
 });
 
-async function routerBriefsFromDb(): Promise<RouterBrief[]> {
-  try {
-    const [routers, counts] = await Promise.all([
-      prisma.nasRouter.findMany({
-        select: { id: true, name: true, ipAddress: true, status: true },
-      }),
-      prisma.session.groupBy({
-        by: ["nasId"],
-        where: { stoppedAt: null },
-        _count: { _all: true },
-      }),
-    ]);
-    const countMap = new Map(counts.map((c) => [c.nasId, c._count._all]));
-    return routers.map((r) => ({
-      id: r.id,
-      name: r.name,
-      ipAddress: r.ipAddress,
-      status: r.status as RouterBrief["status"],
-      activeSessionCount: countMap.get(r.id) ?? 0,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-/** POST /api/v1/sessions/[id]/disconnect — putus sesi (Admin-Reset) */
+/** POST /api/v1/sessions/[id]/disconnect — kick sesi dari RouterOS.
+ * id sesi = `acct-<acctUniqueId>` — dicari di radacct, lalu kick via API
+ * RouterOS (best-effort). FreeRADIUS menerima Stop → hilang dari online. */
 export const POST = asyncApi(async (req: Request) => {
-  // Catatan: handler dipasang di file yang sama dengan GET /sessions (path
-  // statis). Next.js meneruskan params Promise<{}> — id dibaca dari URL.
+  await requirePermission("session.update");
   const url = new URL(req.url);
   const id = url.pathname.split("/")[4] ?? "";
-  await requirePermission("session.update");
-  const body = (await req.json().catch(() => ({}))) as { cause?: string };
-  const session = await prisma.session.findUnique({ where: { id } });
-  if (!session || session.stoppedAt) {
+  const acctId = id.startsWith("acct-") ? id.slice(5) : null;
+  if (!acctId) {
+    throw new Error("Sesi tidak dikenali.");
+  }
+  const acct = await prisma.radAcct.findUnique({
+    where: { acctUniqueId: acctId },
+  });
+  if (!acct || acct.acctStopTime) {
     throw new Error("Gagal memutuskan sesi PPPoE atau sesi sudah berakhir.");
   }
-  await disconnectSessionRecord(id, body.cause ?? "Admin-Reset");
-  const { refreshLiveAfterMutation } = await import(
-    "@/lib/realtime/live-sessions"
+  const customer = acct.username
+    ? await prisma.customer.findUnique({
+        where: { username: acct.username },
+        select: { nasId: true, username: true },
+      })
+    : null;
+  const { kickSessionByUsername } = await import("@/lib/mikrotik-disconnect");
+  await kickSessionByUsername(
+    customer?.username ?? acct.username ?? "",
+    customer?.nasId ?? null,
   );
-  await refreshLiveAfterMutation();
   return NextResponse.json({ success: true });
 });

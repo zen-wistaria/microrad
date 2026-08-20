@@ -14,15 +14,11 @@ import { LOG_SOURCE_APP, LOG_SOURCE_PORTAL } from "../src/lib/api-auth";
 import { initialInvoices, initialPayments } from "../src/lib/mock/billing.mock";
 import { initialCustomers } from "../src/lib/mock/customers.mock";
 import { getGlobalLogs } from "../src/lib/mock/global-logs";
-import {
-  getPortalLoginLogs,
-  getPortalSessionLogs,
-} from "../src/lib/mock/portal-logs";
+import { getPortalLoginLogs } from "../src/lib/mock/portal-logs";
 import { initialProfiles } from "../src/lib/mock/profiles.mock";
 import { relMonthsAgoIso, relNowIso } from "../src/lib/mock/relative-dates";
 import { initialRoles } from "../src/lib/mock/roles.mock";
 import { initialRouters } from "../src/lib/mock/routers.mock";
-import { initialSessions } from "../src/lib/mock/sessions.mock";
 import { initialCompanyProfile } from "../src/lib/mock/settings.mock";
 
 const databaseUrl = process.env.DATABASE_URL ?? "";
@@ -65,7 +61,6 @@ async function main() {
   // ── Bersihkan (urutan: child dulu) ───────────────────────────────
   await prisma.paymentRecord.deleteMany();
   await prisma.invoice.deleteMany();
-  await prisma.session.deleteMany();
   // tabel RADIUS bersama (dikelola app + FreeRADIUS)
   await prisma.radAcct.deleteMany();
   await prisma.radPostAuth.deleteMany();
@@ -75,7 +70,6 @@ async function main() {
   await prisma.radGroupReply.deleteMany();
   await prisma.radUserGroup.deleteMany();
   await prisma.nas.deleteMany();
-  await prisma.portalSessionLog.deleteMany();
   await prisma.portalLoginLog.deleteMany();
   await prisma.globalLog.deleteMany();
   await prisma.portalAccount.deleteMany();
@@ -191,7 +185,6 @@ async function main() {
         createdAt: resolveDate(c.createdAt) ?? new Date(),
         updatedAt: resolveDate(c.updatedAt) ?? new Date(),
         lastSeenAt: resolveDate(c.lastSeenAt),
-        currentSessionId: c.currentSessionId,
       },
     });
   }
@@ -266,27 +259,6 @@ async function main() {
     }
   }
   console.log(`✓ ${radCount} baris RADIUS (radcheck/radreply)`);
-
-  // ── 5. Sessions ──
-  for (const s of initialSessions) {
-    await prisma.session.create({
-      data: {
-        id: s.id,
-        customerId: s.customerId,
-        customerUsername: s.customerUsername,
-        nasId: s.nasId,
-        nasIpAddress: s.nasIpAddress,
-        framedIp: s.framedIp,
-        startedAt: new Date(s.startedAt),
-        stoppedAt: s.stoppedAt ? new Date(s.stoppedAt) : null,
-        durationSeconds: s.durationSeconds,
-        inputBytes: BigInt(Math.round(s.inputBytes)),
-        outputBytes: BigInt(Math.round(s.outputBytes)),
-        terminateCause: s.terminateCause,
-      },
-    });
-  }
-  console.log(`✓ ${initialSessions.length} sesi PPPoE`);
 
   // ── 6. App Users (sistem) — didefinisikan EKSPLISIT (bukan dari mock) ──
   // Semua akun: password default "password123" (hash scrypt Better Auth).
@@ -523,30 +495,7 @@ async function main() {
         },
       });
     }
-
-    const customerSessions = initialSessions.filter(
-      (s) => s.customerId === customerId,
-    );
-    const sessionLogs = getPortalSessionLogs(mockCustomer, customerSessions);
-    for (const log of sessionLogs) {
-      await prisma.portalSessionLog.create({
-        data: {
-          id: `${log.id}-seed`,
-          customerId: customer.id,
-          customerUsername: customer.username,
-          nasIpAddress: log.nasIpAddress,
-          framedIp: log.framedIp,
-          startedAt: new Date(log.startedAt),
-          stoppedAt: log.stoppedAt ? new Date(log.stoppedAt) : null,
-          durationSeconds: log.durationSeconds,
-          inputBytes: BigInt(Math.round(log.inputBytes)),
-          outputBytes: BigInt(Math.round(log.outputBytes)),
-          terminateCause: log.terminateCause,
-        },
-      });
-    }
   }
-  console.log("✓ log portal (cust-1 & cust-2)");
 
   // ── 13. WA Template (tidak dihapus saat reset) ──
   // Default template sama seperti reminder-dialog.tsx.

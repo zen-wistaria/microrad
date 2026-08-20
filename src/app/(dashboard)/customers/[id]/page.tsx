@@ -184,6 +184,15 @@ export default function CustomerDetailPage({
     fetchCustomerData();
   }, [fetchCustomerData]);
 
+  // Auto-refresh 30 detik — status online & usage tetap segar
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchCustomerData();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [fetchCustomerData]);
+
   // Muat pemakaian bulanan per tahun terpilih — fetch ulang saat pindah tahun
   useEffect(() => {
     if (!customerId) return;
@@ -211,9 +220,7 @@ export default function CustomerDetailPage({
       await disconnectCustomer(customer.id);
       toast.success(`Koneksi aktif ${customer.username} berhasil diputuskan.`);
       setActiveSession(null);
-      setCustomer((prev) =>
-        prev ? { ...prev, currentSessionId: undefined } : null,
-      );
+      setCustomer((prev) => (prev ? { ...prev } : null));
       setDisconnectModalOpen(false);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal memutuskan koneksi.");

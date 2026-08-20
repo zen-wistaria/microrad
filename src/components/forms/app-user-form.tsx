@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/select";
 import { getRoles } from "@/lib/api/roles";
 import { createUser, updateUser } from "@/lib/api/users";
-import { initialRoles } from "@/lib/mock/roles.mock";
 import type { AppUser, AppUserRole, AppUserStatus, Role } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -54,7 +53,7 @@ export function AppUserForm({
   const [submitting, setSubmitting] = useState(false);
 
   // Kumpulan role yang dapat dipilih — dari API (server)
-  const [allRoles, setAllRoles] = useState<Role[]>(initialRoles);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
 
   useEffect(() => {
     getRoles()

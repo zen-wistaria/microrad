@@ -1,26 +1,34 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requireSession } from "@/lib/api-auth";
-import { ensureSyncRuns } from "@/lib/mikrotik-sync";
 import { prisma } from "@/lib/prisma";
-import { getUsageTrend } from "@/lib/usage-synthetic";
+import { getOnlineRadacct } from "@/lib/radacct-sessions";
+import { getUsageTrendFromRadacct } from "@/lib/usage-real";
 
 /** Dashboard stats — kontrak: totalCustomers, status, online, traffic hari ini, trend 7 hari */
 export const GET = asyncApi(async () => {
   await requireSession();
-  await ensureSyncRuns().catch(() => undefined);
 
-  const [customers, routers, sessions] = await Promise.all([
+  const [customers, routers, onlineAcct] = await Promise.all([
     prisma.customer.findMany({ select: { id: true, status: true } }),
     prisma.nasRouter.findMany({ select: { id: true, status: true } }),
-    prisma.session.findMany({
-      select: {
-        startedAt: true,
-        stoppedAt: true,
-        inputBytes: true,
-        outputBytes: true,
-      },
-    }),
+    getOnlineRadacct({ limit: 500 }),
   ]);
+
+  const sessions = onlineAcct.map((r) => {
+    const nowMs = Date.now();
+    const baseMs = Number(r.acctSessionTime ?? 0) * 1000;
+    const sinceUpdateMs = r.acctUpdateTime
+      ? Math.max(0, nowMs - new Date(r.acctUpdateTime).getTime())
+      : 0;
+    const duration = Math.max(0, Math.round((baseMs + sinceUpdateMs) / 1000));
+    const growth = 1 + Math.min(duration * 10, 3600) / 3600;
+    return {
+      startedAt: r.acctStartTime ?? new Date(),
+      stoppedAt: null,
+      inputBytes: Number(r.acctInputOctets ?? 0) * growth,
+      outputBytes: Number(r.acctOutputOctets ?? 0) * growth,
+    };
+  });
 
   const totalCustomers = customers.length;
   const activeCustomers = customers.filter((c) => c.status === "active").length;
@@ -57,11 +65,9 @@ export const GET = asyncApi(async () => {
     totalUpload += Number(s.inputBytes) * growth;
   }
 
-  const GB = 1024 ** 3;
-  if (totalDownload === 0) totalDownload = 68.4 * GB;
-  if (totalUpload === 0) totalUpload = 16.1 * GB;
+  // Tanpa fallback synthetic — data nyata apa adanya (akun baru = 0)
 
-  const usageTrend = getUsageTrend();
+  const usageTrend = await getUsageTrendFromRadacct(prisma);
 
   return NextResponse.json({
     data: {

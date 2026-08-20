@@ -86,12 +86,12 @@ export default function SessionsPage() {
     fetchData();
   }, [fetchData]);
 
-  // Polling interval
+  // Polling interval — 30 detik (ringan; data tampil + update berkala)
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       fetchData();
-    }, 6000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [autoRefresh, fetchData]);
@@ -182,7 +182,7 @@ export default function SessionsPage() {
             <span
               className={`h-2 w-2 rounded-full ${autoRefresh ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`}
             />
-            Auto-refresh: {autoRefresh ? "Aktif (6s)" : "Mati"}
+            Auto-refresh: {autoRefresh ? "Aktif (30 detik)" : "Mati"}
           </Button>
 
           <Button
@@ -352,13 +352,20 @@ export default function SessionsPage() {
                         className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
                       >
                         <td className="py-3.5 px-4 font-mono font-semibold text-slate-900 dark:text-slate-100">
-                          <Link
-                            href={`/customers/${session.customerId}`}
-                            className="hover:text-blue-600 dark:hover:text-blue-400 hover:underline flex items-center gap-1.5"
-                          >
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
-                            {session.customerUsername}
-                          </Link>
+                          {session.customerId ? (
+                            <Link
+                              href={`/customers/${session.customerId}`}
+                              className="hover:text-blue-600 dark:hover:text-blue-400 hover:underline flex items-center gap-1.5"
+                            >
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                              {session.customerUsername}
+                            </Link>
+                          ) : (
+                            <span className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                              {session.customerUsername}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 font-mono text-slate-700 dark:text-slate-300">
                           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-mono dark:bg-slate-800">

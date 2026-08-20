@@ -79,8 +79,15 @@ export function UsageTrendChart({ data }: UsageTrendChartProps) {
     return null;
   };
 
+  const hasData = data.some((d) => d.bytes > 0);
+
   return (
     <div className="h-[300px] w-full">
+      {!hasData ? (
+        <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-300 text-sm text-slate-400 dark:border-slate-700 dark:text-slate-500">
+          Belum ada data trafik 7 hari terakhir.
+        </div>
+      ) : null}
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={data}

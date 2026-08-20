@@ -16,7 +16,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(7, 8, 30)",
     updatedAt: relNowIso(0, 11, 0),
     lastSeenAt: "relNowIso(0,14)",
-    currentSessionId: "sess-101",
   },
   {
     id: "cust-2",
@@ -32,7 +31,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(6.5, 10, 15)",
     updatedAt: relNowIso(0, 9, 30),
     lastSeenAt: "relNowIso(0,14)",
-    currentSessionId: "sess-102",
   },
   {
     id: "cust-3",
@@ -47,7 +45,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(6, 14, 0)",
     updatedAt: relMonthsAgoIso(1, 16, 0),
     lastSeenAt: "relNowIso(0,14)",
-    currentSessionId: "sess-103",
   },
   {
     id: "cust-4",
@@ -62,7 +59,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(5.5, 9, 0)",
     updatedAt: relNowIso(0, 13, 0),
     lastSeenAt: "relNowIso(0,15)",
-    currentSessionId: "sess-104",
   },
   {
     id: "cust-5",
@@ -77,7 +73,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(5, 11, 45)",
     updatedAt: relNowIso(0, 10, 15),
     lastSeenAt: "relNowIso(0,15)",
-    currentSessionId: "sess-105",
   },
   {
     id: "cust-6",
@@ -92,7 +87,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(4, 13, 30)",
     updatedAt: relNowIso(0, 8, 0),
     lastSeenAt: "relNowIso(0,15)",
-    currentSessionId: "sess-106",
   },
   {
     id: "cust-7",
@@ -107,7 +101,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(3.5, 15, 10)",
     updatedAt: relNowIso(0, 12, 0),
     lastSeenAt: "relNowIso(0,15)",
-    currentSessionId: "sess-107",
   },
   {
     id: "cust-8",
@@ -122,7 +115,6 @@ export const initialCustomers: Customer[] = [
     createdAt: "relMonthsAgoIso(3.5, 10, 0)",
     updatedAt: relNowIso(0, 14, 30),
     lastSeenAt: "relNowIso(0,15)",
-    currentSessionId: "sess-108",
   },
   {
     id: "cust-9",
@@ -136,8 +128,7 @@ export const initialCustomers: Customer[] = [
     nasId: "nas-1",
     createdAt: "relMonthsAgoIso(3, 14, 20)",
     updatedAt: relNowIso(0, 16, 0),
-    lastSeenAt: "relNowIso(0,9)",
-    currentSessionId: undefined, // Offline
+    lastSeenAt: "relNowIso(0,9)", // Offline
   },
   {
     id: "cust-10",
@@ -151,8 +142,7 @@ export const initialCustomers: Customer[] = [
     nasId: "nas-2",
     createdAt: "relMonthsAgoIso(2.5, 8, 0)",
     updatedAt: relNowIso(0, 17, 0),
-    lastSeenAt: "relNowIso(0,23)",
-    currentSessionId: undefined, // Offline
+    lastSeenAt: "relNowIso(0,23)", // Offline
   },
   {
     id: "cust-11",
@@ -166,8 +156,7 @@ export const initialCustomers: Customer[] = [
     nasId: "nas-1",
     createdAt: "relMonthsAgoIso(2, 11, 0)",
     updatedAt: relNowIso(0, 8, 0),
-    lastSeenAt: "relNowIso(13,7)",
-    currentSessionId: undefined, // Suspended
+    lastSeenAt: "relNowIso(13,7)", // Suspended
   },
   {
     id: "cust-12",
@@ -181,8 +170,7 @@ export const initialCustomers: Customer[] = [
     nasId: "nas-2",
     createdAt: "relMonthsAgoIso(1.5, 13, 40)",
     updatedAt: relNowIso(0, 10, 0),
-    lastSeenAt: "relNowIso(9,9)",
-    currentSessionId: undefined, // Suspended
+    lastSeenAt: "relNowIso(9,9)", // Suspended
   },
   {
     id: "cust-13",
@@ -196,8 +184,7 @@ export const initialCustomers: Customer[] = [
     nasId: "nas-1",
     createdAt: "relMonthsAgoIso(1.5, 9, 15)",
     updatedAt: relNowIso(0, 15, 0),
-    lastSeenAt: "relNowIso(6,14)",
-    currentSessionId: undefined, // Disabled
+    lastSeenAt: "relNowIso(6,14)", // Disabled
   },
   {
     id: "cust-14",
@@ -211,8 +198,7 @@ export const initialCustomers: Customer[] = [
     nasId: "nas-1",
     createdAt: "relMonthsAgoIso(1, 16, 0)",
     updatedAt: relNowIso(0, 12, 0),
-    lastSeenAt: "relNowIso(0,6)",
-    currentSessionId: undefined, // Offline
+    lastSeenAt: "relNowIso(0,6)", // Offline
   },
   {
     id: "cust-15",
@@ -226,7 +212,6 @@ export const initialCustomers: Customer[] = [
     nasId: "nas-1",
     createdAt: "relMonthsAgoIso(0.5, 10, 30)",
     updatedAt: relNowIso(0, 14, 0),
-    lastSeenAt: "relNowIso(0,11)",
-    currentSessionId: undefined, // Offline
+    lastSeenAt: "relNowIso(0,11)", // Offline
   },
 ];

@@ -18,7 +18,6 @@ export interface Customer {
   createdAt: string;
   updatedAt: string;
   lastSeenAt?: string; // dari radacct terakhir
-  currentSessionId?: string; // jika sedang online, id sesi aktif
 }
 
 export interface BandwidthProfile {
@@ -260,4 +259,43 @@ export interface CustomerMonthlyUsage {
   uploadBytes: number;
   totalBytes: number;
   sessionsCount: number;
+}
+
+// ── Tipe utusan dari data mock (dipakai runtime frontend) ──────────
+// GlobalLog: catatan login sistem/portal (ditulis API → tabel global_log).
+export interface GlobalLogEntry {
+  id: string;
+  timestamp: string;
+  ipAddress: string;
+  userAgent: string;
+  /** Nama user yang login (bukan username) */
+  userName: string;
+  /** Sumber login: "portal" | "app" | "api" */
+  source: "portal" | "app" | "api";
+}
+
+// PortalLoginLog: histori login portal pelanggan.
+export interface LogLoginPortal {
+  id: string;
+  customerId: string;
+  customerUsername: string;
+  loginAt: string;
+  ipAddress: string;
+  userAgent: string;
+  source?: string;
+}
+
+// PortalSessionLog: histori sesi PPPoE pelanggan (dari radacct).
+export interface LogSesiPppoe {
+  id: string;
+  customerId: string;
+  customerUsername: string;
+  startedAt: string;
+  stoppedAt?: string; // undefined = masih online
+  durationSeconds: number;
+  inputBytes: number; // upload dari sisi customer
+  outputBytes: number; // download dari sisi customer
+  nasIpAddress: string;
+  framedIp?: string;
+  terminateCause?: string;
 }

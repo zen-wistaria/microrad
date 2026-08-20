@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePortalSession } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
+import { radacctRowToSession } from "@/lib/radacct-sessions";
 import {
   getMonthlyUsageFromSessions,
   getUsageHistoryFromSessions,
@@ -31,36 +32,33 @@ export const GET = asyncApi(async () => {
     throw new Error("Data pelanggan tidak ditemukan untuk akun ini.");
   }
 
-  const [profile, invoices, payments, sessions, loginLogs, sessionLogs] =
-    await Promise.all([
-      customer.profileId
-        ? prisma.bandwidthProfile.findUnique({
-            where: { id: customer.profileId },
-          })
-        : Promise.resolve(null),
-      prisma.invoice.findMany({
-        where: { customerId },
-        orderBy: { issueDate: "desc" },
-      }),
-      prisma.paymentRecord.findMany({
-        where: { customerId },
-        orderBy: { paidAt: "desc" },
-      }),
-      prisma.session.findMany({
-        where: { customerId },
-        orderBy: { startedAt: "desc" },
-      }),
-      prisma.portalLoginLog.findMany({
-        where: { customerId },
-        orderBy: { loginAt: "desc" },
-        take: 50,
-      }),
-      prisma.portalSessionLog.findMany({
-        where: { customerId },
-        orderBy: { startedAt: "desc" },
-        take: 50,
-      }),
-    ]);
+  const [profile, invoices, payments, sessions, loginLogs] = await Promise.all([
+    customer.profileId
+      ? prisma.bandwidthProfile.findUnique({
+          where: { id: customer.profileId },
+        })
+      : Promise.resolve(null),
+    prisma.invoice.findMany({
+      where: { customerId },
+      orderBy: { issueDate: "desc" },
+    }),
+    prisma.paymentRecord.findMany({
+      where: { customerId },
+      orderBy: { paidAt: "desc" },
+    }),
+    // Sesi (online) + riwayat sesi dari radacct — sumber kebenaran
+    prisma.radAcct
+      .findMany({
+        where: { username: customer.username, acctStopTime: null },
+        orderBy: { acctStartTime: "desc" },
+      })
+      .then((rows) => rows.map((r) => radacctRowToSession(r))),
+    prisma.portalLoginLog.findMany({
+      where: { customerId },
+      orderBy: { loginAt: "desc" },
+      take: 50,
+    }),
+  ]);
 
   // Summary + riwayat penggunaan (30 hari) + bulanan 12 bulan berjalan
   // (agregasi sesi nyata — akun baru tanpa sesi = 0)
@@ -130,21 +128,27 @@ export const GET = asyncApi(async () => {
       })),
       sessions: sessions.map((s) => ({
         ...s,
-        startedAt: s.startedAt.toISOString(),
-        stoppedAt: s.stoppedAt ? s.stoppedAt.toISOString() : undefined,
-        inputBytes: Number(s.inputBytes),
-        outputBytes: Number(s.outputBytes),
+        startedAt: s.startedAt,
+        stoppedAt: s.stoppedAt,
+        inputBytes: s.inputBytes,
+        outputBytes: s.outputBytes,
       })),
       loginLogs: loginLogs.map((l) => ({
         ...l,
         loginAt: l.loginAt.toISOString(),
       })),
-      sessionLogs: sessionLogs.map((l) => ({
-        ...l,
-        startedAt: l.startedAt.toISOString(),
-        stoppedAt: l.stoppedAt ? l.stoppedAt.toISOString() : undefined,
-        inputBytes: Number(l.inputBytes),
-        outputBytes: Number(l.outputBytes),
+      sessionLogs: sessions.map((s) => ({
+        id: `plog-sess-${s.id}`,
+        customerId,
+        customerUsername: s.customerUsername,
+        startedAt: s.startedAt,
+        stoppedAt: s.stoppedAt,
+        durationSeconds: s.durationSeconds,
+        inputBytes: s.inputBytes,
+        outputBytes: s.outputBytes,
+        nasIpAddress: s.nasIpAddress,
+        framedIp: s.framedIp,
+        terminateCause: s.terminateCause,
       })),
     },
   });

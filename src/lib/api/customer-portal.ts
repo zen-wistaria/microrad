@@ -1,4 +1,3 @@
-import type { LogLoginPortal, LogSesiPppoe } from "@/lib/mock/portal-logs";
 import type {
   BandwidthProfile,
   Customer,
@@ -6,6 +5,8 @@ import type {
   CustomerMonthlyUsage,
   CustomerPortalSummary,
   Invoice,
+  LogLoginPortal,
+  LogSesiPppoe,
   PaymentRecord,
   Session,
 } from "@/lib/types";

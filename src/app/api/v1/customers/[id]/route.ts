@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
-import { connectRouterOS } from "@/lib/mikrotik-client";
+import { kickSessionByUsername } from "@/lib/mikrotik-disconnect";
 import { prisma } from "@/lib/prisma";
+import { getOnlineRadacct } from "@/lib/radacct-sessions";
 import {
   moveCustomerRadius,
   removeCustomerRadius,
@@ -16,29 +17,25 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   const customer = await prisma.customer.findUnique({ where: { id } });
   if (!customer) throw new Error("Pelanggan tidak ditemukan.");
 
-  // Status online dihitung dari sesi nyata (live) — bukan field basi
-  const active = await prisma.session.findFirst({
-    where: { customerId: id, stoppedAt: null },
-    orderBy: { startedAt: "desc" },
-    select: {
-      id: true,
-      startedAt: true,
-      durationSeconds: true,
-      inputBytes: true,
-      outputBytes: true,
-    },
-  });
-  if (!active && customer.currentSessionId) {
-    // currentSessionId basi (router restart dsb) — bersihkan
-    await prisma.customer.update({
-      where: { id },
-      data: { currentSessionId: null },
-    });
-    customer.currentSessionId = null;
-  }
+  // Status online dihitung dari radacct langsung (sumber kebenaran
+  // FreeRADIUS) — bukan field basi/currentSessionId.
+  const onlineAcct = await getOnlineRadacct({ username: customer.username });
+  const activeRow = onlineAcct[0] ?? null;
   const lastSeenAt = customer.lastSeenAt
     ? new Date(customer.lastSeenAt).toISOString()
     : undefined;
+  const live = activeRow
+    ? {
+        id: `acct-${activeRow.acctUniqueId}`,
+        startedAt: (activeRow.acctStartTime ?? new Date()).toISOString(),
+        durationSeconds: activeRow.acctSessionTime
+          ? Number(activeRow.acctSessionTime)
+          : 0,
+        inputBytes: Number(activeRow.acctInputOctets ?? 0),
+        outputBytes: Number(activeRow.acctOutputOctets ?? 0),
+      }
+    : null;
+
   return NextResponse.json({
     data: {
       ...customer,
@@ -46,15 +43,7 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
       createdAt: new Date(customer.createdAt).toISOString(),
       updatedAt: new Date(customer.updatedAt).toISOString(),
     },
-    live: active
-      ? {
-          id: active.id,
-          startedAt: active.startedAt.toISOString(),
-          durationSeconds: active.durationSeconds,
-          inputBytes: Number(active.inputBytes),
-          outputBytes: Number(active.outputBytes),
-        }
-      : null,
+    live,
   });
 });
 
@@ -175,28 +164,9 @@ export const DELETE = asyncApi(
     if (!existing) throw new Error("Pelanggan tidak ditemukan.");
 
     await prisma.$transaction(async (tx) => {
-      // Putuskan sesi aktif terlebih dahulu (mirror perilaku mock)
-      const activeSession = await tx.session.findFirst({
-        where: { customerId: id, stoppedAt: null },
-        orderBy: { startedAt: "desc" },
-      });
-      if (activeSession) {
-        const now = new Date();
-        const elapsed = Math.max(
-          1,
-          Math.floor(
-            (now.getTime() - activeSession.startedAt.getTime()) / 1000,
-          ),
-        );
-        await tx.session.update({
-          where: { id: activeSession.id },
-          data: {
-            stoppedAt: now,
-            durationSeconds: elapsed,
-            terminateCause: "Admin-Reset",
-          },
-        });
-      }
+      // Kick sesi aktif di router (best-effort) — FreeRADIUS Stop menyusul
+      await kickSessionByUsername(existing.username, existing.nasId);
+
       // radsync: hapus baris RADIUS (histori radacct tetap)
       await removeCustomerRadius(tx, existing.username);
       await tx.customer.delete({ where: { id } });
@@ -205,7 +175,10 @@ export const DELETE = asyncApi(
   },
 );
 
-/** POST /api/v1/customers/[id]/disconnect — putus sesi aktif pelanggan */
+/** POST /api/v1/customers/[id]/disconnect — putus sesi aktif pelanggan.
+ * Sesi online dibaca dari radacct; kick dilakukan via RouterOS API
+ * (best-effort). FreeRADIUS akan menerima Accounting-Stop dari router
+ * dan sesi hilang dari daftar online. */
 export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   await requirePermission("customer.update");
   const { id } = await ctx.params;
@@ -213,97 +186,19 @@ export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   const existing = await prisma.customer.findUnique({ where: { id } });
   if (!existing) throw new Error("Pelanggan tidak ditemukan.");
 
-  const activeSession = await prisma.session.findFirst({
-    where: { customerId: id, stoppedAt: null },
-    orderBy: { startedAt: "desc" },
+  const online = await prisma.radAcct.findMany({
+    where: { username: existing.username, acctStopTime: null },
+    orderBy: { acctStartTime: "desc" },
+    take: 1,
   });
-  if (activeSession) {
-    await disconnectSessionRecord(activeSession.id, "Admin-Reset");
+  if (online[0]) {
+    // Kick di router (best-effort) — session masih online di radacct
+    const { kickSessionByUsername } = await import("@/lib/mikrotik-disconnect");
+    await kickSessionByUsername(existing.username, existing.nasId);
+    await prisma.customer.update({
+      where: { id },
+      data: { lastSeenAt: new Date() },
+    });
   }
   return NextResponse.json({ success: true });
 });
-
-/** Util bersama: putus sesi + sinkronisasi customer (dipakai sessions juga) */
-export async function disconnectSessionRecord(
-  sessionId: string,
-  cause = "Admin-Reset",
-) {
-  const session = await prisma.session.findUnique({ where: { id: sessionId } });
-  if (!session || session.stoppedAt) return;
-
-  // Kick sesi di MikroTik dulu (best-effort — gagal tidak menghalangi
-  // penutupan record DB)
-  await kickMikrotikSession(session);
-
-  const now = new Date();
-  const elapsed = Math.max(
-    1,
-    Math.floor((now.getTime() - session.startedAt.getTime()) / 1000),
-  );
-  await prisma.$transaction([
-    prisma.session.update({
-      where: { id: sessionId },
-      data: {
-        stoppedAt: now,
-        durationSeconds: elapsed,
-        terminateCause: cause,
-      },
-    }),
-    session.customerId
-      ? prisma.customer.update({
-          where: { id: session.customerId },
-          data: { currentSessionId: null, lastSeenAt: now },
-        })
-      : prisma.session.update({
-          where: { id: sessionId },
-          data: { stoppedAt: now }, // no-op agar transaksi tetap konsisten
-        }),
-  ]);
-
-  // Perbarui snapshot live + broadcast — halaman langsung ter-refresh
-  try {
-    const { refreshLiveAfterMutation } = await import(
-      "@/lib/realtime/live-sessions"
-    );
-    await refreshLiveAfterMutation();
-  } catch {
-    // realtime opsional — jangan sampai memblokir disconnect
-  }
-}
-
-/** Hapus sesi aktif dari RouterOS via API (by username). */
-async function kickMikrotikSession(session: {
-  id: string;
-  nasId: string;
-  customerUsername: string;
-  stoppedAt?: Date | null;
-}) {
-  if (session.stoppedAt) return;
-  try {
-    const router = await prisma.nasRouter.findUnique({
-      where: { id: session.nasId },
-    });
-    if (!router?.apiUsername) return;
-    // best-effort — timeout singkat agar tidak memperlambat disconnect
-    const mikrotik = await connectRouterOS(router);
-    try {
-      // RouterOS tidak menjamin lookup by session-id di API lama —
-      // cari by username lalu remove
-      const rows = await mikrotik.write("/ppp/active/print", [
-        `?=name=${session.customerUsername}`,
-      ]);
-      for (const r of rows) {
-        const dotId = r[".id"];
-        if (dotId)
-          await mikrotik.write("/ppp/active/remove", [`=.id=${dotId}`]);
-      }
-    } finally {
-      mikrotik.close();
-    }
-  } catch (err) {
-    console.warn(
-      `[mikrotik] kick sesi ${session.id} gagal (record tetap ditutup):`,
-      err,
-    );
-  }
-}

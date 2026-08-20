@@ -25,7 +25,7 @@ model AppUser {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  role_    Role?         @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  role_    Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
   sessions AppSession[]
   accounts AppAccount[]
 
@@ -93,7 +93,7 @@ model PortalUser {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   sessions PortalSession[]
   accounts PortalAccount[]
 
@@ -152,13 +152,13 @@ model PortalVerification {
 // RBAC
 // ═══════════════════════════════════════════════════════════════
 model Role {
-  id          String     @id
+  id          String   @id
   name        String
   description String?
   permissions String[] // 27 permission literals "<resource>.<action>"
-  system      Boolean    @default(false) // role bawaan tak bisa dihapus
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  system      Boolean  @default(false) // role bawaan tak bisa dihapus
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   users AppUser[]
 
@@ -169,52 +169,50 @@ model Role {
 // DOMAIN
 // ═══════════════════════════════════════════════════════════════
 model Customer {
-  id               String   @id
-  username         String   @unique // radcheck.username (unik, case-insensitive di API)
-  password         String? // radcheck password (hanya untuk display/update)
-  fullName         String?
-  email            String?
-  phone            String?
-  address          String?
-  status           String   @default("active") // active | suspended | disabled
-  profileId        String?
-  staticIp         String?
-  nasId            String?
-  bindOnNas        Boolean  @default(false) // hanya boleh login lewat router ini
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  lastSeenAt       DateTime?
-  currentSessionId String? // denormalized: sesi aktif pelanggan
+  id         String    @id
+  username   String    @unique // radcheck.username (unik, case-insensitive di API)
+  password   String? // radcheck password (hanya untuk display/update)
+  fullName   String?
+  email      String?
+  phone      String?
+  address    String?
+  status     String    @default("active") // active | suspended | disabled
+  profileId  String?
+  staticIp   String?
+  nasId      String?
+  bindOnNas  Boolean   @default(false) // hanya boleh login lewat router ini
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastSeenAt DateTime?
 
-  profile          BandwidthProfile?   @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  router           NasRouter?          @relation(fields: [nasId], references: [id], onDelete: SetNull)
-  sessions         Session[]
-  invoices         Invoice[]
-  payments         PaymentRecord[]
-  portalUser       PortalUser?
-  portalLoginLogs  PortalLoginLog[]
+  profile           BandwidthProfile?  @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  router            NasRouter?         @relation(fields: [nasId], references: [id], onDelete: SetNull)
+  invoices          Invoice[]
+  payments          PaymentRecord[]
+  portalUser        PortalUser?
+  portalLoginLogs   PortalLoginLog[]
   portalSessionLogs PortalSessionLog[]
 
   @@map("customer")
 }
 
 model BandwidthProfile {
-  id                     String   @id
-  name                   String
-  rateLimitDown          Int // Mbps
-  rateLimitUp            Int // Mbps
-  burstLimitDown         Int? // kbps
-  burstLimitUp           Int? // kbps
-  burstThresholdDown     Int? // kbps
-  burstThresholdUp       Int? // kbps
-  burstTimeSeconds       Int? // detik
-  priority               Int? // 1-8
-  limitAtDown            Int? // kbps (CIR)
-  limitAtUp              Int? // kbps (CIR)
-  price                  Int? // IDR/bulan
-  description            String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                 String   @id
+  name               String
+  rateLimitDown      Int // Mbps
+  rateLimitUp        Int // Mbps
+  burstLimitDown     Int? // kbps
+  burstLimitUp       Int? // kbps
+  burstThresholdDown Int? // kbps
+  burstThresholdUp   Int? // kbps
+  burstTimeSeconds   Int? // detik
+  priority           Int? // 1-8
+  limitAtDown        Int? // kbps (CIR)
+  limitAtUp          Int? // kbps (CIR)
+  price              Int? // IDR/bulan
+  description        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   customers Customer[]
 
@@ -222,63 +220,33 @@ model BandwidthProfile {
 }
 
 model NasRouter {
-  id        String  @id
-  name      String
-  ipAddress String  @unique // nasname
-  location  String?
-  type      String  @default("mikrotik")
+  id            String    @id
+  name          String
+  ipAddress     String    @unique // nasname
+  location      String?
+  type          String    @default("mikrotik")
   // status DERIVED dari poller/ping nyata — bukan input manual
-  status    String  @default("unknown") // online | offline | unknown
+  status        String    @default("unknown") // online | offline | unknown
   // ── Kredensial & integrasi RouterOS (node-routeros) ──
-  apiUsername  String? // user admin API RouterOS
-  apiPassword  String? // password API RouterOS
-  apiPort      Int      @default(8728) // port API RouterOS (8728 = api)
-  radiusSecret String? // shared secret RADIUS → kolom nas.secret di FreeRADIUS
-  radiusEnabled Boolean  @default(false) // sudah di-point ke FreeRADIUS (use-radius=yes)?
-  syncEnabled  Boolean  @default(true) // ikut poller sinkronisasi sesi?
-  lastSeenAt   DateTime? // heartbeat terakhir (poller/ping sukses/gagal)
-  lastSyncedAt DateTime? // tick poller terakhir sukses
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  apiUsername   String? // user admin API RouterOS
+  apiPassword   String? // password API RouterOS
+  apiPort       Int       @default(8728) // port API RouterOS (8728 = api)
+  radiusSecret  String? // shared secret RADIUS → kolom nas.secret di FreeRADIUS
+  radiusEnabled Boolean   @default(false) // sudah di-point ke FreeRADIUS (use-radius=yes)?
+  syncEnabled   Boolean   @default(true) // ikut poller sinkronisasi sesi?
+  lastSeenAt    DateTime? // heartbeat terakhir (poller/ping sukses/gagal)
+  lastSyncedAt  DateTime? // tick poller terakhir sukses
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  sessions  Session[]
   customers Customer[]
 
   @@map("nas_router")
 }
 
-model Session {
-  id               String    @id
-  // nullable: sesi PPPoE dari MikroTik yang usernamenya TIDAK terdaftar
-  // di master pelanggan tetap dicatat (dashboard "Sesi Tak Dikenal")
-  customerId       String?
-  customerUsername String
-  nasId            String
-  nasIpAddress     String
-  framedIp         String?
-  startedAt        DateTime
-  stoppedAt        DateTime?
-  durationSeconds  Int // dihitung ulang saat read utk sesi live
-  inputBytes       BigInt // AcctInputOctets (upload)
-  outputBytes      BigInt // AcctOutputOctets (download)
-  terminateCause   String?
-  extKey           String? // session-id asli dari RouterOS (sinkronisasi poller)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  customer Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  router   NasRouter @relation(fields: [nasId], references: [id], onDelete: Cascade)
-
-  @@index([customerId, startedAt])
-  @@index([nasId])
-  @@index([stoppedAt])
-  @@index([nasId, extKey])
-  @@map("session")
-}
-
 model Invoice {
-  id               String   @id
-  invoiceNumber    String   @unique // INV/YYYY/MM/SEQ
+  id               String    @id
+  invoiceNumber    String    @unique // INV/YYYY/MM/SEQ
   customerId       String
   customerUsername String // snapshot
   customerFullName String?
@@ -295,17 +263,17 @@ model Invoice {
   installationFee  Int
   taxPercent       Int
   totalAmount      Int
-  status           String   @default("unpaid") // paid | unpaid | overdue | cancelled
+  status           String    @default("unpaid") // paid | unpaid | overdue | cancelled
   issueDate        DateTime
   dueDate          DateTime
   paidAt           DateTime?
   paymentMethod    String? // qris|transfer_bca|transfer_mandiri|transfer_bri|cash|other
   paymentReference String?
   notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  customer Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   payments PaymentRecord[]
 
   @@unique([customerId, periodYear, periodMonth])
@@ -383,7 +351,7 @@ model PortalLoginLog {
 }
 
 model PortalSessionLog {
-  id               String   @id
+  id               String    @id
   customerId       String
   customerUsername String
   nasIpAddress     String
@@ -394,7 +362,7 @@ model PortalSessionLog {
   inputBytes       BigInt
   outputBytes      BigInt
   terminateCause   String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
@@ -485,36 +453,36 @@ model RadUserGroup {
 // lowercase. Karena itu SEMUA kolom tabel ini harus LOWERCASE di DB
 // (setara hasil unquote schema.sql resmi), bukan mixed-case.
 model RadAcct {
-  radAcctId           BigInt   @id @default(autoincrement()) @map("radacctid")
-  acctSessionId       String   @map("acctsessionid")
-  acctUniqueId        String   @unique @map("acctuniqueid")
-  username            String?  @map("username")
-  groupname           String?  @map("groupname")
-  realm               String?  @map("realm")
-  nasIpAddress        String?  @map("nasipaddress") @db.Inet
-  nasPortId           String?  @map("nasportid")
-  nasPortType         String?  @map("nasporttype")
+  radAcctId           BigInt    @id @default(autoincrement()) @map("radacctid")
+  acctSessionId       String    @map("acctsessionid")
+  acctUniqueId        String    @unique @map("acctuniqueid")
+  username            String?   @map("username")
+  groupname           String?   @map("groupname")
+  realm               String?   @map("realm")
+  nasIpAddress        String?   @map("nasipaddress") @db.Inet
+  nasPortId           String?   @map("nasportid")
+  nasPortType         String?   @map("nasporttype")
   acctStartTime       DateTime? @map("acctstarttime") @db.Timestamptz(6)
   acctUpdateTime      DateTime? @map("acctupdatetime") @db.Timestamptz(6)
   acctStopTime        DateTime? @map("acctstoptime") @db.Timestamptz(6)
-  acctInterval        BigInt?  @map("acctinterval")
-  acctSessionTime     BigInt?  @map("acctsessiontime")
-  acctAuthentic       String?  @map("acctauthentic")
-  connectInfoStart    String?  @map("connectinfo_start")
-  connectInfoStop     String?  @map("connectinfo_stop")
-  acctInputOctets     BigInt?  @map("acctinputoctets")
-  acctOutputOctets    BigInt?  @map("acctoutputoctets")
-  calledStationId     String?  @map("calledstationid")
-  callingStationId    String?  @map("callingstationid")
-  acctTerminateCause  String?  @map("acctterminatecause")
-  serviceType         String?  @map("servicetype")
-  framedProtocol      String?  @map("framedprotocol")
-  framedIpAddress     String?  @map("framedipaddress") @db.Inet
-  framedIpv6Address   String?  @map("framedipv6address") @db.Inet
-  framedIpv6Prefix    String?  @map("framedipv6prefix") @db.Inet
-  framedInterfaceId   String?  @map("framedinterfaceid")
-  delegatedIpv6Prefix String?  @map("delegatedipv6prefix") @db.Inet
-  class               String?  @map("class")
+  acctInterval        BigInt?   @map("acctinterval")
+  acctSessionTime     BigInt?   @map("acctsessiontime")
+  acctAuthentic       String?   @map("acctauthentic")
+  connectInfoStart    String?   @map("connectinfo_start")
+  connectInfoStop     String?   @map("connectinfo_stop")
+  acctInputOctets     BigInt?   @map("acctinputoctets")
+  acctOutputOctets    BigInt?   @map("acctoutputoctets")
+  calledStationId     String?   @map("calledstationid")
+  callingStationId    String?   @map("callingstationid")
+  acctTerminateCause  String?   @map("acctterminatecause")
+  serviceType         String?   @map("servicetype")
+  framedProtocol      String?   @map("framedprotocol")
+  framedIpAddress     String?   @map("framedipaddress") @db.Inet
+  framedIpv6Address   String?   @map("framedipv6address") @db.Inet
+  framedIpv6Prefix    String?   @map("framedipv6prefix") @db.Inet
+  framedInterfaceId   String?   @map("framedinterfaceid")
+  delegatedIpv6Prefix String?   @map("delegatedipv6prefix") @db.Inet
+  class               String?   @map("class")
 
   @@index([acctStartTime, username], map: "radacct_start_user_idx")
   @@map("radacct")
@@ -539,8 +507,8 @@ model RadPostAuth {
 
 // FreeRADIUS read_clients=yes — daftar NAS/RADIUS client dari DB
 model Nas {
-  id          Int    @id @default(autoincrement())
-  nasname     String @unique // IP NAS (MikroTik) — client yang boleh akses
+  id          Int     @id @default(autoincrement())
+  nasname     String  @unique // IP NAS (MikroTik) — client yang boleh akses
   shortname   String?
   type        String?
   ports       Int?

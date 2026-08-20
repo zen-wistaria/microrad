@@ -48,14 +48,23 @@ import {
   updateCustomer,
 } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
+import { getActiveSessions } from "@/lib/api/sessions";
 import { hasPermission } from "@/lib/rbac";
-import type { BandwidthProfile, Customer, CustomerStatus } from "@/lib/types";
+import type {
+  BandwidthProfile,
+  Customer,
+  CustomerStatus,
+  Session,
+} from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
 import { formatRelativeTime, getErrorMessage } from "@/lib/utils";
 
 export default function CustomersPage() {
   const { currentUser } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [onlineUsernames, setOnlineUsernames] = useState<Set<string>>(
+    new Set(),
+  );
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -90,12 +99,14 @@ export default function CustomersPage() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [custList, profList] = await Promise.all([
+      const [custList, profList, onlineSess] = await Promise.all([
         getCustomers(),
         getProfiles(),
+        getActiveSessions().catch(() => [] as Session[]),
       ]);
       setCustomers(custList);
       setProfiles(profList);
+      setOnlineUsernames(new Set(onlineSess.map((s) => s.customerUsername)));
     } catch (_e) {
       toast.error("Gagal memuat data pelanggan.");
     } finally {
@@ -365,8 +376,8 @@ export default function CustomersPage() {
                   </tr>
                 ) : (
                   paginatedCustomers.map((customer) => {
+                    const isOnline = onlineUsernames.has(customer.username);
                     const profile = profileMap.get(customer.profileId);
-                    const isOnline = Boolean(customer.currentSessionId);
 
                     return (
                       <tr

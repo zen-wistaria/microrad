@@ -52,7 +52,6 @@ export const GET = asyncApi(async (req: Request) => {
     lastSeenAt: c.lastSeenAt ? c.lastSeenAt.toISOString() : undefined,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
-    currentSessionId: c.currentSessionId ?? undefined,
   }));
   return NextResponse.json({ data, total });
 });

@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 10000);
+    const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
 
@@ -477,7 +477,7 @@ export default function DashboardPage() {
                         <td className="py-3 px-4">
                           <CustomerStatusBadge
                             status={cust.status}
-                            isOnline={Boolean(cust.currentSessionId)}
+                            isOnline={false}
                           />
                         </td>
                         <td className="py-3 px-4 text-right">

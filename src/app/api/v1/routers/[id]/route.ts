@@ -9,8 +9,8 @@ type Params = Promise<{ id: string }>;
 async function routerWithCount(id: string) {
   const router = await prisma.nasRouter.findUnique({ where: { id } });
   if (!router) return null;
-  const active = await prisma.session.count({
-    where: { nasId: id, stoppedAt: null },
+  const active = await prisma.radAcct.count({
+    where: { nasIpAddress: router.ipAddress, acctStopTime: null },
   });
   return {
     ...router,
@@ -101,8 +101,9 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     void triggerRadiusReload();
   }
 
-  const active = await prisma.session.count({
-    where: { nasId: id, stoppedAt: null },
+  const router2 = router; // gabung data utk count
+  const active = await prisma.radAcct.count({
+    where: { nasIpAddress: router2.ipAddress, acctStopTime: null },
   });
   return NextResponse.json({
     data: {
@@ -122,13 +123,12 @@ export const DELETE = asyncApi(
     const existing = await prisma.nasRouter.findUnique({ where: { id } });
     if (!existing) throw new Error("Router NAS tidak ditemukan.");
 
-    const activeSessions = await prisma.session.findMany({
-      where: { nasId: id, stoppedAt: null },
-      select: { id: true },
+    const activeCount = await prisma.radAcct.count({
+      where: { nasIpAddress: existing.ipAddress, acctStopTime: null },
     });
-    if (activeSessions.length > 0) {
+    if (activeCount > 0) {
       throw new Error(
-        `Router tidak dapat dihapus karena masih memiliki ${activeSessions.length} sesi aktif. Putuskan koneksi terlebih dahulu.`,
+        `Router tidak dapat dihapus karena masih memiliki ${activeCount} sesi aktif. Putuskan koneksi terlebih dahulu.`,
       );
     }
 

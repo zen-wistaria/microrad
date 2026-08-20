@@ -27,7 +27,7 @@ export const GET = asyncApi(async () => {
       orderBy: { acctStopTime: "desc" },
       select: { acctStopTime: true },
     }),
-    prisma.session.count({ where: { stoppedAt: null } }),
+    prisma.radAcct.count({ where: { acctStopTime: null } }),
   ]);
   return NextResponse.json({
     data: {
