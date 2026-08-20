@@ -206,10 +206,48 @@ export default function ProfilesPage() {
                         <Code2 className="h-3 w-3" />
                         Mikrotik-Rate-Limit Attribute
                       </div>
-                      <code className="text-xs font-mono text-purple-600 dark:text-purple-400">
-                        {profile.rateLimitUp}M/{profile.rateLimitDown}M
+                      <code className="text-[11px] font-mono leading-relaxed text-purple-600 dark:text-purple-400">
+                        {profile.rateLimitDown}M/{profile.rateLimitUp}M
+                        {profile.burstLimitDown || profile.burstLimitUp
+                          ? ` ${profile.burstLimitDown || profile.rateLimitDown * 1000}/${profile.burstLimitUp || profile.rateLimitUp * 1000}`
+                          : ""}
+                        {profile.burstThresholdDown || profile.burstThresholdUp
+                          ? ` ${profile.burstThresholdDown || profile.rateLimitDown * 1000}/${profile.burstThresholdUp || profile.rateLimitUp * 1000}`
+                          : ""}
+                        {profile.burstTimeSeconds
+                          ? ` ${profile.burstTimeSeconds}/${profile.burstTimeSeconds}`
+                          : ""}
+                        {profile.priority ? ` ${profile.priority}` : ""}
+                        {profile.limitAtDown || profile.limitAtUp
+                          ? ` ${profile.limitAtDown || profile.rateLimitDown * 1000}/${profile.limitAtUp || profile.rateLimitUp * 1000}`
+                          : ""}
                       </code>
                     </div>
+                    {(profile.burstLimitDown ||
+                      profile.burstLimitUp ||
+                      profile.burstTimeSeconds ||
+                      profile.priority ||
+                      profile.limitAtDown ||
+                      profile.limitAtUp) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {profile.burstTimeSeconds && (
+                          <span className="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950/50 dark:text-purple-400">
+                            Burst {profile.burstTimeSeconds}s
+                          </span>
+                        )}
+                        {profile.priority && (
+                          <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-950/50 dark:text-orange-400">
+                            Prioritas {profile.priority}
+                          </span>
+                        )}
+                        {(profile.limitAtDown || profile.limitAtUp) && (
+                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+                            Limit-at {profile.limitAtDown || 0}/
+                            {profile.limitAtUp || 0}k
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {profile.description && (
                       <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">

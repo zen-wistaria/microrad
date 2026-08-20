@@ -14,6 +14,7 @@ export interface Customer {
   profileId: string; // relasi ke BandwidthProfile (Mikrotik-Rate-Limit)
   staticIp?: string; // radreply: Framed-IP-Address
   nasId?: string; // NAS default/terakhir dipakai
+  bindOnNas?: boolean; // hanya boleh login lewat router nasId (radcheck NAS-IP-Address)
   createdAt: string;
   updatedAt: string;
   lastSeenAt?: string; // dari radacct terakhir
@@ -27,6 +28,15 @@ export interface BandwidthProfile {
   rateLimitUp: number; // dalam Mbps
   price?: number; // harga bulanan dalam Rupiah (IDR)
   description?: string;
+  // ── QoS lanjutan ala MikroTik (opsional; kbps) ──
+  burstLimitDown?: number | null; // burst-limit rx (kbps)
+  burstLimitUp?: number | null; // burst-limit tx (kbps)
+  burstThresholdDown?: number | null; // burst-threshold rx (kbps)
+  burstThresholdUp?: number | null; // burst-threshold tx (kbps)
+  burstTimeSeconds?: number | null; // burst-time (detik)
+  priority?: number | null; // 1-8, 1 tertinggi
+  limitAtDown?: number | null; // limit-at rx / CIR (kbps)
+  limitAtUp?: number | null; // limit-at tx / CIR (kbps)
   customerCount: number; // derived jumlah customer yang memakai profile ini
 }
 

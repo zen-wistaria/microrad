@@ -10,6 +10,7 @@
  */
 import { disconnectSessionRecord } from "@/app/api/v1/customers/[id]/route";
 import { connectRouterOS } from "./mikrotik-client";
+import { syncPortalSessionLogs } from "./portal-logs";
 import { prisma } from "./prisma";
 import { parseActiveRow } from "./radius-parsers";
 
@@ -163,6 +164,8 @@ export async function syncSingleRouter(router: {
         mark.closed += 1;
       }
     }
+    // Sinkronkan log sesi portal (agar "Log Sesi" portal terisi riwayat)
+    await syncPortalSessionLogs(prisma);
 
     await prisma.nasRouter.update({
       where: { id: router.id },

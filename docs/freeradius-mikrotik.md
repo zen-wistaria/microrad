@@ -135,3 +135,19 @@ curl -X POST http://localhost:3000/api/v1/radius/reload  # (auth admin)
   `www-ssl` aktif.
 - Docker Desktop/Windows: CHR butuh `privileged`; koneksi ke router rumah
   via host network biasa (bukan docker network).
+
+## Fitur 2026-08-20: QoS lanjutan, bind-on-NAS, log sesi, usage nyata
+
+- **Profil Bandwidth QoS ala MikroTik** — `Mikrotik-Rate-Limit` sekarang
+  mendukung max, burst-limit/`threshold`, burst-time, priority, limit-at
+  (format: `1M/1M 1500k/1500k 512k/512k 12/12 8 64k/64k`). Di `prisma
+  bandwidth_profile` (kbps) → `radsync` → radreply per pelanggan; ubah
+  profil → massal update radreply.
+- **Bind-on-NAS** — `Customer.bindOnNas` + pilih router; aktif → radcheck
+  `NAS-IP-Address` = IP router → FreeRADIUS tolak login dari router lain.
+- **Log sesi portal** — `syncPortalSessionLogs()` menghidupkan
+  `portal_session_log` setiap tick poller (riwayat nyata di portal).
+- **Usage dari sesi nyata** — `usage-real.ts` menggantikan synthetic untuk
+  detail pelanggan & portal (30 hari + bulanan); akun baru tanpa sesi = 0.
+- **routers**: `nasIpAddress` sesi diisi IP router saat ini (bukan IP lama);
+  filter server-side pakai `nasId`.

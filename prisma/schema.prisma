@@ -180,6 +180,7 @@ model Customer {
   profileId        String?
   staticIp         String?
   nasId            String?
+  bindOnNas        Boolean  @default(false) // hanya boleh login lewat router ini
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   lastSeenAt       DateTime?
@@ -198,14 +199,22 @@ model Customer {
 }
 
 model BandwidthProfile {
-  id             String     @id
-  name           String
-  rateLimitDown  Int // Mbps
-  rateLimitUp    Int // Mbps
-  price          Int? // IDR/bulan
-  description    String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  id                     String   @id
+  name                   String
+  rateLimitDown          Int // Mbps
+  rateLimitUp            Int // Mbps
+  burstLimitDown         Int? // kbps
+  burstLimitUp           Int? // kbps
+  burstThresholdDown     Int? // kbps
+  burstThresholdUp       Int? // kbps
+  burstTimeSeconds       Int? // detik
+  priority               Int? // 1-8
+  limitAtDown            Int? // kbps (CIR)
+  limitAtUp              Int? // kbps (CIR)
+  price                  Int? // IDR/bulan
+  description            String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   customers Customer[]
 

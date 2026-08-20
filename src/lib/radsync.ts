@@ -13,18 +13,31 @@ export interface RadiusCustomerInput {
   username: string;
   status: string;
   staticIp?: string | null;
+  bindOnNas?: boolean;
+  nasIpAddress?: string | null;
 }
 export interface RadiusProfileInput {
   rateLimitDown: number;
   rateLimitUp: number;
+  // Opsional: parameter QoS lanjutan ala MikroTik (burst/priority/limit-at)
+  burstLimitDown?: number | null;
+  burstLimitUp?: number | null;
+  burstThresholdDown?: number | null;
+  burstThresholdUp?: number | null;
+  burstTimeSeconds?: number | null;
+  priority?: number | null;
+  limitAtDown?: number | null;
+  limitAtUp?: number | null;
 }
 
-/** Perbarui radcheck+radreply untuk satu pelanggan (create/update). */
+/** Wajib dipakai pemanggil agar bind-on NAS ikut tersinkron. Router IP diambil
+ *  terpisah bila tidak disertakan. */
 export async function syncCustomerRadius(
   tx: Prisma.TransactionClient,
   customer: RadiusCustomerInput,
   profile?: RadiusProfileInput | null,
   password?: string,
+  nasIpAddress?: string | null,
 ) {
   await syncCustomerRadiusRows(
     tx,
@@ -32,6 +45,7 @@ export async function syncCustomerRadius(
     profile,
     password,
     customer.username,
+    nasIpAddress,
   );
 }
 
@@ -71,8 +85,10 @@ async function syncCustomerRadiusRows(
   profile?: RadiusProfileInput | null,
   password?: string,
   username?: string,
+  nasIpAddress?: string | null,
 ) {
   const u = username ?? customer.username;
+  const bindNasIp = nasIpAddress ?? customer.nasIpAddress ?? null;
   // Aktif → radcheck Cleartext-Password (suspend/disabled → hindari login)
   if (customer.status === "active" && password) {
     await tx.radCheck.upsert({
@@ -90,6 +106,29 @@ async function syncCustomerRadiusRows(
   } else {
     await tx.radCheck.deleteMany({
       where: { username: u, attribute: "Cleartext-Password" },
+    });
+  }
+
+  // Bind-on-NAS: aktif & terkunci ke router → radcheck NAS-IP-Address == IP
+  // (FreeRADIUS cocokkan atribut request NAS-IP-Address; login dari NAS lain
+  //  akan Access-Reject)
+  const bindIp = customer.bindOnNas ? bindNasIp : null;
+  if (customer.status === "active" && bindIp) {
+    await tx.radCheck.upsert({
+      where: {
+        username_attribute: { username: u, attribute: "NAS-IP-Address" },
+      },
+      update: { value: bindIp, op: ":=" },
+      create: {
+        username: u,
+        attribute: "NAS-IP-Address",
+        op: ":=",
+        value: bindIp,
+      },
+    });
+  } else {
+    await tx.radCheck.deleteMany({
+      where: { username: u, attribute: "NAS-IP-Address" },
     });
   }
 
@@ -115,7 +154,28 @@ async function syncCustomerRadiusRows(
 
   // radreply: Mikrotik-Rate-Limit dari profil (bila ada)
   if (profile) {
-    const rate = rateLimitValue(profile.rateLimitDown, profile.rateLimitUp);
+    const rate = rateLimitValue({
+      maxDownload: `${profile.rateLimitDown}M`,
+      maxUpload: `${profile.rateLimitUp}M`,
+      burstDownload: profile.burstLimitDown
+        ? `${profile.burstLimitDown}k`
+        : undefined,
+      burstUpload: profile.burstLimitUp
+        ? `${profile.burstLimitUp}k`
+        : undefined,
+      burstThresholdDownload: profile.burstThresholdDown
+        ? `${profile.burstThresholdDown}k`
+        : undefined,
+      burstThresholdUp: profile.burstThresholdUp
+        ? `${profile.burstThresholdUp}k`
+        : undefined,
+      burstTimeSeconds: profile.burstTimeSeconds ?? undefined,
+      priority: profile.priority ?? undefined,
+      limitAtDownload: profile.limitAtDown
+        ? `${profile.limitAtDown}k`
+        : undefined,
+      limitAtUp: profile.limitAtUp ? `${profile.limitAtUp}k` : undefined,
+    });
     await tx.radReply.upsert({
       where: {
         username_attribute: { username: u, attribute: "Mikrotik-Rate-Limit" },
@@ -145,7 +205,26 @@ export async function syncProfileRadius(
   customerUsernames: string[],
 ) {
   if (customerUsernames.length === 0) return;
-  const rate = rateLimitValue(profile.rateLimitDown, profile.rateLimitUp);
+  const rate = rateLimitValue({
+    maxDownload: `${profile.rateLimitDown}M`,
+    maxUpload: `${profile.rateLimitUp}M`,
+    burstDownload: profile.burstLimitDown
+      ? `${profile.burstLimitDown}k`
+      : undefined,
+    burstUpload: profile.burstLimitUp ? `${profile.burstLimitUp}k` : undefined,
+    burstThresholdDownload: profile.burstThresholdDown
+      ? `${profile.burstThresholdDown}k`
+      : undefined,
+    burstThresholdUp: profile.burstThresholdUp
+      ? `${profile.burstThresholdUp}k`
+      : undefined,
+    burstTimeSeconds: profile.burstTimeSeconds ?? undefined,
+    priority: profile.priority ?? undefined,
+    limitAtDownload: profile.limitAtDown
+      ? `${profile.limitAtDown}k`
+      : undefined,
+    limitAtUp: profile.limitAtUp ? `${profile.limitAtUp}k` : undefined,
+  });
   await tx.radReply.updateMany({
     where: {
       username: { in: customerUsernames },

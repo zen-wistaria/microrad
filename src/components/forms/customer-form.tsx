@@ -63,6 +63,7 @@ const customerSchema = z.object({
       message: "Format IP Address tidak valid (contoh: 10.10.10.15)",
     }),
   nasId: z.string().optional(),
+  bindOnNas: z.boolean().optional(),
   status: z.enum(["active", "suspended", "disabled"]),
 });
 
@@ -101,6 +102,7 @@ export function CustomerForm({
       profileId: initialData?.profileId || profiles[0]?.id || "",
       staticIp: initialData?.staticIp || "",
       nasId: initialData?.nasId || routers[0]?.id || "",
+      bindOnNas: initialData?.bindOnNas ?? false,
       status: initialData?.status || "active",
     },
   });
@@ -108,6 +110,7 @@ export function CustomerForm({
   const selectedProfileId = watch("profileId");
   const selectedStatus = watch("status");
   const selectedNasId = watch("nasId");
+  const bindOnNas = watch("bindOnNas");
 
   const onSubmit = async (data: CustomerFormValues) => {
     try {
@@ -122,6 +125,7 @@ export function CustomerForm({
           profileId: data.profileId,
           staticIp: data.staticIp || undefined,
           nasId: data.nasId || undefined,
+          bindOnNas: data.bindOnNas,
           status: data.status as CustomerStatus,
         });
         toast.success(`Data pelanggan ${data.username} berhasil diperbarui.`);
@@ -141,6 +145,7 @@ export function CustomerForm({
           profileId: data.profileId,
           staticIp: data.staticIp || undefined,
           nasId: data.nasId || undefined,
+          bindOnNas: data.bindOnNas,
           status: data.status as CustomerStatus,
         });
         toast.success(
@@ -334,7 +339,7 @@ export function CustomerForm({
                   setValue("nasId", val, { shouldValidate: true })
                 }
               >
-                <SelectTrigger id="nasId">
+                <SelectTrigger id="nasId" disabled={!bindOnNas}>
                   <SelectValue placeholder="Pilih NAS Router" />
                 </SelectTrigger>
                 <SelectContent>
@@ -345,6 +350,26 @@ export function CustomerForm({
                   ))}
                 </SelectContent>
               </Select>
+              <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 p-3 cursor-pointer dark:border-slate-800">
+                <input
+                  type="checkbox"
+                  checked={bindOnNas}
+                  onChange={(e) =>
+                    setValue("bindOnNas", e.target.checked, {
+                      shouldValidate: true,
+                    })
+                  }
+                  className="mt-0.5 h-4 w-4 accent-blue-600"
+                />
+                <span className="text-sm leading-snug">
+                  <span className="font-medium">Bind-on-NAS</span>
+                  <span className="block text-xs text-slate-500">
+                    Kunci login PPPoE hanya boleh lewat router yang dipilih
+                    (ditulis sebagai radcheck <code>NAS-IP-Address</code> agar
+                    FreeRADIUS menolak login dari router lain).
+                  </span>
+                </span>
+              </label>
             </div>
           </CardContent>
         </Card>

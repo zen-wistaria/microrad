@@ -62,6 +62,7 @@ export const POST = asyncApi(async (req: Request) => {
     profileId?: string | null;
     staticIp?: string;
     nasId?: string | null;
+    bindOnNas?: boolean;
     password?: string;
   };
 
@@ -87,16 +88,40 @@ export const POST = asyncApi(async (req: Request) => {
         profileId: body.profileId ?? undefined,
         staticIp: body.staticIp?.trim() || undefined,
         nasId: body.nasId ?? undefined,
+        bindOnNas: body.bindOnNas ?? false,
       },
     });
     // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
     const profile = created.profileId
       ? await tx.bandwidthProfile.findUnique({
           where: { id: created.profileId },
-          select: { rateLimitDown: true, rateLimitUp: true },
+          select: {
+            rateLimitDown: true,
+            rateLimitUp: true,
+            burstLimitDown: true,
+            burstLimitUp: true,
+            burstThresholdDown: true,
+            burstThresholdUp: true,
+            burstTimeSeconds: true,
+            priority: true,
+            limitAtDown: true,
+            limitAtUp: true,
+          },
         })
       : null;
-    await syncCustomerRadius(tx, created, profile, body.password ?? undefined);
+    const router = created.nasId
+      ? await tx.nasRouter.findUnique({
+          where: { id: created.nasId },
+          select: { ipAddress: true },
+        })
+      : null;
+    await syncCustomerRadius(
+      tx,
+      created,
+      profile,
+      body.password ?? undefined,
+      router?.ipAddress,
+    );
     return created;
   });
   return NextResponse.json({ data: customer }, { status: 201 });

@@ -25,6 +25,14 @@ export const POST = asyncApi(async (req: Request) => {
     name?: string;
     rateLimitDown?: number;
     rateLimitUp?: number;
+    burstLimitDown?: number | null;
+    burstLimitUp?: number | null;
+    burstThresholdDown?: number | null;
+    burstThresholdUp?: number | null;
+    burstTimeSeconds?: number | null;
+    priority?: number | null;
+    limitAtDown?: number | null;
+    limitAtUp?: number | null;
     price?: number | null;
     description?: string;
   };
@@ -37,6 +45,14 @@ export const POST = asyncApi(async (req: Request) => {
       name,
       rateLimitDown: body.rateLimitDown ?? 0,
       rateLimitUp: body.rateLimitUp ?? 0,
+      burstLimitDown: body.burstLimitDown ?? null,
+      burstLimitUp: body.burstLimitUp ?? null,
+      burstThresholdDown: body.burstThresholdDown ?? null,
+      burstThresholdUp: body.burstThresholdUp ?? null,
+      burstTimeSeconds: body.burstTimeSeconds ?? null,
+      priority: body.priority ?? null,
+      limitAtDown: body.limitAtDown ?? null,
+      limitAtUp: body.limitAtUp ?? null,
       price: body.price ?? null,
       description: body.description?.trim() || undefined,
     },

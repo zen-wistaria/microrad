@@ -21,6 +21,14 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     name?: string;
     rateLimitDown?: number;
     rateLimitUp?: number;
+    burstLimitDown?: number | null;
+    burstLimitUp?: number | null;
+    burstThresholdDown?: number | null;
+    burstThresholdUp?: number | null;
+    burstTimeSeconds?: number | null;
+    priority?: number | null;
+    limitAtDown?: number | null;
+    limitAtUp?: number | null;
     price?: number | null;
     description?: string;
   };
@@ -39,6 +47,22 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
         ...(body.rateLimitUp !== undefined
           ? { rateLimitUp: body.rateLimitUp }
           : {}),
+        ...("burstLimitDown" in body
+          ? { burstLimitDown: body.burstLimitDown }
+          : {}),
+        ...("burstLimitUp" in body ? { burstLimitUp: body.burstLimitUp } : {}),
+        ...("burstThresholdDown" in body
+          ? { burstThresholdDown: body.burstThresholdDown }
+          : {}),
+        ...("burstThresholdUp" in body
+          ? { burstThresholdUp: body.burstThresholdUp }
+          : {}),
+        ...("burstTimeSeconds" in body
+          ? { burstTimeSeconds: body.burstTimeSeconds }
+          : {}),
+        ...("priority" in body ? { priority: body.priority } : {}),
+        ...("limitAtDown" in body ? { limitAtDown: body.limitAtDown } : {}),
+        ...("limitAtUp" in body ? { limitAtUp: body.limitAtUp } : {}),
         ...("price" in body ? { price: body.price ?? null } : {}),
         ...(body.description !== undefined
           ? { description: body.description.trim() || undefined }
@@ -46,7 +70,18 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       },
     });
     // radsync — perbarui Mikrotik-Rate-Limit semua pelanggan profil ini
-    if (body.rateLimitDown !== undefined || body.rateLimitUp !== undefined) {
+    if (
+      body.rateLimitDown !== undefined ||
+      body.rateLimitUp !== undefined ||
+      "burstLimitDown" in body ||
+      "burstLimitUp" in body ||
+      "burstThresholdDown" in body ||
+      "burstThresholdUp" in body ||
+      "burstTimeSeconds" in body ||
+      "priority" in body ||
+      "limitAtDown" in body ||
+      "limitAtUp" in body
+    ) {
       const customers = await tx.customer.findMany({
         where: { profileId: id },
         select: { username: true },

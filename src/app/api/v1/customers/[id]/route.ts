@@ -31,6 +31,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     profileId?: string | null;
     staticIp?: string;
     nasId?: string | null;
+    bindOnNas?: boolean;
     password?: string;
   };
 
@@ -77,6 +78,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           ? { staticIp: body.staticIp.trim() || undefined }
           : {}),
         ...("nasId" in body ? { nasId: body.nasId ?? null } : {}),
+        ...(body.bindOnNas !== undefined ? { bindOnNas: body.bindOnNas } : {}),
         ...(body.password !== undefined
           ? { password: body.password || undefined }
           : {}),
@@ -92,10 +94,33 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     const profile = updated.profileId
       ? await tx.bandwidthProfile.findUnique({
           where: { id: updated.profileId },
-          select: { rateLimitDown: true, rateLimitUp: true },
+          select: {
+            rateLimitDown: true,
+            rateLimitUp: true,
+            burstLimitDown: true,
+            burstLimitUp: true,
+            burstThresholdDown: true,
+            burstThresholdUp: true,
+            burstTimeSeconds: true,
+            priority: true,
+            limitAtDown: true,
+            limitAtUp: true,
+          },
         })
       : null;
-    await syncCustomerRadius(tx, updated, profile, body.password ?? undefined);
+    const router = updated.nasId
+      ? await tx.nasRouter.findUnique({
+          where: { id: updated.nasId },
+          select: { ipAddress: true },
+        })
+      : null;
+    await syncCustomerRadius(
+      tx,
+      updated,
+      profile,
+      body.password ?? undefined,
+      router?.ipAddress,
+    );
     return updated;
   });
   return NextResponse.json({ data: customer });

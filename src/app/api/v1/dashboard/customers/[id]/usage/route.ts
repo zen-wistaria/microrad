@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 import {
-  getCustomerMonthlyUsage,
-  getCustomerUsageHistory,
-} from "@/lib/usage-synthetic";
+  getMonthlyUsageFromSessions,
+  getUsageHistoryFromSessions,
+} from "@/lib/usage-real";
 
 type Params = Promise<{ id: string }>;
 
 /**
  * Data usage pelanggan: riwayat 30 hari + bulanan 12 bulan (filter ?year=).
- * Deterministik dari mock (usage-synthetic.ts).
+ * Diagregasi dari sesi nyata (tabel session) — akun baru tanpa sesi
+ * menghasilkan array kosong, bukan data synthetic.
  */
 export const GET = asyncApi(async (req: Request, ctx: { params: Params }) => {
   await requirePermission("customer.read");
@@ -23,8 +24,8 @@ export const GET = asyncApi(async (req: Request, ctx: { params: Params }) => {
   const year = yearParam ? Number(yearParam) : undefined;
 
   const [history, monthly] = await Promise.all([
-    getCustomerUsageHistory(id),
-    getCustomerMonthlyUsage(id, year),
+    getUsageHistoryFromSessions(prisma, id),
+    getMonthlyUsageFromSessions(prisma, id, year),
   ]);
 
   return NextResponse.json({ data: { history, monthly } });
