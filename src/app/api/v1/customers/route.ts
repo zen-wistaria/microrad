@@ -47,7 +47,14 @@ export const GET = asyncApi(async (req: Request) => {
     }),
   ]);
 
-  return NextResponse.json({ data: rows, total });
+  const data = rows.map((c) => ({
+    ...c,
+    lastSeenAt: c.lastSeenAt ? c.lastSeenAt.toISOString() : undefined,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+    currentSessionId: c.currentSessionId ?? undefined,
+  }));
+  return NextResponse.json({ data, total });
 });
 
 export const POST = asyncApi(async (req: Request) => {

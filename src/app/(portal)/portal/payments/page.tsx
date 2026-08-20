@@ -2,7 +2,7 @@
 
 import { RefreshCw, Wallet } from "lucide-react";
 import { parseAsInteger, useQueryState } from "nuqs";
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import { PaymentMethodBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePortal } from "@/lib/portal-context";
 import { formatDate, formatRupiah } from "@/lib/utils";
 
-export default function PortalPaymentsPage() {
+function PortalPaymentsContent() {
   const { data, loading, refreshing, reload } = usePortal();
 
   // Pagination (via nuqs — konsisten saat refresh)
@@ -194,5 +194,13 @@ export default function PortalPaymentsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function PortalPaymentsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <PortalPaymentsContent />
+    </Suspense>
   );
 }

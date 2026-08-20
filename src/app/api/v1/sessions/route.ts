@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
+import { ensureSyncRuns } from "@/lib/mikrotik-sync";
 import { prisma } from "@/lib/prisma";
+import { collectLiveSnapshots } from "@/lib/realtime/collect";
+import type { LiveSnapshot } from "@/lib/realtime/hub";
+import { installRealtimeListener } from "@/lib/realtime/live-sessions";
+import type { RouterBrief } from "@/lib/realtime/ws-server";
 import { disconnectSessionRecord } from "../customers/[id]/route";
 
 interface SessionsQuery {
@@ -10,35 +15,6 @@ interface SessionsQuery {
   customerId?: string;
   page?: number;
   limit?: number;
-}
-
-/** Inflasi sesi live saat read — mirror mock (duration=elapsed, bytes×growth) */
-function inflateLive(session: {
-  startedAt: Date;
-  stoppedAt: Date | null;
-  inputBytes: bigint;
-  outputBytes: bigint;
-}) {
-  if (session.stoppedAt) {
-    return {
-      durationSeconds: Math.max(
-        1,
-        Math.round(
-          (session.stoppedAt.getTime() - session.startedAt.getTime()) / 1000,
-        ),
-      ),
-      inputBytes: Number(session.inputBytes),
-      outputBytes: Number(session.outputBytes),
-    };
-  }
-  const now = Date.now();
-  const elapsed = Math.max(0, (now - session.startedAt.getTime()) / 1000);
-  const growth = 1 + Math.min(elapsed * 10, 3600) / 3600;
-  return {
-    durationSeconds: Math.round(elapsed),
-    inputBytes: Math.round(Number(session.inputBytes) * growth),
-    outputBytes: Math.round(Number(session.outputBytes) * growth),
-  };
 }
 
 export const GET = asyncApi(async (req: Request) => {
@@ -56,41 +32,121 @@ export const GET = asyncApi(async (req: Request) => {
   const safeLimit = Math.min(Math.max(q.limit || 10, 1), 50);
   const safePage = Math.max(q.page || 1, 1);
 
-  const where: Record<string, unknown> = {};
-  if (q.activeOnly) where.stoppedAt = null;
-  if (q.customerId) where.customerId = q.customerId;
-  if (q.router && q.router !== "all") where.nasIpAddress = q.router;
+  installRealtimeListener();
+  await ensureSyncRuns().catch(() => undefined);
+
+  // Snapshot live (hub poller atau DB) + status router
+  const live = await collectLiveSnapshots();
+  const routerBriefs = await routerBriefsFromDb();
+
+  let rows: LiveSnapshot[] = live.snapshots;
+
+  // Filter
+  rows = rows.filter((s) => !q.activeOnly || !s.session.stoppedAt);
+
+  if (q.customerId) {
+    rows = rows.filter((s) => s.session.customerId === q.customerId);
+  }
+  if (q.router && q.router !== "all") {
+    rows = rows.filter((s) => s.session.nasIpAddress === q.router);
+  }
   if (q.search) {
-    where.OR = [
-      { customerUsername: { contains: q.search, mode: "insensitive" } },
-      { framedIp: { contains: q.search, mode: "insensitive" } },
-      { nasIpAddress: { contains: q.search, mode: "insensitive" } },
-    ];
+    const needle = q.search.toLowerCase();
+    rows = rows.filter((s) =>
+      [
+        s.session.customerUsername,
+        s.session.framedIp ?? "",
+        s.session.nasIpAddress,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
   }
 
-  const [total, rows] = await Promise.all([
-    prisma.session.count({ where }),
-    prisma.session.findMany({
-      where,
-      orderBy: { startedAt: "desc" },
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
-    }),
-  ]);
+  const total = rows.length;
+  const pageRows = rows.slice(
+    (safePage - 1) * safeLimit,
+    (safePage - 1) * safeLimit + safeLimit,
+  );
 
-  const data = rows.map((s) => ({
-    ...s,
-    ...inflateLive(s),
-    inputBytes: undefined,
-    outputBytes: undefined,
-    customerId: s.customerId, // bisa null (sesi tak dikenal dari RouterOS)
-    extKey: s.extKey ?? undefined,
-    startedAt: s.startedAt.toISOString(),
-    stoppedAt: s.stoppedAt ? s.stoppedAt.toISOString() : undefined,
-  }));
+  // Materialisasi ke bentuk response (ISO + inflasi).
+  // Untuk sesi live yang berasal dari radacct, durasi & bytes interpolasi
+  // dari `acctUpdateTime` (Interim terakhir) bila tersedia — bukan dari
+  // startedAt yang bisa lokal/berbeda zona.
+  const liveAcct = await prisma.radAcct.findMany({
+    where: {
+      nasIpAddress: { in: pageRows.map((s) => s.session.nasIpAddress) },
+      acctStopTime: null,
+    },
+    select: {
+      acctUniqueId: true,
+      acctUpdateTime: true,
+      acctSessionTime: true,
+      acctInputOctets: true,
+      acctOutputOctets: true,
+    },
+  });
+  const acctByExt = new Map(liveAcct.map((a) => [a.acctUniqueId, a]));
+  const data = pageRows.map((snap) => {
+    const s = snap.session;
+    const acct = s.extKey ? acctByExt.get(s.extKey) : undefined;
+    const nowMs = Date.now();
+    let elapsed = Math.max(
+      0,
+      Math.round((nowMs - new Date(s.startedAt).getTime()) / 1000),
+    );
+    let inputBytes = s.inputBytes;
+    let outputBytes = s.outputBytes;
+    if (acct) {
+      const baseMs = Number(acct.acctSessionTime ?? 0) * 1000;
+      const sinceUpdateMs = acct.acctUpdateTime
+        ? Math.max(0, nowMs - new Date(acct.acctUpdateTime).getTime())
+        : 0;
+      elapsed = Math.max(0, Math.round((baseMs + sinceUpdateMs) / 1000));
+      const growth = 1 + Math.min(elapsed * 10, 3600) / 3600;
+      inputBytes = Math.round(Number(acct.acctInputOctets ?? 0) * growth);
+      outputBytes = Math.round(Number(acct.acctOutputOctets ?? 0) * growth);
+    }
+    return {
+      ...s,
+      durationSeconds: elapsed,
+      inputBytes,
+      outputBytes,
+      customerId: s.customerId,
+      startedAt: s.startedAt,
+      stoppedAt: undefined,
+      extKey: s.extKey,
+    };
+  });
 
-  return NextResponse.json({ data, total });
+  return NextResponse.json({ data, total, routers: routerBriefs });
 });
+
+async function routerBriefsFromDb(): Promise<RouterBrief[]> {
+  try {
+    const [routers, counts] = await Promise.all([
+      prisma.nasRouter.findMany({
+        select: { id: true, name: true, ipAddress: true, status: true },
+      }),
+      prisma.session.groupBy({
+        by: ["nasId"],
+        where: { stoppedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
+    const countMap = new Map(counts.map((c) => [c.nasId, c._count._all]));
+    return routers.map((r) => ({
+      id: r.id,
+      name: r.name,
+      ipAddress: r.ipAddress,
+      status: r.status as RouterBrief["status"],
+      activeSessionCount: countMap.get(r.id) ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 /** POST /api/v1/sessions/[id]/disconnect — putus sesi (Admin-Reset) */
 export const POST = asyncApi(async (req: Request) => {
@@ -105,5 +161,9 @@ export const POST = asyncApi(async (req: Request) => {
     throw new Error("Gagal memutuskan sesi PPPoE atau sesi sudah berakhir.");
   }
   await disconnectSessionRecord(id, body.cause ?? "Admin-Reset");
+  const { refreshLiveAfterMutation } = await import(
+    "@/lib/realtime/live-sessions"
+  );
+  await refreshLiveAfterMutation();
   return NextResponse.json({ success: true });
 });

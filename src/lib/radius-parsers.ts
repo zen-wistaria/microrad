@@ -62,18 +62,18 @@ export function parseRouterBytes(value: string | number | undefined): bigint {
 export function parseActiveRow(
   row: Record<string, string>,
 ): ActivePppRow | null {
-  const name = row["name"];
+  const name = row.name;
   if (!name) return null;
   return {
     dotId: row[".id"] ?? "",
     name,
-    callerId: row["=caller-id"] ?? undefined,
-    address: row["=address"] ?? undefined,
-    service: row["=service"] ?? "pppoe",
-    sessionId: row["=session-id"] ?? "",
-    uptimeSec: parseUptime(row["=uptime"]),
-    bytesIn: parseRouterBytes(row["=bytes-in"]),
-    bytesOut: parseRouterBytes(row["=bytes-out"]),
-    radius: row["=radius"] === "yes" || row["=radius"] === "true",
+    callerId: row["caller-id"] ?? undefined,
+    address: row.address ?? undefined,
+    service: row.service ?? "pppoe",
+    sessionId: row["session-id"] ?? "",
+    uptimeSec: parseUptime(row.uptime),
+    bytesIn: parseRouterBytes(row["bytes-in"]),
+    bytesOut: parseRouterBytes(row["bytes-out"]),
+    radius: row.radius === "yes" || row.radius === "true",
   };
 }

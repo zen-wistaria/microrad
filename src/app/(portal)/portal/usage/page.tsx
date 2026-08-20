@@ -2,7 +2,7 @@
 
 import { ArrowUp, CalendarDays, RefreshCw } from "lucide-react";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CustomerMonthlyUsageChart } from "@/components/charts/customer-monthly-usage-chart";
 import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ const YEARS = (() => {
   return arr;
 })();
 
-export default function PortalUsagePage() {
+function PortalUsageContent() {
   const { data, loading, refreshing, reload } = usePortal();
 
   const [daily, setDaily] = useState<CustomerDailyUsage[]>([]);
@@ -381,5 +381,13 @@ export default function PortalUsagePage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function PortalUsagePage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <PortalUsageContent />
+    </Suspense>
   );
 }

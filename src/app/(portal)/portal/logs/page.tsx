@@ -2,7 +2,7 @@
 
 import { LogIn, RefreshCw, Satellite } from "lucide-react";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,7 +28,7 @@ import {
   formatRelativeTime,
 } from "@/lib/utils";
 
-export default function PortalLogsPage() {
+function PortalLogsContent() {
   const { data, loading, refreshing, reload } = usePortal();
 
   // State tabs + pagination (via nuqs — konsisten saat refresh)
@@ -412,5 +412,13 @@ export default function PortalLogsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function PortalLogsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <PortalLogsContent />
+    </Suspense>
   );
 }

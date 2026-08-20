@@ -42,7 +42,7 @@ export async function syncPortalSessionLogs(
   await db.portalSessionLog.createMany({
     data: sessions.map((s) => ({
       id: `plog-sess-${s.id}`,
-      customerId: s.customerId!,
+      customerId: s.customerId as string,
       customerUsername: s.customerUsername,
       nasIpAddress: s.nasIpAddress,
       framedIp: s.framedIp ?? undefined,

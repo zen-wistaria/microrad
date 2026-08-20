@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requireSession } from "@/lib/api-auth";
+import { ensureSyncRuns } from "@/lib/mikrotik-sync";
 import { prisma } from "@/lib/prisma";
 import { getUsageTrend } from "@/lib/usage-synthetic";
 
 /** Dashboard stats — kontrak: totalCustomers, status, online, traffic hari ini, trend 7 hari */
 export const GET = asyncApi(async () => {
   await requireSession();
+  await ensureSyncRuns().catch(() => undefined);
 
   const [customers, routers, sessions] = await Promise.all([
     prisma.customer.findMany({ select: { id: true, status: true } }),

@@ -15,7 +15,47 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   const { id } = await ctx.params;
   const customer = await prisma.customer.findUnique({ where: { id } });
   if (!customer) throw new Error("Pelanggan tidak ditemukan.");
-  return NextResponse.json({ data: customer });
+
+  // Status online dihitung dari sesi nyata (live) — bukan field basi
+  const active = await prisma.session.findFirst({
+    where: { customerId: id, stoppedAt: null },
+    orderBy: { startedAt: "desc" },
+    select: {
+      id: true,
+      startedAt: true,
+      durationSeconds: true,
+      inputBytes: true,
+      outputBytes: true,
+    },
+  });
+  if (!active && customer.currentSessionId) {
+    // currentSessionId basi (router restart dsb) — bersihkan
+    await prisma.customer.update({
+      where: { id },
+      data: { currentSessionId: null },
+    });
+    customer.currentSessionId = null;
+  }
+  const lastSeenAt = customer.lastSeenAt
+    ? new Date(customer.lastSeenAt).toISOString()
+    : undefined;
+  return NextResponse.json({
+    data: {
+      ...customer,
+      lastSeenAt,
+      createdAt: new Date(customer.createdAt).toISOString(),
+      updatedAt: new Date(customer.updatedAt).toISOString(),
+    },
+    live: active
+      ? {
+          id: active.id,
+          startedAt: active.startedAt.toISOString(),
+          durationSeconds: active.durationSeconds,
+          inputBytes: Number(active.inputBytes),
+          outputBytes: Number(active.outputBytes),
+        }
+      : null,
+  });
 });
 
 export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
@@ -219,6 +259,16 @@ export async function disconnectSessionRecord(
           data: { stoppedAt: now }, // no-op agar transaksi tetap konsisten
         }),
   ]);
+
+  // Perbarui snapshot live + broadcast — halaman langsung ter-refresh
+  try {
+    const { refreshLiveAfterMutation } = await import(
+      "@/lib/realtime/live-sessions"
+    );
+    await refreshLiveAfterMutation();
+  } catch {
+    // realtime opsional — jangan sampai memblokir disconnect
+  }
 }
 
 /** Hapus sesi aktif dari RouterOS via API (by username). */
@@ -234,6 +284,7 @@ async function kickMikrotikSession(session: {
       where: { id: session.nasId },
     });
     if (!router?.apiUsername) return;
+    // best-effort — timeout singkat agar tidak memperlambat disconnect
     const mikrotik = await connectRouterOS(router);
     try {
       // RouterOS tidak menjamin lookup by session-id di API lama —

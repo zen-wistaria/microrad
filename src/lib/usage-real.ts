@@ -59,7 +59,7 @@ export async function getUsageHistoryFromSessions(
   for (const s of sessions) {
     const key = labelId(s.startedAt);
     if (!byDay.has(key)) continue;
-    const day = byDay.get(key)!;
+    const day = byDay.get(key) as CustomerDailyUsage;
     day.downloadBytes += Number(s.inputBytes);
     day.uploadBytes += Number(s.outputBytes);
     day.totalBytes += Number(s.inputBytes) + Number(s.outputBytes);

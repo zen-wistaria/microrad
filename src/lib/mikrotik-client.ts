@@ -16,7 +16,7 @@ export interface MikrotikConn {
   close(): void;
 }
 
-const TIMEOUT_MS = () => Number(process.env.MIKROTIK_SYNC_TIMEOUT_MS ?? "5000");
+const TIMEOUT_MS = () => Number(process.env.MIKROTIK_SYNC_TIMEOUT_MS ?? "2000");
 
 /** Kirim satu "sentence" (daftar word) sesuai framing protokol API. */
 function encodeSentence(words: string[]): Buffer {

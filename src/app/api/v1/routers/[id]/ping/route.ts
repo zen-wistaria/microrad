@@ -30,7 +30,7 @@ export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
     try {
       const rows = await mikrotik.write("/system/identity/print");
       const latencyMs = Date.now() - t0;
-      const identity = rows[0]?.["name"] ?? router.name;
+      const identity = rows[0]?.name ?? router.name;
       await prisma.nasRouter.update({
         where: { id },
         data: { status: "online", lastSeenAt: new Date() },
