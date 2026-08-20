@@ -140,6 +140,8 @@ export interface Session {
   outputBytes: number; // AcctOutputOctets (download dari sisi customer)
   extKey?: string; // session-id asli RouterOS (sinkronisasi poller)
   terminateCause?: string; // "User-Request" | "Lost-Carrier" | "Admin-Reset" dsb
+  /** Waktu basis durasi server (Interim radacct) — untuk counter live */
+  acctUpdateTime?: string;
 }
 
 // Konfigurasi identitas perusahaan (dipakai di header invoice / nota cetak)

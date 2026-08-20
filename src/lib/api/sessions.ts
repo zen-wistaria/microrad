@@ -6,6 +6,8 @@ export interface GetSessionsParams {
   customerId?: string;
   nasId?: string;
   search?: string;
+  year?: number;
+  month?: number;
   page?: number;
   limit?: number;
   router?: string;
@@ -20,6 +22,8 @@ async function fetchSessions(
     nasId: params.nasId,
     search: params.search,
     router: params.router,
+    year: params.year,
+    month: params.month,
     page: params.page ?? 1,
     limit: params.limit ?? 1000,
   });
@@ -49,8 +53,14 @@ export async function getActiveSessions(
 
 export async function getCustomerSessions(
   customerId: string,
+  params: { year?: number; month?: number } = {},
 ): Promise<Session[]> {
-  return fetchSessions({ customerId, limit: 1000 });
+  return fetchSessions({
+    customerId,
+    year: params.year,
+    month: params.month,
+    limit: 1000,
+  });
 }
 
 export async function getCustomerActiveSession(

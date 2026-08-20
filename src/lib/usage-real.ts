@@ -56,56 +56,83 @@ async function getRadacctSessionsFor(
   prisma: PrismaClient,
   username: string,
   since: Date,
+  until?: Date,
 ): Promise<
   Array<{
+    acctUniqueId: string;
     acctStartTime: Date;
     acctInputOctets: bigint | null;
     acctOutputOctets: bigint | null;
   }>
 > {
+  // Catatan: TIDAK memakai `until = now` bilamana `until` tidak diberikan —
+  // FreeRADIUS mencatat acctStartTime UTC yang bisa maju dari jam server
+  // (clock/NAS), menghapus sesi baru dari window. Batas atas dipakai hanya
+  // bila eksplisit (filter bulan — dari awal bulan).
   const rows = await prisma.radAcct.findMany({
-    where: { username, acctStartTime: { gte: since } },
+    where: {
+      username,
+      acctStartTime: {
+        gte: since,
+        ...(until ? { lte: until } : {}),
+      },
+    },
     select: {
+      acctUniqueId: true,
       acctStartTime: true,
+      acctUpdateTime: true,
       acctInputOctets: true,
       acctOutputOctets: true,
     },
   });
-  return rows
-    .filter((r) => r.acctStartTime !== null)
-    .map((r) => ({
-      acctStartTime: r.acctStartTime as Date,
-      acctInputOctets: r.acctInputOctets,
-      acctOutputOctets: r.acctOutputOctets,
-    }));
+
+  // Dedup per sesi (Interim menambah banyak baris): pakai baris terakhir
+  // (acctUpdateTime tertinggi) per acctUniqueId.
+  type Row = {
+    acctUniqueId: string;
+    acctStartTime: Date;
+    acctInputOctets: bigint | null;
+    acctOutputOctets: bigint | null;
+  };
+  const byUnique = new Map<string, Row>();
+  for (const r of rows) {
+    if (r.acctStartTime === null) continue;
+    const existing = byUnique.get(r.acctUniqueId);
+    const cur = r.acctUpdateTime?.getTime() ?? r.acctStartTime.getTime();
+    const old = existing?.acctStartTime?.getTime() ?? 0;
+    if (!existing || cur > old) {
+      byUnique.set(r.acctUniqueId, {
+        acctUniqueId: r.acctUniqueId,
+        acctStartTime: r.acctStartTime,
+        acctInputOctets: r.acctInputOctets,
+        acctOutputOctets: r.acctOutputOctets,
+      });
+    }
+  }
+  return Array.from(byUnique.values());
 }
 
-/** Riwayat pemakaian harian N hari terakhir (termasuk hari tanpa sesi → 0). */
-export async function getUsageHistoryFromSessions(
+/** Agregasi harian dalam rentang tanggal (from ≤ day < until), UTC. */
+async function getUsageHistoryInRange(
   prisma: PrismaClient,
-  customerId: string,
-  days = 30,
-  now = new Date(),
+  username: string,
+  from: Date,
+  until: Date | undefined,
+  _now: Date,
+  days?: number,
 ): Promise<CustomerDailyUsage[]> {
-  const since = new Date(now.getTime() - (days - 1) * DAY_MS);
-  since.setUTCHours(0, 0, 0, 0);
+  const sessions = await getRadacctSessionsFor(prisma, username, from, until);
 
-  const customer = await prisma.customer.findUnique({
-    where: { id: customerId },
-    select: { username: true },
-  });
-  if (!customer) return [];
-
-  const sessions = await getRadacctSessionsFor(
-    prisma,
-    customer.username,
-    since,
-  );
-
+  // Bucket per UTC day: bila `until` tak ada → `days` bucket mulai `from`
+  // (default 30 hari terakhir); bila ada → bucket di antara from..until.
   const byDay = new Map<string, CustomerDailyUsage>();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * DAY_MS);
-    byDay.set(dateKeyUTC(d), {
+  const dayCount = until
+    ? Math.max(1, Math.round((until.getTime() - from.getTime()) / DAY_MS))
+    : Math.max(1, days ?? 30);
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date(from.getTime() + i * DAY_MS);
+    const key = dateKeyUTC(d);
+    byDay.set(key, {
       date: localDateLabel(d),
       downloadBytes: 0,
       uploadBytes: 0,
@@ -126,6 +153,44 @@ export async function getUsageHistoryFromSessions(
   }
 
   return Array.from(byDay.values());
+}
+
+/**
+ * Riwayat pemakaian harian — N hari terakhir (default) ATAU rentang bulan
+ * tertentu (bila `year`/`month` diberikan).
+ */
+export async function getUsageHistoryFromSessions(
+  prisma: PrismaClient,
+  customerId: string,
+  days = 30,
+  now = new Date(),
+  range?: { year: number; month?: number },
+): Promise<CustomerDailyUsage[]> {
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { username: true },
+  });
+  if (!customer) return [];
+
+  if (range) {
+    const year = range.year;
+    const month = range.month ?? 0; // 0 = seluruh tahun
+    const from = new Date(Date.UTC(year, month === 0 ? 0 : month - 1, 1));
+    const until = new Date(Date.UTC(year, month === 0 ? 12 : month, 1));
+    return getUsageHistoryInRange(prisma, customer.username, from, until, now);
+  }
+
+  const since = new Date(now.getTime() - (days - 1) * DAY_MS);
+  since.setUTCHours(0, 0, 0, 0);
+  // 30 hari terakhir: tanpa batas atas (hindari sesi UTC maju terbuang)
+  return getUsageHistoryInRange(
+    prisma,
+    customer.username,
+    since,
+    undefined,
+    now,
+    days,
+  );
 }
 
 /** Pemakaian bulanan (rekap per bulan). 12 bulan terakhir atau filter tahun. */

@@ -9,9 +9,9 @@ import {
 type Params = Promise<{ id: string }>;
 
 /**
- * Data usage pelanggan: riwayat 30 hari + bulanan 12 bulan (filter ?year=).
- * Diagregasi dari sesi nyata (tabel session) — akun baru tanpa sesi
- * menghasilkan array kosong, bukan data synthetic.
+ * Data usage pelanggan: riwayat harian (30 hari default, atau bulan tertentu
+ * via ?year=&month=) + bulanan 12 bulan (filter ?year=). Diagregasi dari
+ * radacct — akun baru tanpa sesi menghasilkan array kosong.
  */
 export const GET = asyncApi(async (req: Request, ctx: { params: Params }) => {
   await requirePermission("customer.read");
@@ -22,9 +22,17 @@ export const GET = asyncApi(async (req: Request, ctx: { params: Params }) => {
   const url = new URL(req.url);
   const yearParam = url.searchParams.get("year");
   const year = yearParam ? Number(yearParam) : undefined;
+  const monthParam = url.searchParams.get("month");
+  const month = monthParam ? Number(monthParam) : undefined;
 
   const [history, monthly] = await Promise.all([
-    getUsageHistoryFromSessions(prisma, id),
+    getUsageHistoryFromSessions(
+      prisma,
+      id,
+      30,
+      new Date(),
+      year ? { year, month } : undefined,
+    ),
     getMonthlyUsageFromSessions(prisma, id, year),
   ]);
 

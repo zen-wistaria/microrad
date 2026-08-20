@@ -383,6 +383,11 @@ export default function SessionsPage() {
                         <td className="py-3.5 px-4 font-mono">
                           <LiveDurationCounter
                             startedAt={session.startedAt}
+                            baseSeconds={
+                              session.durationSeconds > 0
+                                ? session.durationSeconds
+                                : undefined
+                            }
                             showIcon={true}
                           />
                         </td>

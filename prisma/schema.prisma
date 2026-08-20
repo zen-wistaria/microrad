@@ -485,6 +485,7 @@ model RadAcct {
   class               String?   @map("class")
 
   @@index([acctStartTime, username], map: "radacct_start_user_idx")
+  @@index([username, acctStartTime], map: "radacct_username_start_idx")
   @@map("radacct")
 }
 

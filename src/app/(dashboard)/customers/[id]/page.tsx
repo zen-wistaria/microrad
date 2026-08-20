@@ -110,6 +110,11 @@ export default function CustomerDetailPage({
     "year",
     parseAsInteger.withDefault(new Date().getFullYear()),
   );
+  // Filter bulan (via nuqs) — "all" = 30 hari terakhir / seluruh tahun
+  const [selectedMonth, setSelectedMonth] = useQueryState(
+    "month",
+    parseAsString.withDefault("all"),
+  );
   // Deret tahun (mis. 2022–2026) untuk opsi filter "Per Tahun"
   const years = useMemo(() => {
     const cur = new Date().getFullYear();
@@ -148,6 +153,16 @@ export default function CustomerDetailPage({
 
       // Load data pendukung secara independen — kegagalan satu bagian tidak
       // menghapus data pelanggan yang sudah tampil.
+      // Sesi: HISTORY penuh (online + selesai) dengan filter tahun/bulan.
+      // Pemakaian harian: 30 hari default, atau bulan terpilih.
+      const sessFilter =
+        selectedMonth !== "all"
+          ? { year: selectedYear, month: Number(selectedMonth) }
+          : {};
+      const usageFilter =
+        selectedMonth !== "all"
+          ? { year: selectedYear, month: Number(selectedMonth) }
+          : undefined;
       const [prof, rNas, activeSess, allSessions, usages, allInvoices] =
         await Promise.all([
           cust.profileId
@@ -155,8 +170,8 @@ export default function CustomerDetailPage({
             : Promise.resolve(null),
           cust.nasId ? getRouterById(cust.nasId) : Promise.resolve(null),
           getCustomerActiveSession(cust.id).catch(() => null),
-          getCustomerSessions(cust.id).catch(() => []),
-          getCustomerUsageHistory(cust.id).catch(() => []),
+          getCustomerSessions(cust.id, sessFilter).catch(() => []),
+          getCustomerUsageHistory(cust.id, usageFilter).catch(() => []),
           getInvoices().catch(() => []),
         ]);
 
@@ -178,7 +193,7 @@ export default function CustomerDetailPage({
     } finally {
       setLoading(false);
     }
-  }, [customerId, router]);
+  }, [customerId, router, selectedYear, selectedMonth]);
 
   useEffect(() => {
     fetchCustomerData();
@@ -425,7 +440,14 @@ export default function CustomerDetailPage({
                   Durasi Online
                 </div>
                 <div className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">
-                  <LiveDurationCounter startedAt={activeSession.startedAt} />
+                  <LiveDurationCounter
+                    startedAt={activeSession.startedAt}
+                    baseSeconds={
+                      activeSession.durationSeconds > 0
+                        ? activeSession.durationSeconds
+                        : undefined
+                    }
+                  />
                 </div>
               </div>
 
@@ -595,13 +617,52 @@ export default function CustomerDetailPage({
         <TabsContent value="history" className="pt-2">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">
-                Catatan Histori Sesi RADIUS Accounting
-              </CardTitle>
-              <CardDescription>
-                Daftar rekaman sesi koneksi PPPoE pelanggan yang tercatat di
-                tabel <code className="text-xs">radacct</code>.
-              </CardDescription>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">
+                    Catatan Histori Sesi RADIUS Accounting
+                  </CardTitle>
+                  <CardDescription>
+                    Semua rekaman sesi PPPoE pelanggan (online & selesai) dari
+                    tabel <code className="text-xs">radacct</code>.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={String(selectedYear)}
+                    onValueChange={(v) => setSelectedYear(Number(v))}
+                  >
+                    <SelectTrigger className="w-28 h-9">
+                      <SelectValue placeholder="Tahun" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map((y) => (
+                        <SelectItem key={y} value={String(y)}>
+                          {y}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={selectedMonth}
+                    onValueChange={(v) => setSelectedMonth(v)}
+                  >
+                    <SelectTrigger className="w-32 h-9">
+                      <SelectValue placeholder="Bulan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Bulan</SelectItem>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <SelectItem key={m} value={String(m)}>
+                          {new Date(0, m - 1, 1).toLocaleDateString("id-ID", {
+                            month: "long",
+                          })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -811,7 +872,10 @@ export default function CustomerDetailPage({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
-                Grafik Konsumsi Bandwidth Harian (30 Hari Terakhir)
+                Grafik Konsumsi Bandwidth Harian
+                {selectedMonth !== "all"
+                  ? ` (${new Date(0, Number(selectedMonth) - 1, 1).toLocaleDateString("id-ID", { month: "long" })} ${selectedYear})`
+                  : " (30 Hari Terakhir)"}
               </CardTitle>
               <CardDescription>
                 Statistik pemakaian data download & upload harian pelanggan ini.

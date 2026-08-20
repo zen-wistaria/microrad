@@ -6,28 +6,56 @@ import { formatDuration } from "@/lib/utils";
 
 interface LiveCounterProps {
   startedAt: string;
+  /** Durasi basis (detik) dari server — bila ada, dipakai + tick sejak update */
+  baseSeconds?: number;
+  /** Reference waktu server untuk basis (ISO) — inflasi sejak update */
+  baseUpdatedAt?: string;
   className?: string;
   showIcon?: boolean;
 }
 
+/** Hitung durasi: basis server + selisih sejak reference; fallback start. */
+function computeDuration(
+  startedAt: string,
+  baseSeconds?: number,
+  baseUpdatedAt?: string,
+): number {
+  const fallback = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000),
+  );
+  if (baseSeconds !== undefined && baseSeconds > 0) {
+    if (baseUpdatedAt) {
+      const ref = new Date(baseUpdatedAt).getTime();
+      return Math.max(
+        fallback,
+        Math.round(baseSeconds + (Date.now() - ref) / 1000),
+      );
+    }
+    return Math.max(fallback, baseSeconds);
+  }
+  return fallback;
+}
+
 export function LiveDurationCounter({
   startedAt,
+  baseSeconds,
+  baseUpdatedAt,
   className = "",
   showIcon = false,
 }: LiveCounterProps) {
-  const [seconds, setSeconds] = useState<number>(() => {
-    const start = new Date(startedAt).getTime();
-    return Math.max(0, Math.floor((Date.now() - start) / 1000));
-  });
+  const [seconds, setSeconds] = useState(() =>
+    computeDuration(startedAt, baseSeconds, baseUpdatedAt),
+  );
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const start = new Date(startedAt).getTime();
-      setSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    }, 1000);
-
+    setSeconds(computeDuration(startedAt, baseSeconds, baseUpdatedAt));
+    const interval = setInterval(
+      () => setSeconds(computeDuration(startedAt, baseSeconds, baseUpdatedAt)),
+      1000,
+    );
     return () => clearInterval(interval);
-  }, [startedAt]);
+  }, [startedAt, baseSeconds, baseUpdatedAt]);
 
   return (
     <span

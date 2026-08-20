@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  ChevronDown,
-  ChevronRight,
-  LogOut,
-  Menu,
-  RotateCcw,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
@@ -20,7 +14,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { resetDemoData } from "@/lib/api/dashboard";
 import { getUsers } from "@/lib/api/users";
 import type { AppUser } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
@@ -67,16 +60,6 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
 
   // Generate breadcrumb items
   const pathSegments = pathname.split("/").filter(Boolean);
-
-  const handleResetData = async () => {
-    try {
-      await resetDemoData();
-      toast.success("Data mock berhasil direset ke nilai awal.");
-      window.location.reload();
-    } catch {
-      toast.error("Gagal mereset data");
-    }
-  };
 
   const handleSwitchUser = (userId: string) => {
     const user = demoUsers.find((u) => u.id === userId);
@@ -136,20 +119,6 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
 
       {/* Right: Theme Toggle, Quick Tools, and App User Menu */}
       <div className="flex items-center gap-3 sm:gap-4">
-        {/* Reset Demo Data Button (khusus Admin) */}
-        {isAdmin && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleResetData}
-            title="Reset Data Mock ke Nilai Awal"
-            className="hidden md:inline-flex text-xs text-slate-600 dark:text-slate-300 gap-1.5 h-9 px-3 rounded-lg border-slate-200 dark:border-slate-700"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>Reset Demo</span>
-          </Button>
-        )}
-
         {/* Theme Switcher Toggle (Light / Dark / System) */}
         <div className="flex items-center border-l border-slate-200 dark:border-slate-800 pl-3 sm:pl-4">
           <ThemeToggle />
@@ -217,15 +186,6 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             )}
 
             <DropdownMenuSeparator />
-            {isAdmin && (
-              <DropdownMenuItem
-                onClick={handleResetData}
-                className="text-xs cursor-pointer text-slate-600 dark:text-slate-300 md:hidden px-3 py-2 rounded-lg"
-              >
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Reset Demo Data
-              </DropdownMenuItem>
-            )}
             <DropdownMenuItem
               onClick={handleLogout}
               className="text-xs cursor-pointer text-rose-600 dark:text-rose-400 focus:text-rose-600 dark:focus:text-rose-400 px-3 py-2 rounded-lg"

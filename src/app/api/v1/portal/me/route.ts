@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePortalSession } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { radacctRowToSession } from "@/lib/radacct-sessions";
+import {
+  getRadacctHistory,
+  radacctHistoryRowToSession,
+} from "@/lib/radacct-sessions";
 import {
   getMonthlyUsageFromSessions,
   getUsageHistoryFromSessions,
@@ -46,13 +49,10 @@ export const GET = asyncApi(async () => {
       where: { customerId },
       orderBy: { paidAt: "desc" },
     }),
-    // Sesi (online) + riwayat sesi dari radacct — sumber kebenaran
-    prisma.radAcct
-      .findMany({
-        where: { username: customer.username, acctStopTime: null },
-        orderBy: { acctStartTime: "desc" },
-      })
-      .then((rows) => rows.map((r) => radacctRowToSession(r))),
+    // History sesi (online + selesai) dari radacct — sumber kebenaran
+    getRadacctHistory({ username: customer.username, limit: 500 }).then(
+      (rows) => rows.map((r) => radacctHistoryRowToSession(r)),
+    ),
     prisma.portalLoginLog.findMany({
       where: { customerId },
       orderBy: { loginAt: "desc" },
