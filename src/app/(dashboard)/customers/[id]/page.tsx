@@ -741,7 +741,7 @@ export default function CustomerDetailPage({
                         Mulai Koneksi
                       </th>
                       <th className="py-2.5 px-4 font-semibold">
-                        Selesai / Durasi
+                        Durasi / Selesai
                       </th>
                       <th className="py-2.5 px-4 font-semibold">Download</th>
                       <th className="py-2.5 px-4 font-semibold">Upload</th>
@@ -780,9 +780,12 @@ export default function CustomerDetailPage({
                           </td>
                           <td className="py-3 px-4">
                             {!sess.stoppedAt ? (
-                              <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
-                                Sedang Aktif
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/30">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                Online
                               </span>
                             ) : (
                               <div>

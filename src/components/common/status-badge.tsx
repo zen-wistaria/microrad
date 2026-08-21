@@ -23,30 +23,34 @@ export function CustomerStatusBadge({
     <span className="inline-flex flex-wrap items-center gap-2">
       {status === "active" && (
         <Badge variant="success" className="font-medium">
-          <CheckCircle2 className="h-3 w-3" />
+          <CheckCircle2 className="h-3 w-3 mr-1" />
           Aktif
         </Badge>
       )}
       {status === "suspended" && (
         <Badge variant="warning" className="font-medium">
-          <AlertCircle className="h-3 w-3" />
+          <AlertCircle className="h-3 w-3 mr-1" />
           Suspended
         </Badge>
       )}
       {status === "disabled" && (
         <Badge variant="secondary" className="font-medium text-slate-500">
-          <XCircle className="h-3 w-3" />
+          <XCircle className="h-3 w-3 mr-1" />
           Nonaktif
         </Badge>
       )}
 
-      {isOnline && (
+      {isOnline ? (
         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/30">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           Online
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:bg-red-500/20 dark:text-red-400 border border-red-500/30">
+          Offline
         </span>
       )}
     </span>

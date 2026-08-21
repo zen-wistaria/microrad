@@ -1,7 +1,16 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2, Network, Shield, User } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle,
+  CircleAlert,
+  CircleX,
+  Loader2,
+  Network,
+  Shield,
+  User,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -283,12 +292,23 @@ export function CustomerForm({
                   <SelectValue placeholder="Pilih Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">🟢 Active (Aktif)</SelectItem>
+                  <SelectItem value="active">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="text-green-500 h-4 w-4" /> Active
+                      (Aktif)
+                    </div>
+                  </SelectItem>
                   <SelectItem value="suspended">
-                    🟡 Suspended (Isolir / Ditangguhkan)
+                    <div className="flex items-center gap-2">
+                      <CircleAlert className="text-yellow-500 h-4 w-4" />{" "}
+                      Suspended (Isolir / Ditangguhkan)
+                    </div>
                   </SelectItem>
                   <SelectItem value="disabled">
-                    ⚪ Disabled (Nonaktif)
+                    <div className="flex items-center gap-2">
+                      <CircleX className="text-red-500 h-4 w-4" /> Disabled
+                      (Nonaktif)
+                    </div>
                   </SelectItem>
                 </SelectContent>
               </Select>
