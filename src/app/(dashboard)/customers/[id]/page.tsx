@@ -3,8 +3,10 @@
 import {
   AlertCircle,
   ArrowLeft,
+  Ban,
   BarChart3,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Download,
   Edit,
@@ -39,6 +41,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -242,16 +252,30 @@ export default function CustomerDetailPage({
     }
   };
 
-  const handleToggleStatus = async () => {
+  const handleUpdateStatus = async (newStatus: CustomerStatus) => {
     if (!customer) return;
-    const newStatus: CustomerStatus =
-      customer.status === "active" ? "suspended" : "active";
     try {
       await updateCustomer(customer.id, { status: newStatus });
+      if (newStatus !== "active") {
+        try {
+          await disconnectCustomer(customer.id);
+          setActiveSession(null);
+        } catch {
+          // best effort
+        }
+      }
       setCustomer((prev) => (prev ? { ...prev, status: newStatus } : null));
+      const labelMap: Record<CustomerStatus, string> = {
+        active: "Aktif",
+        suspended: "Suspend (Isolir)",
+        disabled: "Dinonaktifkan (Disabled)",
+      };
       toast.success(
-        `Status ${customer.username} berhasil diubah menjadi ${newStatus === "active" ? "Aktif" : "Suspended"}.`,
+        `Status ${customer.username} berhasil diubah menjadi ${labelMap[newStatus]}${
+          newStatus !== "active" ? " & koneksi aktif diputuskan" : ""
+        }.`,
       );
+      await fetchCustomerData();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal mengubah status.");
     }
@@ -373,24 +397,68 @@ export default function CustomerDetailPage({
           )}
 
           {hasPermission(currentUser, "customer.update") && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToggleStatus}
-              className="gap-1.5 text-xs text-slate-700 dark:text-slate-300"
-            >
-              {customer.status === "active" ? (
-                <>
-                  <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
-                  Suspend (Isolir)
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                  Aktifkan Kembali
-                </>
-              )}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs text-slate-700 dark:text-slate-300"
+                >
+                  {customer.status === "active" && (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                      Status: Aktif
+                    </>
+                  )}
+                  {customer.status === "suspended" && (
+                    <>
+                      <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+                      Status: Suspend
+                    </>
+                  )}
+                  {customer.status === "disabled" && (
+                    <>
+                      <Ban className="h-3.5 w-3.5 text-rose-500" />
+                      Status: Disabled
+                    </>
+                  )}
+                  <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel className="text-xs">
+                  Ubah Status Layanan
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {customer.status !== "active" && (
+                  <DropdownMenuItem
+                    onClick={() => handleUpdateStatus("active")}
+                    className="cursor-pointer text-xs text-emerald-600 focus:text-emerald-600 dark:text-emerald-400"
+                  >
+                    <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
+                    Aktifkan Kembali
+                  </DropdownMenuItem>
+                )}
+                {customer.status !== "suspended" && (
+                  <DropdownMenuItem
+                    onClick={() => handleUpdateStatus("suspended")}
+                    className="cursor-pointer text-xs text-amber-600 focus:text-amber-600 dark:text-amber-400"
+                  >
+                    <AlertCircle className="mr-2 h-4 w-4 text-amber-500" />
+                    Suspend (Isolir)
+                  </DropdownMenuItem>
+                )}
+                {customer.status !== "disabled" && (
+                  <DropdownMenuItem
+                    onClick={() => handleUpdateStatus("disabled")}
+                    className="cursor-pointer text-xs text-rose-600 focus:text-rose-600 dark:text-rose-400"
+                  >
+                    <Ban className="mr-2 h-4 w-4 text-rose-500" />
+                    Nonaktifkan (Disable)
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           {hasPermission(currentUser, "customer.update") && (

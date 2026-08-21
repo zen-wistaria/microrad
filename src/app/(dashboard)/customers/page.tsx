@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  Ban,
   CheckCircle2,
   Edit,
   Eye,
@@ -189,21 +190,38 @@ export default function CustomersPage() {
     }
   };
 
-  const handleToggleStatus = async (customer: Customer) => {
-    const newStatus: CustomerStatus =
-      customer.status === "active" ? "suspended" : "active";
+  const handleUpdateStatus = async (
+    customer: Customer,
+    newStatus: CustomerStatus,
+  ) => {
     try {
       await updateCustomer(customer.id, { status: newStatus });
+      // Jika diubah menjadi non-aktif (suspended/disabled) dan memiliki sesi online, putus koneksi
+      if (newStatus !== "active") {
+        try {
+          await disconnectCustomer(customer.id);
+        } catch {
+          // best-effort, backend PUT juga memutus sesi otomatis
+        }
+      }
+      const labelMap: Record<CustomerStatus, string> = {
+        active: "Aktif",
+        suspended: "Suspend (Isolir)",
+        disabled: "Dinonaktifkan (Disabled)",
+      };
       toast.success(
-        `Status pelanggan ${customer.username} diubah menjadi ${newStatus === "active" ? "Aktif" : "Suspended"}.`,
+        `Status pelanggan ${customer.username} diubah menjadi ${labelMap[newStatus]}${
+          newStatus !== "active" ? " & koneksi aktif diputuskan" : ""
+        }.`,
       );
       setCustomers((prev) =>
         prev.map((c) =>
           c.id === customer.id ? { ...c, status: newStatus } : c,
         ),
       );
+      await fetchData();
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err) || "Gagal mengubah status.");
+      toast.error(getErrorMessage(err) || "Gagal mengubah status pelanggan.");
     }
   };
 
@@ -486,22 +504,47 @@ export default function CustomersPage() {
                                       Edit Akun
                                     </Link>
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleToggleStatus(customer)}
-                                    className="cursor-pointer text-xs"
-                                  >
-                                    {customer.status === "active" ? (
-                                      <>
-                                        <AlertCircle className="mr-2 h-4 w-4 text-amber-500" />
-                                        Suspend (Isolir)
-                                      </>
-                                    ) : (
-                                      <>
-                                        <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
-                                        Aktifkan Kembali
-                                      </>
-                                    )}
-                                  </DropdownMenuItem>
+
+                                  {/* Opsi status: Aktifkan, Suspend, Disable */}
+                                  {customer.status !== "active" && (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        handleUpdateStatus(customer, "active")
+                                      }
+                                      className="cursor-pointer text-xs text-emerald-600 focus:text-emerald-600 dark:text-emerald-400"
+                                    >
+                                      <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
+                                      Aktifkan Kembali
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  {customer.status !== "suspended" && (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        handleUpdateStatus(
+                                          customer,
+                                          "suspended",
+                                        )
+                                      }
+                                      className="cursor-pointer text-xs text-amber-600 focus:text-amber-600 dark:text-amber-400"
+                                    >
+                                      <AlertCircle className="mr-2 h-4 w-4 text-amber-500" />
+                                      Suspend (Isolir)
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  {customer.status !== "disabled" && (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        handleUpdateStatus(customer, "disabled")
+                                      }
+                                      className="cursor-pointer text-xs text-rose-600 focus:text-rose-600 dark:text-rose-400"
+                                    >
+                                      <Ban className="mr-2 h-4 w-4 text-rose-500" />
+                                      Nonaktifkan (Disable)
+                                    </DropdownMenuItem>
+                                  )}
+
                                   <DropdownMenuSeparator />
                                 </>
                               )}

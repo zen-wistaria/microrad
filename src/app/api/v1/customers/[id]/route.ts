@@ -221,6 +221,38 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     }
   }
 
+  // ── Otomatis putus koneksi jika status diubah menjadi suspended atau disabled ──
+  if (
+    body.status !== undefined &&
+    body.status !== "active" &&
+    existing.status === "active"
+  ) {
+    try {
+      const online = await prisma.radAcct.findFirst({
+        where: { username: customer.username, acctStopTime: null },
+        orderBy: { acctStartTime: "desc" },
+        select: { acctSessionId: true },
+      });
+      if (online) {
+        const { sendDisconnect } = await import("@/lib/radius-coa");
+        const coaResult = await sendDisconnect(customer.username, {
+          acctSessionId: online.acctSessionId ?? undefined,
+        });
+        if (!coaResult.success) {
+          const { kickSessionByUsername } = await import(
+            "@/lib/mikrotik-disconnect"
+          );
+          await kickSessionByUsername(customer.username, customer.nasId);
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[disconnect] gagal putus sesi saat status ${customer.username} diubah:`,
+        err,
+      );
+    }
+  }
+
   return NextResponse.json({ data: customer });
 });
 
