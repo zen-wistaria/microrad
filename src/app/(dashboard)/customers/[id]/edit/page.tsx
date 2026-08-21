@@ -1,15 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { use, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { use } from "react";
 import { CustomerForm } from "@/components/forms/customer-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getCustomerById } from "@/lib/api/customers";
-import { getProfiles } from "@/lib/api/profiles";
-import { getRouters } from "@/lib/api/routers";
-import type { BandwidthProfile, Customer, NasRouter } from "@/lib/types";
+import {
+  useCustomerQuery,
+  useProfilesQuery,
+  useRoutersQuery,
+} from "@/lib/api/hooks";
 
 interface EditCustomerPageProps {
   params: Promise<{ id: string }>;
@@ -18,37 +17,15 @@ interface EditCustomerPageProps {
 export default function EditCustomerPage({ params }: EditCustomerPageProps) {
   const resolvedParams = use(params);
   const customerId = resolvedParams.id;
-  const router = useRouter();
 
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
-  const [routers, setRouters] = useState<NasRouter[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: customer, isLoading: customerLoading } =
+    useCustomerQuery(customerId);
+  const { data: profiles = [], isLoading: profilesLoading } =
+    useProfilesQuery();
+  const { data: routers = [], isLoading: routersLoading } = useRoutersQuery();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [cust, pList, rList] = await Promise.all([
-          getCustomerById(customerId),
-          getProfiles(),
-          getRouters(),
-        ]);
-        if (!cust) {
-          toast.error("Pelanggan tidak ditemukan.");
-          router.push("/customers");
-          return;
-        }
-        setCustomer(cust);
-        setProfiles(pList);
-        setRouters(rList);
-      } catch {
-        toast.error("Gagal memuat data pelanggan");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [customerId, router]);
+  const loading =
+    (customerLoading || profilesLoading || routersLoading) && !customer;
 
   return (
     <div className="space-y-6">

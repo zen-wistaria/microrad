@@ -1,6 +1,14 @@
 import type { AppUser } from "@/lib/types";
 import { apiFetch, paginated } from "./client";
 
+export interface GetUsersParams {
+  search?: string;
+  status?: string;
+  role?: string;
+  page?: number;
+  limit?: number;
+}
+
 export async function getUsersPaginated(params?: {
   search?: string;
   status?: string;

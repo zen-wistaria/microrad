@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { BulkGenerateDialog } from "@/components/billing/bulk-generate-dialog";
 import { CreateInvoiceDialog } from "@/components/billing/create-invoice-dialog";
@@ -50,35 +50,20 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  deleteInvoice,
-  getBillingSummary,
-  getInvoicesPaginated,
-  getPaymentsPaginated,
-} from "@/lib/api/billing";
-import { getCustomers } from "@/lib/api/customers";
-import { getProfiles } from "@/lib/api/profiles";
+  useBillingSummaryQuery,
+  useCustomersQuery,
+  useDeleteInvoiceMutation,
+  useInvoicesQuery,
+  usePaymentsQuery,
+  useProfilesQuery,
+} from "@/lib/api/hooks";
 import { hasPermission } from "@/lib/rbac";
-import type {
-  BandwidthProfile,
-  BillingSummary,
-  Customer,
-  Invoice,
-  PaymentRecord,
-} from "@/lib/types";
+import type { Invoice } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
 import { useDebounce } from "@/lib/use-debounce";
 import { formatDate, formatRupiah, getErrorMessage } from "@/lib/utils";
 
 function BillingContent() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [totalInvoicesCount, setTotalInvoicesCount] = useState(0);
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [totalPaymentsCount, setTotalPaymentsCount] = useState(0);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
-  const [summary, setSummary] = useState<BillingSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-
   // Filters (via nuqs — konsisten saat refresh)
   const [search, setSearch] = useQueryState(
     "search",
@@ -117,6 +102,39 @@ function BillingContent() {
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
   const safePage = Math.max(page, 1);
 
+  // TanStack Query
+  const {
+    data: invRes,
+    isLoading: invoicesLoading,
+    refetch: refetchInvoices,
+    isFetching: invoicesFetching,
+  } = useInvoicesQuery({
+    search: search.trim() || undefined,
+    status: statusFilter,
+    month: monthFilter,
+    page: safePage,
+    limit: safeLimit,
+  });
+
+  const { data: payRes, refetch: refetchPayments } = usePaymentsQuery({
+    paysearch: paymentSearch.trim() || undefined,
+    page: safePage,
+    limit: safeLimit,
+  });
+
+  const { data: custRes } = useCustomersQuery({ limit: 1000 });
+  const { data: profiles = [] } = useProfilesQuery();
+  const { data: summary = null } = useBillingSummaryQuery();
+
+  const deleteInvoiceMutation = useDeleteInvoiceMutation();
+
+  const invoices = invRes?.data || [];
+  const totalInvoicesCount = invRes?.total || 0;
+  const payments = payRes?.data || [];
+  const totalPaymentsCount = payRes?.total || 0;
+  const customers = custRes?.data || [];
+  const loading = invoicesLoading && !invRes;
+
   const invoiceTotalPages = Math.ceil(totalInvoicesCount / safeLimit) || 1;
   const paymentTotalPages = Math.ceil(totalPaymentsCount / safeLimit) || 1;
 
@@ -154,78 +172,30 @@ function BillingContent() {
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [invRes, payRes, custList, profList, sumData] = await Promise.all([
-        getInvoicesPaginated({
-          search: search.trim() || undefined,
-          status: statusFilter,
-          month: monthFilter,
-          page: safePage,
-          limit: safeLimit,
-        }),
-        getPaymentsPaginated({
-          paysearch: paymentSearch.trim() || undefined,
-          page: safePage,
-          limit: safeLimit,
-        }),
-        getCustomers(),
-        getProfiles(),
-        getBillingSummary(),
-      ]);
-      setInvoices(invRes.data);
-      setTotalInvoicesCount(invRes.total);
-      setPayments(payRes.data);
-      setTotalPaymentsCount(payRes.total);
-      setCustomers(custList);
-      setProfiles(profList);
-      setSummary(sumData);
-    } catch {
-      toast.error("Gagal memuat data billing & tagihan.");
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, monthFilter, paymentSearch, safePage, safeLimit]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await deleteInvoice(deleteTarget.id);
+      await deleteInvoiceMutation.mutateAsync(deleteTarget.id);
       toast.success(`Invoice ${deleteTarget.invoiceNumber} berhasil dihapus.`);
-      setInvoices((prev) => prev.filter((i) => i.id !== deleteTarget.id));
       setDeleteTarget(null);
-      const sumData = await getBillingSummary();
-      setSummary(sumData);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menghapus invoice");
     }
   };
 
-  const handlePaymentSuccess = async (updatedInvoice: Invoice) => {
-    setInvoices((prev) =>
-      prev.map((i) => (i.id === updatedInvoice.id ? updatedInvoice : i)),
-    );
-    const [payRes, sumData] = await Promise.all([
-      getPaymentsPaginated({
-        paysearch: paymentSearch.trim() || undefined,
-        page: safePage,
-        limit: safeLimit,
-      }),
-      getBillingSummary(),
-    ]);
-    setPayments(payRes.data);
-    setTotalPaymentsCount(payRes.total);
-    setSummary(sumData);
+  const handlePaymentSuccess = async (_updatedInvoice: Invoice) => {
+    refetchInvoices();
+    refetchPayments();
   };
 
   const handleBulkSuccess = async (_allInvoices: Invoice[]) => {
     setPage(1);
-    await fetchData();
+    refetchInvoices();
+  };
+
+  const refetchAll = () => {
+    refetchInvoices();
+    refetchPayments();
   };
 
   return (
@@ -246,10 +216,13 @@ function BillingContent() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchData}
+            onClick={refetchAll}
+            disabled={invoicesFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${invoicesFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
 
@@ -910,27 +883,9 @@ function BillingContent() {
         profiles={profiles}
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onSuccess={(_newInv, values) => {
+        onSuccess={(_newInv, _values) => {
           setPage(1);
-          fetchData();
-
-          // Pelanggan sekarang punya tagihan di bulan ini — sinkronkan juga
-          // di state customers agar dialog tidak salah "keburu edit" saat
-          // bulan target jatuh pada periode yang sama dengan registrasi.
-          const dueM = new Date(`${values.dueDate}T00:00:00`).getMonth() + 1;
-          const dueY = new Date(`${values.dueDate}T00:00:00`).getFullYear();
-          if (
-            values.month === dueM &&
-            values.year === dueY // bukan periode lain yang sengaja dipilih
-          ) {
-            setCustomers((prev) =>
-              prev.map((c) =>
-                c.id === values.customerId
-                  ? { ...c, hasInvoiceInPeriod: true }
-                  : c,
-              ),
-            );
-          }
+          refetchInvoices();
         }}
       />
 

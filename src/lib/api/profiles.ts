@@ -1,6 +1,8 @@
 import type { BandwidthProfile } from "@/lib/types";
 import { apiFetch } from "./client";
 
+export type GetProfilesParams = Record<string, unknown>;
+
 export async function getProfiles(): Promise<BandwidthProfile[]> {
   return apiFetch<{ data: BandwidthProfile[] }>("/profiles").then(
     (r) => r.data,

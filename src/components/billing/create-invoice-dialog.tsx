@@ -24,10 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  createInvoiceForCustomer,
-  getDueDateFromPeriod,
-} from "@/lib/api/billing";
+import { getDueDateFromPeriod } from "@/lib/api/billing";
+import { useCreateInvoiceMutation } from "@/lib/api/hooks";
 import type { BandwidthProfile, Customer, Invoice } from "@/lib/types";
 import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
@@ -82,7 +80,9 @@ export function CreateInvoiceDialog({
   onOpenChange,
   onSuccess,
 }: CreateInvoiceDialogProps) {
-  const [loading, setLoading] = useState(false);
+  const createInvoiceMutation = useCreateInvoiceMutation();
+  const loading = createInvoiceMutation.isPending;
+
   const [customerId, setCustomerId] = useState("");
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -191,10 +191,9 @@ export function CreateInvoiceDialog({
     }
 
     try {
-      setLoading(true);
       const dueISO = new Date(`${dueDate}T23:59:59Z`).toISOString();
 
-      const created = await createInvoiceForCustomer({
+      const created = await createInvoiceMutation.mutateAsync({
         customerId: selectedCustomer.id,
         customerUsername: selectedCustomer.username,
         customerFullName: selectedCustomer.fullName,
@@ -241,8 +240,6 @@ export function CreateInvoiceDialog({
       onOpenChange(false);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal membuat invoice");
-    } finally {
-      setLoading(false);
     }
   };
 

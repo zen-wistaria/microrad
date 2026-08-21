@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
@@ -14,6 +15,7 @@ import {
   Network,
   PowerOff,
   Receipt,
+  RefreshCw,
   Shield,
   Upload,
   User,
@@ -21,7 +23,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CustomerMonthlyUsageChart } from "@/components/charts/customer-monthly-usage-chart";
 import { CustomerUsageChart } from "@/components/charts/customer-usage-chart";
@@ -58,33 +60,21 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getInvoices } from "@/lib/api/billing";
 import {
-  disconnectCustomer,
-  getCustomerById,
-  updateCustomer,
-} from "@/lib/api/customers";
-import {
-  getCustomerMonthlyUsage,
-  getCustomerUsageHistory,
-} from "@/lib/api/dashboard";
-import { getProfileById } from "@/lib/api/profiles";
-import { getRouterById } from "@/lib/api/routers";
-import {
-  getCustomerActiveSession,
-  getCustomerSessions,
-} from "@/lib/api/sessions";
+  useCustomerActiveSessionQuery,
+  useCustomerMonthlyUsageQuery,
+  useCustomerQuery,
+  useCustomerSessionsQuery,
+  useCustomerUsageHistoryQuery,
+  useDisconnectCustomerMutation,
+  useInvoicesQuery,
+  useProfileQuery,
+  useRouterNasQuery,
+  useUpdateCustomerMutation,
+} from "@/lib/api/hooks";
+import { queryKeys } from "@/lib/api/query-keys";
 import { hasPermission } from "@/lib/rbac";
-import type {
-  BandwidthProfile,
-  Customer,
-  CustomerDailyUsage,
-  CustomerMonthlyUsage,
-  CustomerStatus,
-  Invoice,
-  NasRouter,
-  Session,
-} from "@/lib/types";
+import type { CustomerStatus } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
 import {
   formatBytes,
@@ -104,17 +94,10 @@ export default function CustomerDetailPage({
 }: CustomerDetailPageProps) {
   const resolvedParams = use(params);
   const customerId = resolvedParams.id;
-  const router = useRouter();
+  const _router = useRouter();
   const { currentUser } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [profile, setProfile] = useState<BandwidthProfile | null>(null);
-  const [routerNas, setRouterNas] = useState<NasRouter | null>(null);
-  const [activeSession, setActiveSession] = useState<Session | null>(null);
-  const [sessionHistory, setSessionHistory] = useState<Session[]>([]);
-  const [usageHistory, setUsageHistory] = useState<CustomerDailyUsage[]>([]);
-  const [monthlyUsage, setMonthlyUsage] = useState<CustomerMonthlyUsage[]>([]);
-  const [monthlyLoading, setMonthlyLoading] = useState(false);
   // Filter tahun grafik per bulan (via nuqs — konsisten saat refresh)
   const [selectedYear, setSelectedYear] = useQueryState(
     "year",
@@ -125,6 +108,23 @@ export default function CustomerDetailPage({
     "month",
     parseAsString.withDefault("all"),
   );
+
+  const sessFilter = useMemo(
+    () => ({
+      year: selectedYear,
+      month: selectedMonth !== "all" ? Number(selectedMonth) : undefined,
+    }),
+    [selectedYear, selectedMonth],
+  );
+
+  const usageFilter = useMemo(
+    () =>
+      selectedMonth !== "all"
+        ? { year: selectedYear, month: Number(selectedMonth) }
+        : undefined,
+    [selectedYear, selectedMonth],
+  );
+
   // Deret tahun (mis. 2022–2026) untuk opsi filter "Per Tahun"
   const years = useMemo(() => {
     const cur = new Date().getFullYear();
@@ -132,8 +132,6 @@ export default function CustomerDetailPage({
     for (let y = cur; y >= cur - 3; y--) arr.push(y);
     return arr;
   }, []);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Tab aktif + pagination (via nuqs — konsisten saat refresh)
   const [activeTab, setActiveTab] = useQueryState(
@@ -150,102 +148,46 @@ export default function CustomerDetailPage({
   // Disconnect Dialog
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
 
-  const fetchCustomerData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const cust = await getCustomerById(customerId);
-      if (!cust) {
-        toast.error("Pelanggan tidak ditemukan.");
-        router.push("/customers");
-        return;
-      }
-      setCustomer(cust);
+  // TanStack Query Hooks
+  const {
+    data: customer,
+    isLoading: customerLoading,
+    refetch: refetchCustomer,
+    isFetching: customerFetching,
+  } = useCustomerQuery(customerId);
 
-      // Load data pendukung secara independen — kegagalan satu bagian tidak
-      // menghapus data pelanggan yang sudah tampil.
-      // Sesi: HISTORY penuh (online + selesai) dengan filter tahun/bulan terpilih.
-      // Pemakaian harian: 30 hari default (saat month === "all"), atau bulan terpilih.
-      const sessFilter = {
-        year: selectedYear,
-        month: selectedMonth !== "all" ? Number(selectedMonth) : undefined,
-      };
-      const usageFilter =
-        selectedMonth !== "all"
-          ? { year: selectedYear, month: Number(selectedMonth) }
-          : undefined;
-      const [prof, rNas, activeSess, allSessions, usages, allInvoices] =
-        await Promise.all([
-          cust.profileId
-            ? getProfileById(cust.profileId)
-            : Promise.resolve(null),
-          cust.nasId ? getRouterById(cust.nasId) : Promise.resolve(null),
-          getCustomerActiveSession(cust.id).catch(() => null),
-          getCustomerSessions(cust.id, sessFilter).catch(() => []),
-          getCustomerUsageHistory(cust.id, usageFilter).catch(() => []),
-          getInvoices().catch(() => []),
-        ]);
+  const { data: profile } = useProfileQuery(customer?.profileId || "");
+  const { data: routerNas } = useRouterNasQuery(customer?.nasId || "");
+  const { data: activeSession } = useCustomerActiveSessionQuery(customerId);
+  const { data: sessionHistory = [] } = useCustomerSessionsQuery(
+    customerId,
+    sessFilter,
+  );
+  const { data: usageHistory = [] } = useCustomerUsageHistoryQuery(
+    customerId,
+    usageFilter,
+  );
+  const { data: monthlyUsage = [], isLoading: monthlyLoading } =
+    useCustomerMonthlyUsageQuery(customerId, selectedYear);
+  const { data: invoicesRes } = useInvoicesQuery({ limit: 1000 });
 
-      setProfile(prof);
-      setRouterNas(rNas);
-      setActiveSession(activeSess);
-      setSessionHistory(allSessions);
-      setUsageHistory(usages);
-      setInvoices(
-        (allInvoices || []).filter(
-          (inv) =>
-            inv.customerId === cust.id ||
-            inv.customerUsername === cust.username,
-        ),
-      );
-    } catch (err: unknown) {
-      console.error(err);
-      toast.error("Gagal memuat detail pelanggan.");
-    } finally {
-      setLoading(false);
-    }
-  }, [customerId, router, selectedYear, selectedMonth]);
+  const invoices = useMemo(() => {
+    if (!customer || !invoicesRes?.data) return [];
+    return invoicesRes.data.filter(
+      (inv) =>
+        inv.customerId === customer.id ||
+        inv.customerUsername === customer.username,
+    );
+  }, [customer, invoicesRes]);
 
-  useEffect(() => {
-    fetchCustomerData();
-  }, [fetchCustomerData]);
-
-  // Auto-refresh 30 detik — status online & usage tetap segar
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") fetchCustomerData();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [fetchCustomerData]);
-
-  // Muat pemakaian bulanan per tahun terpilih — fetch ulang saat pindah tahun
-  useEffect(() => {
-    if (!customerId) return;
-    let cancelled = false;
-    setMonthlyLoading(true);
-    getCustomerMonthlyUsage(customerId, selectedYear)
-      .then((res) => {
-        if (!cancelled) setMonthlyUsage(res);
-      })
-      .catch((err: unknown) => {
-        console.error("Gagal memuat pemakaian bulanan:", err);
-        if (!cancelled) setMonthlyUsage([]);
-      })
-      .finally(() => {
-        if (!cancelled) setMonthlyLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [customerId, selectedYear]);
+  const disconnectCustomerMutation = useDisconnectCustomerMutation();
+  const updateCustomerMutation = useUpdateCustomerMutation();
 
   const handleDisconnect = async () => {
     if (!customer) return;
     try {
-      await disconnectCustomer(customer.id);
+      await disconnectCustomerMutation.mutateAsync(customer.id);
       toast.success(`Koneksi aktif ${customer.username} berhasil diputuskan.`);
-      setActiveSession(null);
-      setCustomer((prev) => (prev ? { ...prev } : null));
       setDisconnectModalOpen(false);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal memutuskan koneksi.");
@@ -255,16 +197,17 @@ export default function CustomerDetailPage({
   const handleUpdateStatus = async (newStatus: CustomerStatus) => {
     if (!customer) return;
     try {
-      await updateCustomer(customer.id, { status: newStatus });
+      await updateCustomerMutation.mutateAsync({
+        id: customer.id,
+        updates: { status: newStatus },
+      });
       if (newStatus !== "active") {
         try {
-          await disconnectCustomer(customer.id);
-          setActiveSession(null);
+          await disconnectCustomerMutation.mutateAsync(customer.id);
         } catch {
           // best effort
         }
       }
-      setCustomer((prev) => (prev ? { ...prev, status: newStatus } : null));
       const labelMap: Record<CustomerStatus, string> = {
         active: "Aktif",
         suspended: "Suspend (Isolir)",
@@ -275,10 +218,29 @@ export default function CustomerDetailPage({
           newStatus !== "active" ? " & koneksi aktif diputuskan" : ""
         }.`,
       );
-      await fetchCustomerData();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal mengubah status.");
     }
+  };
+
+  const handleManualRefresh = () => {
+    refetchCustomer();
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.customers.detail(customerId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.customers.activeSession(customerId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.customers.sessions(customerId, sessFilter),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.customers.usageHistory(customerId, usageFilter),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.customers.monthlyUsage(customerId, selectedYear),
+    });
+    toast.success("Data pelanggan berhasil disegarkan.");
   };
 
   // Pagination slice — tab sesi
@@ -297,7 +259,7 @@ export default function CustomerDetailPage({
     return invoices.slice(start, start + safeLimit);
   }, [invoices, invoiceSafePage, safeLimit]);
 
-  if (loading) {
+  if (customerLoading && !customer) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-48" />
@@ -384,6 +346,19 @@ export default function CustomerDetailPage({
 
         {/* Action Buttons (dibatasi permission RBAC) */}
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleManualRefresh}
+            disabled={customerFetching}
+            className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${customerFetching ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+
           {isOnline && hasPermission(currentUser, "session.update") && (
             <Button
               variant="destructive"

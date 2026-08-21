@@ -13,45 +13,29 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 import { PaymentDialog } from "@/components/billing/payment-dialog";
 import { ReminderDialog } from "@/components/billing/reminder-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getInvoiceById } from "@/lib/api/billing";
-import { getCompanyProfile } from "@/lib/api/settings";
-import type { CompanyProfile, Invoice } from "@/lib/types";
+import { useCompanyProfileQuery, useInvoiceDetailQuery } from "@/lib/api/hooks";
 import { formatDate, formatRupiah, terbilangRupiah } from "@/lib/utils";
 
 export default function InvoiceDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [loading, setLoading] = useState(true);
   const [payOpen, setPayOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
-  const [company, setCompany] = useState<CompanyProfile | null>(null);
 
-  useEffect(() => {
-    const fetchInv = async () => {
-      try {
-        setLoading(true);
-        const [data, profile] = await Promise.all([
-          getInvoiceById(id),
-          getCompanyProfile(),
-        ]);
-        setInvoice(data);
-        setCompany(profile);
-      } catch {
-        toast.error("Gagal memuat detail faktur");
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (id) fetchInv();
-  }, [id]);
+  const {
+    data: invoice,
+    isLoading: invoiceLoading,
+    refetch,
+  } = useInvoiceDetailQuery(id);
+  const { data: company = null } = useCompanyProfileQuery();
+
+  const loading = invoiceLoading && !invoice;
 
   const handlePrint = () => {
     window.print();
@@ -790,7 +774,7 @@ export default function InvoiceDetailPage() {
         invoice={invoice}
         open={payOpen}
         onOpenChange={setPayOpen}
-        onSuccess={(updated) => setInvoice(updated)}
+        onSuccess={() => refetch()}
       />
 
       {/* WhatsApp Reminder Dialog */}

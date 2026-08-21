@@ -2,7 +2,7 @@
 
 import { Filter, RefreshCw, ScrollText, Search } from "lucide-react";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,8 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getGlobalLogsPaginated } from "@/lib/api/logs";
-import type { GlobalLogEntry } from "@/lib/types";
+import { useLogsQuery } from "@/lib/api/hooks";
 import { useDebounce } from "@/lib/use-debounce";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 
@@ -46,10 +45,6 @@ const SOURCE_OPTIONS = [
 ];
 
 export default function GlobalLogsPage() {
-  const [logs, setLogs] = useState<GlobalLogEntry[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-
   // Filter (via nuqs — konsisten saat refresh)
   const [search, setSearch] = useQueryState(
     "search",
@@ -79,6 +74,25 @@ export default function GlobalLogsPage() {
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
   const safePage = Math.max(page, 1);
+
+  // TanStack Query
+  const {
+    data: logRes,
+    isLoading: logsLoading,
+    refetch,
+    isFetching,
+  } = useLogsQuery({
+    search: search.trim() || undefined,
+    source: sourceFilter,
+    from: fromDate || undefined,
+    to: toDate || undefined,
+    page: safePage,
+    limit: safeLimit,
+  });
+
+  const logs = logRes?.data || [];
+  const totalCount = logRes?.total || 0;
+  const loading = logsLoading && !logRes;
   const totalPages = Math.ceil(totalCount / safeLimit) || 1;
 
   // Sync debounced search to URL state
@@ -92,31 +106,6 @@ export default function GlobalLogsPage() {
   useEffect(() => {
     setSearchInput(search);
   }, [search]);
-
-  const fetchLogs = useCallback(async () => {
-    try {
-      setLoading(true);
-      const result = await getGlobalLogsPaginated({
-        search: search.trim() || undefined,
-        source: sourceFilter,
-        from: fromDate || undefined,
-        to: toDate || undefined,
-        page: safePage,
-        limit: safeLimit,
-      });
-      setLogs(result.data);
-      setTotalCount(result.total);
-    } catch {
-      setLogs([]);
-      setTotalCount(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, sourceFilter, fromDate, toDate, safePage, safeLimit]);
-
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
 
   const handleReset = () => {
     setSearchInput("");
@@ -165,10 +154,12 @@ export default function GlobalLogsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchLogs}
-            disabled={loading}
+            onClick={() => refetch()}
+            disabled={isFetching}
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+            />
             Muat Ulang
           </Button>
         </div>

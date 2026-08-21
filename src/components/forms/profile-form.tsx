@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -25,7 +24,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createProfile, updateProfile } from "@/lib/api/profiles";
+import {
+  useCreateProfileMutation,
+  useUpdateProfileMutation,
+} from "@/lib/api/hooks";
 import type { BandwidthProfile } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -60,7 +62,11 @@ export function ProfileForm({
   isEditing = false,
 }: ProfileFormProps) {
   const router = useRouter();
-  const [submitting, setSubmitting] = useState(false);
+  const createProfileMutation = useCreateProfileMutation();
+  const updateProfileMutation = useUpdateProfileMutation();
+
+  const submitting =
+    createProfileMutation.isPending || updateProfileMutation.isPending;
 
   const {
     register,
@@ -111,19 +117,19 @@ export function ProfileForm({
       limitAtUp: data.limitAtUp ?? null,
     };
     try {
-      setSubmitting(true);
       if (isEditing && initialData) {
-        await updateProfile(initialData.id, payload);
+        await updateProfileMutation.mutateAsync({
+          id: initialData.id,
+          updates: payload,
+        });
         toast.success(`Profil ${data.name} berhasil diperbarui.`);
       } else {
-        await createProfile(payload);
+        await createProfileMutation.mutateAsync(payload);
         toast.success(`Profil paket ${data.name} berhasil dibuat.`);
       }
       router.push("/profiles");
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menyimpan profil bandwidth.");
-    } finally {
-      setSubmitting(false);
     }
   };
 

@@ -13,7 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -26,39 +26,31 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { deleteProfile, getProfiles } from "@/lib/api/profiles";
+import { useDeleteProfileMutation, useProfilesQuery } from "@/lib/api/hooks";
 import type { BandwidthProfile } from "@/lib/types";
 import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
 export default function ProfilesPage() {
-  const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: profiles = [],
+    isLoading: profilesLoading,
+    refetch,
+    isFetching,
+  } = useProfilesQuery();
+
+  const deleteProfileMutation = useDeleteProfileMutation();
+
   const [deleteTarget, setDeleteTarget] = useState<BandwidthProfile | null>(
     null,
   );
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const profList = await getProfiles();
-      setProfiles(profList);
-    } catch {
-      toast.error("Gagal memuat profil bandwidth.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const loading = profilesLoading && profiles.length === 0;
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await deleteProfile(deleteTarget.id);
+      await deleteProfileMutation.mutateAsync(deleteTarget.id);
       toast.success(`Profil ${deleteTarget.name} berhasil dihapus.`);
-      setProfiles((prev) => prev.filter((p) => p.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menghapus profil.");
@@ -83,10 +75,13 @@ export default function ProfilesPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchData}
+            onClick={() => refetch()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
           <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">

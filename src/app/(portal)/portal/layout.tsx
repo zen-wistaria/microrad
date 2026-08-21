@@ -8,8 +8,7 @@ import { toast } from "sonner";
 import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
 import { Button } from "@/components/ui/button";
-import type { CustomerPortalData } from "@/lib/api/customer-portal";
-import { getCustomerPortalData } from "@/lib/api/customer-portal";
+import { usePortalMeQuery } from "@/lib/api/hooks";
 import { portalSignOut, usePortalSession } from "@/lib/auth-portal-client";
 import { PortalContext } from "@/lib/portal-context";
 import { getErrorMessage } from "@/lib/utils";
@@ -21,40 +20,41 @@ export default function PortalLayout({
 }) {
   const router = useRouter();
   const { data: portalSession, isPending } = usePortalSession();
-  const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  const {
+    data: portalData = null,
+    isLoading: portalLoading,
+    isFetching: refreshing,
+    refetch,
+    error,
+  } = usePortalMeQuery(Boolean(portalSession));
+
   const reload = useCallback(async () => {
-    if (!portalSession) return;
-    try {
-      setRefreshing(true);
-      const portal = await getCustomerPortalData();
-      setPortalData(portal);
-    } catch (err: unknown) {
-      const errMsg = getErrorMessage(err);
-      console.error("Gagal memuat data portal:", err);
-      if (errMsg.includes("Nonaktif") || errMsg.includes("Disabled")) {
-        toast.error(errMsg);
-        await portalSignOut();
-        router.replace("/portal/login");
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [portalSession, router]);
+    await refetch();
+  }, [refetch]);
 
   useEffect(() => {
     if (isPending) return;
     // Belum login portal → arahkan ke /portal/login
     if (!portalSession) {
       router.replace("/portal/login");
-      return;
     }
-    reload();
-  }, [isPending, portalSession, reload, router]);
+  }, [isPending, portalSession, router]);
+
+  useEffect(() => {
+    if (error) {
+      const errMsg = getErrorMessage(error);
+      if (errMsg.includes("Nonaktif") || errMsg.includes("Disabled")) {
+        toast.error(errMsg);
+        portalSignOut().then(() => {
+          router.replace("/portal/login");
+        });
+      }
+    }
+  }, [error, router]);
+
+  const loading = (isPending || portalLoading) && !portalData;
 
   return (
     <PortalContext.Provider

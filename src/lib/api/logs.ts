@@ -9,6 +9,7 @@ export interface GlobalLogFilter {
   page?: number;
   limit?: number;
 }
+export type GetLogsParams = GlobalLogFilter;
 
 export async function getGlobalLogsPaginated(
   filter?: GlobalLogFilter,

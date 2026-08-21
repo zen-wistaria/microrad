@@ -20,10 +20,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  getCompanyProfile,
-  getWaTemplate,
-  saveWaTemplate,
-} from "@/lib/api/settings";
+  useCompanyProfileQuery,
+  useSaveWaTemplateMutation,
+  useWaTemplateQuery,
+} from "@/lib/api/hooks";
 import type { CompanyProfile, Invoice } from "@/lib/types";
 import { formatDate, formatRupiah, getErrorMessage } from "@/lib/utils";
 
@@ -74,50 +74,32 @@ function buildMessage(
     .replaceAll("$DUE", formatDate(invoice.dueDate));
 }
 
-const WA_TEMPLATE_KEY = "microrad_wa_template";
-
-function loadTemplate(): string {
-  if (typeof window === "undefined") return DEFAULT_TEMPLATE;
-  try {
-    return localStorage.getItem(WA_TEMPLATE_KEY) || DEFAULT_TEMPLATE;
-  } catch {
-    return DEFAULT_TEMPLATE;
-  }
-}
-
 export function ReminderDialog({
   invoice,
   open,
   onOpenChange,
 }: ReminderDialogProps) {
+  const { data: brand = null } = useCompanyProfileQuery();
+  const { data: remoteTemplate } = useWaTemplateQuery();
+  const saveWaTemplateMutation = useSaveWaTemplateMutation();
+
   const [template, setTemplate] = useState<string>(DEFAULT_TEMPLATE);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const [brand, setBrand] = useState<CompanyProfile | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    getCompanyProfile()
-      .then(setBrand)
-      .catch(() => setBrand(null));
-  }, []);
+    if (remoteTemplate) {
+      setTemplate(remoteTemplate);
+    }
+  }, [remoteTemplate]);
 
   useEffect(() => {
     if (!invoice) return;
-    let cancelled = false;
-    getWaTemplate()
-      .catch(() => loadTemplate())
-      .then((tpl) => {
-        if (cancelled) return;
-        setTemplate(tpl);
-        setMessage(buildMessage(tpl, invoice, brand));
-      });
+    setMessage(buildMessage(template, invoice, brand));
     setCopied(false);
     setSaved(false);
-    return () => {
-      cancelled = true;
-    };
-  }, [invoice, brand]);
+  }, [invoice, brand, template]);
 
   if (!invoice) return null;
 
@@ -130,7 +112,7 @@ export function ReminderDialog({
 
   const handleSaveTemplate = async () => {
     try {
-      await saveWaTemplate(template);
+      await saveWaTemplateMutation.mutateAsync(template);
       setSaved(true);
       toast.success("Template pesan WhatsApp disimpan.");
       setTimeout(() => setSaved(false), 2000);

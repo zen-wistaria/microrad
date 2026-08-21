@@ -1,13 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { use, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { use } from "react";
 import { ProfileForm } from "@/components/forms/profile-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getProfileById } from "@/lib/api/profiles";
-import type { BandwidthProfile } from "@/lib/types";
+import { useProfileQuery } from "@/lib/api/hooks";
 
 interface EditProfilePageProps {
   params: Promise<{ id: string }>;
@@ -16,29 +13,8 @@ interface EditProfilePageProps {
 export default function EditProfilePage({ params }: EditProfilePageProps) {
   const resolvedParams = use(params);
   const profileId = resolvedParams.id;
-  const router = useRouter();
 
-  const [profile, setProfile] = useState<BandwidthProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const p = await getProfileById(profileId);
-        if (!p) {
-          toast.error("Profil tidak ditemukan.");
-          router.push("/profiles");
-          return;
-        }
-        setProfile(p);
-      } catch {
-        toast.error("Gagal memuat profil");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [profileId, router]);
+  const { data: profile, isLoading } = useProfileQuery(profileId);
 
   return (
     <div className="space-y-6">
@@ -52,7 +28,7 @@ export default function EditProfilePage({ params }: EditProfilePageProps) {
         </p>
       </div>
 
-      {loading || !profile ? (
+      {isLoading || !profile ? (
         <Card>
           <CardContent className="p-8 space-y-4">
             <Skeleton className="h-10 w-full" />

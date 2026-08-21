@@ -1,13 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { use, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { use } from "react";
 import { AppUserForm } from "@/components/forms/app-user-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getUserById } from "@/lib/api/users";
-import type { AppUser } from "@/lib/types";
+import { useUserDetailQuery } from "@/lib/api/hooks";
 
 interface EditUserPageProps {
   params: Promise<{ id: string }>;
@@ -16,29 +13,8 @@ interface EditUserPageProps {
 export default function EditUserPage({ params }: EditUserPageProps) {
   const resolvedParams = use(params);
   const userId = resolvedParams.id;
-  const router = useRouter();
 
-  const [userData, setUserData] = useState<AppUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const u = await getUserById(userId);
-        if (!u) {
-          toast.error("Pengguna tidak ditemukan.");
-          router.push("/users");
-          return;
-        }
-        setUserData(u);
-      } catch {
-        toast.error("Gagal memuat pengguna");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [userId, router]);
+  const { data: userData, isLoading } = useUserDetailQuery(userId);
 
   return (
     <div className="space-y-6">
@@ -52,7 +28,7 @@ export default function EditUserPage({ params }: EditUserPageProps) {
         </p>
       </div>
 
-      {loading || !userData ? (
+      {isLoading || !userData ? (
         <Card>
           <CardContent className="p-8 space-y-4">
             <Skeleton className="h-10 w-full" />

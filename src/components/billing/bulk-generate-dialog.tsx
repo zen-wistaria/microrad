@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { bulkGenerateInvoices } from "@/lib/api/billing";
+import { useBulkGenerateInvoicesMutation } from "@/lib/api/hooks";
 import type { Customer, Invoice } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -53,7 +53,9 @@ export function BulkGenerateDialog({
   onOpenChange,
   onSuccess,
 }: BulkGenerateDialogProps) {
-  const [loading, setLoading] = useState(false);
+  const bulkGenerateMutation = useBulkGenerateInvoicesMutation();
+  const loading = bulkGenerateMutation.isPending;
+
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -64,8 +66,7 @@ export function BulkGenerateDialog({
 
   const handleGenerate = async () => {
     try {
-      setLoading(true);
-      const res = await bulkGenerateInvoices(month, year);
+      const res = await bulkGenerateMutation.mutateAsync({ month, year });
       const periodLabel = `${MONTH_NAMES[month - 1]} ${year}`;
 
       // Rangkuman hasil: berhasil / gagal / di-skip karena sudah ada
@@ -99,8 +100,6 @@ export function BulkGenerateDialog({
       toast.error(
         getErrorMessage(err) || "Gagal melakukan generate tagihan massal",
       );
-    } finally {
-      setLoading(false);
     }
   };
 

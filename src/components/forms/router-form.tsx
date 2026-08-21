@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -31,10 +30,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  createRouter,
-  type RouterPayload,
-  updateRouter,
-} from "@/lib/api/routers";
+  useCreateRouterMutation,
+  useUpdateRouterMutation,
+} from "@/lib/api/hooks";
+import type { RouterPayload } from "@/lib/api/routers";
 import type { NasRouter, NasRouterStatus } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -78,7 +77,11 @@ export function RouterForm({
   isEditing = false,
 }: RouterFormProps) {
   const router = useRouter();
-  const [submitting, setSubmitting] = useState(false);
+  const createRouterMutation = useCreateRouterMutation();
+  const updateRouterMutation = useUpdateRouterMutation();
+
+  const submitting =
+    createRouterMutation.isPending || updateRouterMutation.isPending;
 
   const {
     register,
@@ -105,7 +108,6 @@ export function RouterForm({
 
   const onSubmit = async (data: RouterFormValues) => {
     try {
-      setSubmitting(true);
       if (isEditing && initialData) {
         // Hanya kirim apiPassword bila diisi ulang (jangan timpa tersimpan)
         const payload: Partial<RouterPayload> = {
@@ -119,10 +121,13 @@ export function RouterForm({
           syncEnabled: data.syncEnabled,
         };
         if (data.apiPassword) payload.apiPassword = data.apiPassword;
-        await updateRouter(initialData.id, payload);
+        await updateRouterMutation.mutateAsync({
+          id: initialData.id,
+          updates: payload,
+        });
         toast.success(`Router ${data.name} berhasil diperbarui.`);
       } else {
-        await createRouter({
+        await createRouterMutation.mutateAsync({
           name: data.name,
           ipAddress: data.ipAddress,
           location: data.location,
@@ -139,8 +144,6 @@ export function RouterForm({
       router.push("/routers");
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menyimpan router NAS.");
-    } finally {
-      setSubmitting(false);
     }
   };
 

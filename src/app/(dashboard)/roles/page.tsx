@@ -17,7 +17,7 @@ import {
   UserCog2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -40,7 +40,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { createRole, deleteRole, getRoles, updateRole } from "@/lib/api/roles";
+import {
+  useCreateRoleMutation,
+  useDeleteRoleMutation,
+  useRolesQuery,
+  useUpdateRoleMutation,
+} from "@/lib/api/hooks";
 import { RESOURCE_KEYS, RESOURCE_LABELS, type ResourceKey } from "@/lib/rbac";
 import type { Permission, Role } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
@@ -65,8 +70,21 @@ interface RoleDetailState {
 
 export default function RolesSettingsPage() {
   const { currentUser } = useAuth();
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: roles = [],
+    isLoading: rolesLoading,
+    refetch: fetchRoles,
+    isFetching,
+  } = useRolesQuery();
+
+  const createRoleMutation = useCreateRoleMutation();
+  const updateRoleMutation = useUpdateRoleMutation();
+  const deleteRoleMutation = useDeleteRoleMutation();
+
+  const loading = rolesLoading && roles.length === 0;
+  const saving = createRoleMutation.isPending || updateRoleMutation.isPending;
+  const deleting = deleteRoleMutation.isPending;
+
   const [dialog, setDialog] = useState<RoleDialogState>({
     open: false,
     editing: null,
@@ -74,28 +92,11 @@ export default function RolesSettingsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [detail, setDetail] = useState<RoleDetailState>({
     open: false,
     role: null,
   });
-
-  const fetchRoles = useCallback(async () => {
-    try {
-      setLoading(true);
-      setRoles(await getRoles());
-    } catch {
-      toast.error("Gagal memuat daftar role.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchRoles();
-  }, [fetchRoles]);
 
   const openCreate = () => {
     setDialog({ open: true, editing: null });
@@ -137,16 +138,18 @@ export default function RolesSettingsPage() {
       return;
     }
     try {
-      setSaving(true);
       if (dialog.editing) {
-        await updateRole(dialog.editing.id, {
-          name: name.trim(),
-          description: description.trim() || undefined,
-          permissions,
+        await updateRoleMutation.mutateAsync({
+          id: dialog.editing.id,
+          updates: {
+            name: name.trim(),
+            description: description.trim() || undefined,
+            permissions,
+          },
         });
         toast.success(`Role "${name.trim()}" berhasil diperbarui.`);
       } else {
-        await createRole({
+        await createRoleMutation.mutateAsync({
           name: name.trim(),
           description: description.trim() || undefined,
           permissions,
@@ -154,31 +157,19 @@ export default function RolesSettingsPage() {
         toast.success(`Role "${name.trim()}" berhasil dibuat.`);
       }
       setDialog({ open: false, editing: null });
-      await fetchRoles();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menyimpan role.");
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      setDeleting(true);
-      const res = await deleteRole(deleteTarget.id);
-      if (!res.success) {
-        toast.error(res.error ?? "Gagal menghapus role.");
-        setDeleteTarget(null);
-        return;
-      }
+      await deleteRoleMutation.mutateAsync(deleteTarget.id);
       toast.success(`Role "${deleteTarget.name}" berhasil dihapus.`);
       setDeleteTarget(null);
-      await fetchRoles();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menghapus role.");
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -219,11 +210,13 @@ export default function RolesSettingsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchRoles}
-            disabled={loading}
+            onClick={() => fetchRoles()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
           <Button size="sm" onClick={openCreate} className="gap-1.5 text-xs">

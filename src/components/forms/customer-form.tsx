@@ -38,7 +38,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createCustomer, updateCustomer } from "@/lib/api/customers";
+import {
+  useCreateCustomerMutation,
+  useUpdateCustomerMutation,
+} from "@/lib/api/hooks";
 import { generatePppoePassword } from "@/lib/generators";
 import type {
   BandwidthProfile,
@@ -108,9 +111,14 @@ export function CustomerForm({
   isEditing = false,
 }: CustomerFormProps) {
   const router = useRouter();
-  const [submitting, setSubmitting] = useState(false);
   const [showPppoePassword, setShowPppoePassword] = useState(false);
   const [showPortalPassword, setShowPortalPassword] = useState(false);
+
+  const createCustomerMutation = useCreateCustomerMutation();
+  const updateCustomerMutation = useUpdateCustomerMutation();
+
+  const submitting =
+    createCustomerMutation.isPending || updateCustomerMutation.isPending;
 
   const {
     register,
@@ -153,30 +161,34 @@ export function CustomerForm({
 
   const onSubmit = async (data: CustomerFormValues) => {
     try {
-      setSubmitting(true);
       const cleanEmail = data.email?.trim() || undefined;
       const cleanPortalPassword = data.portalPassword?.trim() || undefined;
 
       if (isEditing && initialData) {
-        await updateCustomer(initialData.id, {
-          ...(data.password?.trim() ? { password: data.password.trim() } : {}),
-          email: cleanEmail,
-          portalPassword: cleanPortalPassword,
-          fullName: data.fullName?.trim() || undefined,
-          phone: data.phone?.trim() || undefined,
-          address: data.address?.trim() || undefined,
-          profileId: data.profileId,
-          staticIp: data.staticIp?.trim() || undefined,
-          nasId: data.nasId || undefined,
-          bindOnNas: data.bindOnNas,
-          status: data.status as CustomerStatus,
+        await updateCustomerMutation.mutateAsync({
+          id: initialData.id,
+          updates: {
+            ...(data.password?.trim()
+              ? { password: data.password.trim() }
+              : {}),
+            email: cleanEmail,
+            portalPassword: cleanPortalPassword,
+            fullName: data.fullName?.trim() || undefined,
+            phone: data.phone?.trim() || undefined,
+            address: data.address?.trim() || undefined,
+            profileId: data.profileId,
+            staticIp: data.staticIp?.trim() || undefined,
+            nasId: data.nasId || undefined,
+            bindOnNas: data.bindOnNas,
+            status: data.status as CustomerStatus,
+          },
         });
         toast.success(
           `Data pelanggan ${initialData.username} berhasil diperbarui.`,
         );
         router.push(`/customers/${initialData.id}`);
       } else {
-        const created = await createCustomer({
+        const created = await createCustomerMutation.mutateAsync({
           email: cleanEmail,
           portalPassword: cleanPortalPassword,
           fullName: data.fullName?.trim() || undefined,
@@ -198,8 +210,6 @@ export function CustomerForm({
         getErrorMessage(err) ||
           "Terjadi kesalahan saat menyimpan data pelanggan.",
       );
-    } finally {
-      setSubmitting(false);
     }
   };
 

@@ -1,6 +1,8 @@
 import type { NasRouter } from "@/lib/types";
 import { apiFetch } from "./client";
 
+export type GetRoutersParams = Record<string, unknown>;
+
 export async function getRouters(): Promise<NasRouter[]> {
   return apiFetch<{ data: NasRouter[] }>("/routers").then((r) => r.data);
 }

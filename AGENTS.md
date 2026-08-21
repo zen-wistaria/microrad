@@ -327,7 +327,63 @@ Sistem mengimplementasikan **Role-Based Access Control (RBAC)** ketat di sisi se
 
 ---
 
-## 10. Panduan Operasional & Perintah Development
+## 10. Arsitektur Data Fetching & State Management (TanStack Query v5)
+
+Seluruh pemanggilan REST API di antarmuka frontend dikelola secara deklaratif menggunakan **TanStack Query v5** (`@tanstack/react-query`) untuk menjamin konsistensi cache, performa optimal, dan pengalaman pengguna yang halus tanpa flickering (kedip layar).
+
+### A. Konfigurasi Standar QueryClient & DevTools (`src/lib/query-client.ts` & `src/components/providers/query-provider.tsx`)
+- **Singleton Browser Pattern**: Menghindari reset cache saat re-render pada React Server Components/Client boundary.
+- **`staleTime: 60 * 1000` (60 detik)**: Menghindari network request berulang yang tidak perlu saat navigasi rute.
+- **`gcTime: 5 * 60 * 1000` (5 menit)**: Menghemat memori browser namun tetap mempertahankan instant-load data yang baru diakses.
+- **`refetchOnWindowFocus: false`**: Mencegah re-fetching data yang mengganggu saat user beralih antar jendela/tab.
+- **`refetchOnReconnect: true`**: Otomatis memperbarui data ketika koneksi jaringan pulih kembali.
+- **`placeholderData: keepPreviousData`**: Digunakan pada tabel berpaged/filter agar layout tabel stabil tanpa layout shift saat berpindah halaman atau mengubah filter pencarian.
+- **`ReactQueryDevtools`**: Terintegrasi via `@tanstack/react-query-devtools` pada `QueryProvider` (`initialIsOpen={false}`, `buttonPosition="bottom-right"`) untuk kemudahan debugging state query & cache.
+
+### B. Hierarki & Konvensi Query Keys (`src/lib/api/query-keys.ts`)
+Setiap domain memiliki struktur query key standar:
+```typescript
+export const queryKeys = {
+  dashboard: ["dashboard"] as const,
+  customers: {
+    all: ["customers"] as const,
+    list: (filters) => ["customers", "list", filters] as const,
+    detail: (id) => ["customers", "detail", id] as const,
+    activeSession: (id) => ["customers", "activeSession", id] as const,
+    sessions: (id, params) => ["customers", "sessions", id, params] as const,
+    usageHistory: (id, days) => ["customers", "usageHistory", id, days] as const,
+    monthlyUsage: (id, year) => ["customers", "monthlyUsage", id, year] as const,
+  },
+  profiles: { all: ["profiles"] as const, detail: (id) => ["profiles", "detail", id] as const },
+  routers: { all: ["routers"] as const, detail: (id) => ["routers", "detail", id] as const },
+  sessions: { all: ["sessions"] as const, list: (filters) => ["sessions", "list", filters] as const },
+  billing: {
+    all: ["billing"] as const,
+    invoices: (filters) => ["billing", "invoices", filters] as const,
+    payments: (filters) => ["billing", "payments", filters] as const,
+    detail: (id) => ["billing", "detail", id] as const,
+    summary: ["billing", "summary"] as const,
+    months: ["billing", "months"] as const,
+  },
+  users: { all: ["users"] as const, list: (filters) => ["users", "list", filters] as const, detail: (id) => ["users", "detail", id] as const },
+  roles: { all: ["roles"] as const, detail: (id) => ["roles", "detail", id] as const },
+  logs: { all: ["logs"] as const, list: (filters) => ["logs", "list", filters] as const },
+  settings: { company: ["settings", "company"] as const, waTemplate: ["settings", "waTemplate"] as const },
+  portal: { me: ["portal", "me"] as const },
+};
+```
+
+### C. Aturan Invalidation & Flicker-Free Mutasi (`src/lib/api/hooks/*`)
+- **Mutasi Customer**: Meng-invalidate `queryKeys.customers.all`, `queryKeys.dashboard`, `queryKeys.profiles.all`, dan `queryKeys.routers.all`.
+- **Mutasi Profile**: Meng-invalidate `queryKeys.profiles.all`, `queryKeys.customers.all`, dan `queryKeys.dashboard`.
+- **Mutasi Router**: Meng-invalidate `queryKeys.routers.all`, `queryKeys.sessions.all`, dan `queryKeys.dashboard`.
+- **Mutasi Billing**: Meng-invalidate `queryKeys.billing.all`, `queryKeys.dashboard`, dan `queryKeys.customers.all`.
+- **Mutasi User & Role**: Meng-invalidate `queryKeys.users.all` dan `queryKeys.roles.all`.
+- **No Auto-Refresh Flickering**: Halaman detail pelanggan (`/customers/[id]`) dan halaman monitoring **dilarang menggunakan `setInterval` blind fetch** yang mereset status komponen. Sebagai gantinya, gunakan tombol Refresh manual di header actions dengan indikator spinner dan biarkan TanStack Query mengelola stale caching secara cerdas di latar belakang.
+
+---
+
+## 11. Panduan Operasional & Perintah Development
 
 ```bash
 # 1. Jalankan Infrastruktur Kontainer (Postgres & FreeRADIUS)

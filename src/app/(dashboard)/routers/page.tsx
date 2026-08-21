@@ -15,7 +15,7 @@ import {
   Unplug,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -24,46 +24,42 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  connectRouterRadius,
-  deleteRouter,
-  disconnectRouterRadius,
-  getRouters,
-  pingRouter,
-  syncRouterNow,
-} from "@/lib/api/routers";
+  useConnectRadiusMutation,
+  useDeleteRouterMutation,
+  useDisconnectRadiusMutation,
+  usePingRouterMutation,
+  useRoutersQuery,
+  useSyncRouterMutation,
+} from "@/lib/api/hooks";
 import type { NasRouter } from "@/lib/types";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 type BusyId = `${string}:${string}`;
 
 export default function RoutersPage() {
-  const [routers, setRouters] = useState<NasRouter[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: routers = [],
+    isLoading: routersLoading,
+    refetch: refreshAll,
+    isFetching,
+  } = useRoutersQuery();
+
+  const deleteRouterMutation = useDeleteRouterMutation();
+  const pingRouterMutation = usePingRouterMutation();
+  const connectRadiusMutation = useConnectRadiusMutation();
+  const disconnectRadiusMutation = useDisconnectRadiusMutation();
+  const syncRouterMutation = useSyncRouterMutation();
+
   const [busy, setBusy] = useState<BusyId | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NasRouter | null>(null);
 
-  const refreshAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      const rList = await getRouters();
-      setRouters(rList);
-    } catch {
-      toast.error("Gagal memuat daftar router NAS.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+  const loading = routersLoading && routers.length === 0;
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await deleteRouter(deleteTarget.id);
+      await deleteRouterMutation.mutateAsync(deleteTarget.id);
       toast.success(`Router NAS ${deleteTarget.name} berhasil dihapus.`);
-      setRouters((prev) => prev.filter((r) => r.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menghapus router NAS.");
@@ -74,7 +70,7 @@ export default function RoutersPage() {
   const handleTestPing = async (router: NasRouter) => {
     setBusy(`${router.id}:ping`);
     try {
-      const res = await pingRouter(router.id);
+      const res = await pingRouterMutation.mutateAsync(router.id);
       if (res.status === "online") {
         toast.success(
           `Router ${router.name} (${router.ipAddress}) online — latency ${res.latencyMs}ms${
@@ -100,16 +96,16 @@ export default function RoutersPage() {
   const handleConnectRadius = async (router: NasRouter) => {
     setBusy(`${router.id}:connect`);
     try {
-      await connectRouterRadius(router.id);
+      await connectRadiusMutation.mutateAsync(router.id);
       toast.success(
         `Router ${router.name} dihubungkan ke FreeRADIUS (/radius add, use-radius=yes, accounting=yes, interim-update=1m).`,
       );
-      await refreshAll();
     } catch (err: unknown) {
       toast.error(
         getErrorMessage(err) ||
           `Gagal menghubungkan ${router.name}. Pastikan API Username/Password dan RADIUS Secret terisi.`,
       );
+    } finally {
       setBusy(null);
     }
   };
@@ -118,15 +114,15 @@ export default function RoutersPage() {
   const handleDisconnectRadius = async (router: NasRouter) => {
     setBusy(`${router.id}:disconnect`);
     try {
-      const res = await disconnectRouterRadius(router.id);
+      const res = await disconnectRadiusMutation.mutateAsync(router.id);
       toast.success(
         `Router ${router.name} diputus dari FreeRADIUS (${res.removed} entri /radius dihapus, use-radius=no).`,
       );
-      await refreshAll();
     } catch (err: unknown) {
       toast.error(
         getErrorMessage(err) || "Gagal memutuskan router dari FreeRADIUS.",
       );
+    } finally {
       setBusy(null);
     }
   };
@@ -135,7 +131,7 @@ export default function RoutersPage() {
   const handleSyncNow = async (router: NasRouter) => {
     setBusy(`${router.id}:sync`);
     try {
-      const s = await syncRouterNow(router.id);
+      const s = await syncRouterMutation.mutateAsync(router.id);
       if (s.error || s.status === "offline") {
         toast.error(
           `Router ${router.name} (${router.ipAddress}) tidak terjangkau / offline.`,
@@ -145,9 +141,9 @@ export default function RoutersPage() {
           `Status ${router.name} (${router.ipAddress}) berhasil diperbarui: ONLINE (${s.latencyMs}ms).`,
         );
       }
-      await refreshAll();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal sinkronisasi status router.");
+    } finally {
       setBusy(null);
     }
   };
@@ -170,10 +166,13 @@ export default function RoutersPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={refreshAll}
+            onClick={() => refreshAll()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
           <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">

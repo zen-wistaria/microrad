@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -29,7 +29,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { deleteUser, getUsersPaginated, updateUser } from "@/lib/api/users";
+import {
+  useDeleteUserMutation,
+  useUpdateUserMutation,
+  useUsersQuery,
+} from "@/lib/api/hooks";
 import { hasPermission } from "@/lib/rbac";
 import type { AppUser, AppUserStatus } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
@@ -39,10 +43,6 @@ import { formatDate, getErrorMessage } from "@/lib/utils";
 export default function UsersPage() {
   const { currentUser } = useAuth();
   const canManageUsers = hasPermission(currentUser, "user.create");
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
 
   // Search & Filters (via nuqs — konsisten saat refresh)
   const [search, setSearch] = useQueryState(
@@ -69,7 +69,30 @@ export default function UsersPage() {
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
   const safePage = Math.max(page, 1);
+
+  // TanStack Query
+  const {
+    data: userRes,
+    isLoading: usersLoading,
+    refetch,
+    isFetching,
+  } = useUsersQuery({
+    search: search.trim() || undefined,
+    status: statusFilter,
+    role: roleFilter,
+    page: safePage,
+    limit: safeLimit,
+  });
+
+  const deleteUserMutation = useDeleteUserMutation();
+  const updateUserMutation = useUpdateUserMutation();
+
+  const users = userRes?.data || [];
+  const totalCount = userRes?.total || 0;
+  const loading = usersLoading && !userRes;
   const totalPages = Math.ceil(totalCount / safeLimit) || 1;
+
+  const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
 
   // Sync debounced search to URL state
   useEffect(() => {
@@ -83,29 +106,6 @@ export default function UsersPage() {
     setSearchInput(search);
   }, [search]);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await getUsersPaginated({
-        search: search.trim() || undefined,
-        status: statusFilter,
-        role: roleFilter,
-        page: safePage,
-        limit: safeLimit,
-      });
-      setUsers(res.data);
-      setTotalCount(res.total);
-    } catch (_e) {
-      toast.error("Gagal memuat pengguna aplikasi.");
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, roleFilter, safePage, safeLimit]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
   const handleDelete = async () => {
     if (!deleteTarget) return;
     if (deleteTarget.id === currentUser?.id) {
@@ -114,9 +114,8 @@ export default function UsersPage() {
       return;
     }
     try {
-      await deleteUser(deleteTarget.id);
+      await deleteUserMutation.mutateAsync(deleteTarget.id);
       toast.success(`Pengguna ${deleteTarget.name} berhasil dihapus.`);
-      setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menghapus pengguna.");
@@ -131,10 +130,10 @@ export default function UsersPage() {
     const newStatus: AppUserStatus =
       user.status === "active" ? "disabled" : "active";
     try {
-      await updateUser(user.id, { status: newStatus });
-      setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u)),
-      );
+      await updateUserMutation.mutateAsync({
+        id: user.id,
+        updates: { status: newStatus },
+      });
       toast.success(
         `Status ${user.name} diubah menjadi ${newStatus === "active" ? "Aktif" : "Nonaktif"}.`,
       );
@@ -161,10 +160,13 @@ export default function UsersPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchData}
+            onClick={() => refetch()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
           {canManageUsers && (

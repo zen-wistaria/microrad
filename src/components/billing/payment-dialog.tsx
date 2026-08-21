@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { markInvoiceAsPaid } from "@/lib/api/billing";
+import { usePayInvoiceMutation } from "@/lib/api/hooks";
 import type { Invoice, PaymentMethod } from "@/lib/types";
 import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
@@ -46,7 +46,9 @@ export function PaymentDialog({
   onOpenChange,
   onSuccess,
 }: PaymentDialogProps) {
-  const [loading, setLoading] = useState(false);
+  const payInvoiceMutation = usePayInvoiceMutation();
+  const loading = payInvoiceMutation.isPending;
+
   const [method, setMethod] = useState<PaymentMethod>("qris");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
@@ -68,12 +70,14 @@ export function PaymentDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      setLoading(true);
-      const updated = await markInvoiceAsPaid(invoice.id, {
-        paymentMethod: method,
-        paymentReference: reference,
-        notes,
-        paidAt: new Date().toISOString(),
+      const updated = await payInvoiceMutation.mutateAsync({
+        id: invoice.id,
+        paymentData: {
+          paymentMethod: method,
+          paymentReference: reference,
+          notes,
+          paidAt: new Date().toISOString(),
+        },
       });
       toast.success(
         `Tagihan ${invoice.invoiceNumber} berhasil ditandai Lunas!`,
@@ -82,8 +86,6 @@ export function PaymentDialog({
       onOpenChange(false);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal mencatat pembayaran");
-    } finally {
-      setLoading(false);
     }
   };
 

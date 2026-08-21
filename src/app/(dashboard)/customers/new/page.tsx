@@ -1,32 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { CustomerForm } from "@/components/forms/customer-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getProfiles } from "@/lib/api/profiles";
-import { getRouters } from "@/lib/api/routers";
-import type { BandwidthProfile, NasRouter } from "@/lib/types";
+import { useProfilesQuery, useRoutersQuery } from "@/lib/api/hooks";
 
 export default function NewCustomerPage() {
-  const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
-  const [routers, setRouters] = useState<NasRouter[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: profiles = [], isLoading: profilesLoading } =
+    useProfilesQuery();
+  const { data: routers = [], isLoading: routersLoading } = useRoutersQuery();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [pList, rList] = await Promise.all([getProfiles(), getRouters()]);
-        setProfiles(pList);
-        setRouters(rList);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  const loading = (profilesLoading || routersLoading) && profiles.length === 0;
 
   return (
     <div className="space-y-6">

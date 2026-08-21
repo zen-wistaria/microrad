@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -40,9 +40,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getRoles } from "@/lib/api/roles";
-import { createUser, updateUser } from "@/lib/api/users";
-import type { AppUser, AppUserRole, AppUserStatus, Role } from "@/lib/types";
+import {
+  useCreateUserMutation,
+  useRolesQuery,
+  useUpdateUserMutation,
+} from "@/lib/api/hooks";
+import type { AppUser, AppUserRole, AppUserStatus } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
 const createAppUserSchema = (isEditing: boolean) =>
@@ -107,19 +110,14 @@ export function AppUserForm({
   isEditing = false,
 }: AppUserFormProps) {
   const router = useRouter();
-  const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Kumpulan role yang dapat dipilih — dari API (server)
-  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const { data: allRoles = [] } = useRolesQuery();
+  const createUserMutation = useCreateUserMutation();
+  const updateUserMutation = useUpdateUserMutation();
 
-  useEffect(() => {
-    getRoles()
-      .then((roles) => setAllRoles(roles))
-      .catch(() => {
-        // fallback ke role bawaan
-      });
-  }, []);
+  const submitting =
+    createUserMutation.isPending || updateUserMutation.isPending;
 
   const schema = useMemo(() => createAppUserSchema(isEditing), [isEditing]);
 
@@ -155,7 +153,6 @@ export function AppUserForm({
 
   const onSubmit = async (data: AppUserFormValues) => {
     try {
-      setSubmitting(true);
       const payload = {
         name: data.name.trim(),
         username: data.username?.trim() || undefined,
@@ -167,17 +164,18 @@ export function AppUserForm({
       };
 
       if (isEditing && initialData) {
-        await updateUser(initialData.id, payload);
+        await updateUserMutation.mutateAsync({
+          id: initialData.id,
+          updates: payload,
+        });
         toast.success(`Pengguna ${data.name} berhasil diperbarui.`);
       } else {
-        await createUser(payload);
+        await createUserMutation.mutateAsync(payload);
         toast.success(`Pengguna ${data.name} berhasil ditambahkan.`);
       }
       router.push("/users");
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menyimpan pengguna aplikasi.");
-    } finally {
-      setSubmitting(false);
     }
   };
 

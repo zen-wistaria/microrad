@@ -12,7 +12,7 @@ import {
   Wifi,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { UsageTrendChart } from "@/components/charts/usage-trend-chart";
 import { LiveDurationCounter } from "@/components/common/live-counter";
 import { CustomerStatusBadge } from "@/components/common/status-badge";
@@ -25,48 +25,39 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getCustomers } from "@/lib/api/customers";
-import { getDashboardStats } from "@/lib/api/dashboard";
-import { getActiveSessions } from "@/lib/api/sessions";
-import type { Customer, DashboardStats, Session } from "@/lib/types";
+import {
+  useCustomersQuery,
+  useDashboardQuery,
+  useSessionsQuery,
+} from "@/lib/api/hooks";
 import { formatBytes } from "@/lib/utils";
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [activeSessions, setActiveSessions] = useState<Session[]>([]);
-  const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    refetch: refetchDashboard,
+    isFetching,
+  } = useDashboardQuery();
+
+  const { data: sessionsRes } = useSessionsQuery({
+    activeOnly: true,
+    limit: 5,
+  });
+
+  const { data: customersRes } = useCustomersQuery({ limit: 5 });
+
+  const activeSessions = sessionsRes?.data || [];
+  const recentCustomers = customersRes?.data || [];
+  const loading = statsLoading && !stats;
 
   const totalTraffic7DaysBytes = useMemo(() => {
     if (!stats?.usageTrend) return 0;
     return stats.usageTrend.reduce(
-      (acc, point) => acc + (point.downloadBytes + point.uploadBytes),
+      (acc: number, point) => acc + (point.downloadBytes + point.uploadBytes),
       0,
     );
   }, [stats?.usageTrend]);
-
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      const [statsData, sessionsData, customersData] = await Promise.all([
-        getDashboardStats(),
-        getActiveSessions({ limit: 5 }),
-        getCustomers({ limit: 5 }),
-      ]);
-      setStats(statsData);
-      setActiveSessions(sessionsData);
-      setRecentCustomers(customersData);
-    } catch (e) {
-      console.error("Error fetching dashboard data", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 30000);
-    return () => clearInterval(interval);
-  }, [fetchDashboardData]);
 
   return (
     <div className="space-y-6">
@@ -85,10 +76,13 @@ export default function DashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchDashboardData}
+            onClick={() => refetchDashboard()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
           <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">

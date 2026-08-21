@@ -15,7 +15,7 @@ import {
   parseAsStringEnum,
   useQueryState,
 } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -31,18 +31,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getRouters } from "@/lib/api/routers";
-import { disconnectSession, getSessionsPaginated } from "@/lib/api/sessions";
-import type { NasRouter, Session } from "@/lib/types";
+import {
+  useDisconnectSessionMutation,
+  useRoutersQuery,
+  useSessionsQuery,
+} from "@/lib/api/hooks";
+import type { Session } from "@/lib/types";
 import { useDebounce } from "@/lib/use-debounce";
 import { formatBytes, getErrorMessage } from "@/lib/utils";
 
 export default function SessionsPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [routers, setRouters] = useState<NasRouter[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const { data: routers = [] } = useRoutersQuery();
 
   // Search & Filter
   const [search, setSearch] = useQueryState(
@@ -67,6 +66,26 @@ export default function SessionsPage() {
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
   const safePage = Math.max(page, 1);
+
+  // TanStack Query
+  const {
+    data: sessRes,
+    isLoading: sessionsLoading,
+    refetch,
+    isFetching,
+  } = useSessionsQuery({
+    activeOnly: true,
+    search: search.trim() || undefined,
+    router: routerFilter === "all" ? undefined : routerFilter,
+    page: safePage,
+    limit: safeLimit,
+  });
+
+  const disconnectSessionMutation = useDisconnectSessionMutation();
+
+  const sessions = sessRes?.data || [];
+  const totalCount = sessRes?.total || 0;
+  const loading = sessionsLoading && !sessRes;
   const totalPages = Math.ceil(totalCount / safeLimit) || 1;
 
   // Disconnect Target
@@ -85,53 +104,14 @@ export default function SessionsPage() {
     setSearchInput(search);
   }, [search]);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [sessRes, routerList] = await Promise.all([
-        getSessionsPaginated({
-          activeOnly: true,
-          search: search.trim() || undefined,
-          router: routerFilter === "all" ? undefined : routerFilter,
-          page: safePage,
-          limit: safeLimit,
-        }),
-        getRouters(),
-      ]);
-      setSessions(sessRes.data);
-      setTotalCount(sessRes.total);
-      setRouters(routerList);
-    } catch (e) {
-      console.error(e);
-      toast.error("Gagal memperbarui sesi aktif.");
-    } finally {
-      setLoading(false);
-    }
-  }, [search, routerFilter, safePage, safeLimit]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Polling interval — 30 detik (ringan; data tampil + update berkala)
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, fetchData]);
-
   const handleDisconnect = async () => {
     if (!disconnectSessionTarget) return;
     try {
-      await disconnectSession(disconnectSessionTarget.id);
+      await disconnectSessionMutation.mutateAsync({
+        sessionId: disconnectSessionTarget.id,
+      });
       toast.success(
         `Sesi untuk ${disconnectSessionTarget.customerUsername} (${disconnectSessionTarget.framedIp}) berhasil diputuskan.`,
-      );
-      setSessions((prev) =>
-        prev.filter((s) => s.id !== disconnectSessionTarget.id),
       );
       setDisconnectSessionTarget(null);
     } catch (err: unknown) {
@@ -180,22 +160,13 @@ export default function SessionsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`gap-1.5 text-xs ${autoRefresh ? "text-emerald-600 border-emerald-300 dark:border-emerald-800" : "text-slate-500"}`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${autoRefresh ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`}
-            />
-            Auto-refresh: {autoRefresh ? "Aktif (30 detik)" : "Mati"}
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchData}
+            onClick={() => refetch()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
         </div>

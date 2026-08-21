@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -46,12 +46,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  deleteCustomer,
-  disconnectCustomer,
-  getCustomersPaginated,
-  updateCustomer,
-} from "@/lib/api/customers";
-import { getProfiles } from "@/lib/api/profiles";
+  useCustomersQuery,
+  useDeleteCustomerMutation,
+  useDisconnectCustomerMutation,
+  useProfilesQuery,
+  useUpdateCustomerMutation,
+} from "@/lib/api/hooks";
 import { hasPermission } from "@/lib/rbac";
 import type { BandwidthProfile, Customer, CustomerStatus } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
@@ -60,10 +60,6 @@ import { formatRelativeTime, getErrorMessage } from "@/lib/utils";
 
 export default function CustomersPage() {
   const { currentUser } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Filters & Search (via nuqs — konsisten saat refresh)
   const [search, setSearch] = useQueryState(
@@ -90,6 +86,30 @@ export default function CustomersPage() {
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
   const safePage = Math.max(page, 1);
+
+  // TanStack Query
+  const {
+    data: custRes,
+    isLoading: customersLoading,
+    refetch,
+    isFetching,
+  } = useCustomersQuery({
+    search: search.trim() || undefined,
+    status: statusFilter,
+    profileId: profileFilter,
+    page: safePage,
+    limit: safeLimit,
+  });
+
+  const { data: profiles = [] } = useProfilesQuery();
+
+  const deleteCustomerMutation = useDeleteCustomerMutation();
+  const disconnectCustomerMutation = useDisconnectCustomerMutation();
+  const updateCustomerMutation = useUpdateCustomerMutation();
+
+  const customers = custRes?.data || [];
+  const totalCount = custRes?.total || 0;
+  const loading = customersLoading && !custRes;
   const totalPages = Math.ceil(totalCount / safeLimit) || 1;
 
   // Dialog State
@@ -106,37 +126,10 @@ export default function CustomersPage() {
     }
   }, [debouncedSearch, search, setSearch, setPage]);
 
-  // Keep local input in sync if URL search param is changed externally (e.g. back/forward or reset)
+  // Keep local input in sync if URL search param is changed externally
   useEffect(() => {
     setSearchInput(search);
   }, [search]);
-
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [custRes, profList] = await Promise.all([
-        getCustomersPaginated({
-          search: search.trim() || undefined,
-          status: statusFilter,
-          profileId: profileFilter,
-          page: safePage,
-          limit: safeLimit,
-        }),
-        getProfiles(),
-      ]);
-      setCustomers(custRes.data);
-      setTotalCount(custRes.total);
-      setProfiles(profList);
-    } catch (_e) {
-      toast.error("Gagal memuat data pelanggan.");
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, profileFilter, safePage, safeLimit]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   const profileMap = useMemo(() => {
     const map = new Map<string, BandwidthProfile>();
@@ -150,9 +143,8 @@ export default function CustomersPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await deleteCustomer(deleteTarget.id);
+      await deleteCustomerMutation.mutateAsync(deleteTarget.id);
       toast.success(`Pelanggan ${deleteTarget.username} berhasil dihapus.`);
-      setCustomers((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menghapus pelanggan.");
@@ -162,20 +154,9 @@ export default function CustomersPage() {
   const handleDisconnect = async () => {
     if (!disconnectTarget) return;
     try {
-      await disconnectCustomer(disconnectTarget.id);
+      await disconnectCustomerMutation.mutateAsync(disconnectTarget.id);
       toast.success(
         `Koneksi pelanggan ${disconnectTarget.username} berhasil diputuskan.`,
-      );
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.id === disconnectTarget.id
-            ? {
-                ...c,
-                currentSessionId: undefined,
-                lastSeenAt: new Date().toISOString(),
-              }
-            : c,
-        ),
       );
       setDisconnectTarget(null);
     } catch (err: unknown) {
@@ -188,13 +169,16 @@ export default function CustomersPage() {
     newStatus: CustomerStatus,
   ) => {
     try {
-      await updateCustomer(customer.id, { status: newStatus });
+      await updateCustomerMutation.mutateAsync({
+        id: customer.id,
+        updates: { status: newStatus },
+      });
       // Jika diubah menjadi non-aktif (suspended/disabled) dan memiliki sesi online, putus koneksi
       if (newStatus !== "active") {
         try {
-          await disconnectCustomer(customer.id);
+          await disconnectCustomerMutation.mutateAsync(customer.id);
         } catch {
-          // best-effort, backend PUT juga memutus sesi otomatis
+          // best-effort
         }
       }
       const labelMap: Record<CustomerStatus, string> = {
@@ -207,12 +191,6 @@ export default function CustomersPage() {
           newStatus !== "active" ? " & koneksi aktif diputuskan" : ""
         }.`,
       );
-      setCustomers((prev) =>
-        prev.map((c) =>
-          c.id === customer.id ? { ...c, status: newStatus } : c,
-        ),
-      );
-      await fetchData();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal mengubah status pelanggan.");
     }
@@ -235,10 +213,13 @@ export default function CustomersPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchData}
+            onClick={() => refetch()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
           {hasPermission(currentUser, "customer.create") && (

@@ -14,7 +14,7 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -29,8 +29,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getCompanyProfile, updateCompanyProfile } from "@/lib/api/settings";
-import type { CompanyProfile } from "@/lib/types";
+import {
+  useCompanyProfileQuery,
+  useUpdateCompanyProfileMutation,
+} from "@/lib/api/hooks";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 const companyProfileSchema = z.object({
@@ -49,9 +51,15 @@ const companyProfileSchema = z.object({
 type CompanyProfileFormValues = z.infer<typeof companyProfileSchema>;
 
 export default function SettingsPage() {
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [profile, setProfile] = useState<CompanyProfile | null>(null);
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    refetch,
+    isFetching,
+  } = useCompanyProfileQuery();
+
+  const updateCompanyProfileMutation = useUpdateCompanyProfileMutation();
+  const submitting = updateCompanyProfileMutation.isPending;
 
   const {
     register,
@@ -72,35 +80,22 @@ export default function SettingsPage() {
     },
   });
 
-  const fetchProfile = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await getCompanyProfile();
-      setProfile(data);
-      reset(data);
-    } catch (_e) {
-      toast.error("Gagal memuat profil perusahaan.");
-    } finally {
-      setLoading(false);
-    }
-  }, [reset]);
-
   useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
+    if (profile) {
+      reset(profile);
+    }
+  }, [profile, reset]);
 
   const onSubmit = async (data: CompanyProfileFormValues) => {
     try {
-      setSubmitting(true);
-      const updated = await updateCompanyProfile(data);
-      setProfile(updated);
+      await updateCompanyProfileMutation.mutateAsync(data);
       toast.success("Profil perusahaan berhasil diperbarui.");
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menyimpan profil perusahaan.");
-    } finally {
-      setSubmitting(false);
     }
   };
+
+  const loading = profileLoading && !profile;
 
   if (loading) {
     return (
@@ -131,10 +126,13 @@ export default function SettingsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchProfile}
+            onClick={() => refetch()}
+            disabled={isFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
         </div>
