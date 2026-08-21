@@ -152,6 +152,75 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     );
     return updated;
   });
+
+  // ── CoA: bila profil berubah & user sedang online → push rate-limit baru
+  // tanpa disconnect (RFC 5176). Gagal → fallback kick agar re-login.
+  const { sendCoa } = await import("@/lib/radius-coa");
+  const profileChanged =
+    "profileId" in body && body.profileId !== existing.profileId;
+  const newProfile =
+    profileChanged && customer.profileId
+      ? await prisma.bandwidthProfile.findUnique({
+          where: { id: customer.profileId },
+        })
+      : null;
+  if (profileChanged && newProfile) {
+    try {
+      const online = await prisma.radAcct.findFirst({
+        where: { username: customer.username, acctStopTime: null },
+        orderBy: { acctStartTime: "desc" },
+        select: { acctSessionId: true },
+      });
+      if (online) {
+        const rate = await import("@/lib/radius-format").then((m) =>
+          m.rateLimitValue({
+            maxDownload: `${newProfile.rateLimitDown}M`,
+            maxUpload: `${newProfile.rateLimitUp}M`,
+            burstDownload: newProfile.burstLimitDown
+              ? `${newProfile.burstLimitDown}k`
+              : undefined,
+            burstUpload: newProfile.burstLimitUp
+              ? `${newProfile.burstLimitUp}k`
+              : undefined,
+            burstThresholdDownload: newProfile.burstThresholdDown
+              ? `${newProfile.burstThresholdDown}k`
+              : undefined,
+            burstThresholdUp: newProfile.burstThresholdUp
+              ? `${newProfile.burstThresholdUp}k`
+              : undefined,
+            burstTimeSeconds: newProfile.burstTimeSeconds ?? undefined,
+            priority: newProfile.priority ?? undefined,
+            limitAtDownload: newProfile.limitAtDown
+              ? `${newProfile.limitAtDown}k`
+              : undefined,
+            limitAtUp: newProfile.limitAtUp
+              ? `${newProfile.limitAtUp}k`
+              : undefined,
+          }),
+        );
+        const coa = await sendCoa(
+          customer.username,
+          { "Mikrotik-Rate-Limit": rate },
+          { acctSessionId: online.acctSessionId ?? undefined },
+        );
+        if (!coa.success) {
+          // CoA ditolak (RouterOS: Unsupported-Extension utk Mikrotik-Rate-Limit)
+          // atau tidak dijawab → kick agar sesi re-login dgn rate baru
+          console.warn(
+            `[coa] rate-limit utk ${customer.username} tidak diterapkan via ` +
+              `CoA (${coa.code ?? "no-ack"}) — fallback disconnect agar re-login.`,
+          );
+          const { kickSessionByUsername } = await import(
+            "@/lib/mikrotik-disconnect"
+          );
+          await kickSessionByUsername(customer.username, customer.nasId);
+        }
+      }
+    } catch (e) {
+      console.warn("[coa] gagal push rate-limit utk", customer.username, e);
+    }
+  }
+
   return NextResponse.json({ data: customer });
 });
 
@@ -174,31 +243,3 @@ export const DELETE = asyncApi(
     return NextResponse.json({ success: true });
   },
 );
-
-/** POST /api/v1/customers/[id]/disconnect — putus sesi aktif pelanggan.
- * Sesi online dibaca dari radacct; kick dilakukan via RouterOS API
- * (best-effort). FreeRADIUS akan menerima Accounting-Stop dari router
- * dan sesi hilang dari daftar online. */
-export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
-  await requirePermission("customer.update");
-  const { id } = await ctx.params;
-
-  const existing = await prisma.customer.findUnique({ where: { id } });
-  if (!existing) throw new Error("Pelanggan tidak ditemukan.");
-
-  const online = await prisma.radAcct.findMany({
-    where: { username: existing.username, acctStopTime: null },
-    orderBy: { acctStartTime: "desc" },
-    take: 1,
-  });
-  if (online[0]) {
-    // Kick di router (best-effort) — session masih online di radacct
-    const { kickSessionByUsername } = await import("@/lib/mikrotik-disconnect");
-    await kickSessionByUsername(existing.username, existing.nasId);
-    await prisma.customer.update({
-      where: { id },
-      data: { lastSeenAt: new Date() },
-    });
-  }
-  return NextResponse.json({ success: true });
-});

@@ -12,6 +12,9 @@ RUN apk add --no-cache freeradius freeradius-postgresql freeradius-utils bash
 #  - entrypoint.sh      -> tunggu postgres, templating, radiusd -f
 COPY mods-enabled/sql /etc/raddb/mods-enabled/sql
 COPY clients.conf /etc/raddb/clients.conf
+# Listen CoA/Disconnect (port 3799) — append ke radiusd.conf
+COPY listen-coa.conf /etc/raddb/listen-coa.conf
+RUN cat /etc/raddb/listen-coa.conf >> /etc/raddb/radiusd.conf
 
 # Aktifkan modul sql: ganti "-sql" (disabled) -> "sql" di authorize,
 # accounting, post-auth (+ Post-Auth-Type REJECT). Bagian session sudah `sql`.
@@ -21,5 +24,5 @@ RUN sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/default \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 1812/udp 1813/udp
+EXPOSE 1812/udp 1813/udp 3799/udp
 ENTRYPOINT ["/entrypoint.sh"]

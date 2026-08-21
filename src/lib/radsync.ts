@@ -89,7 +89,10 @@ async function syncCustomerRadiusRows(
 ) {
   const u = username ?? customer.username;
   const bindNasIp = nasIpAddress ?? customer.nasIpAddress ?? null;
-  // Aktif → radcheck Cleartext-Password (suspend/disabled → hindari login)
+  // Aktif → radcheck Cleartext-Password (suspend/disabled → hindari login).
+  // HAPUS password hanya bila eksplisit (argumen password string kosong =
+  // "hapus"); saat argumen tidak diberikan (edit patrial, mis. ganti profil)
+  // baris lama dipertahankan agar kredensial tidak hilang.
   if (customer.status === "active" && password) {
     await tx.radCheck.upsert({
       where: {
@@ -103,9 +106,35 @@ async function syncCustomerRadiusRows(
         value: password,
       },
     });
+  } else if (customer.status === "active" && !password) {
+    // Aktif tanpa argumen password — pertahankan baris Cleartext-Password
+    // yang sudah ada (jangan dihapus / ditimpa).
+  }
+  // status tidak aktif → Auth-Type Reject (password tetap disimpan)
+
+  // Non-aktif (suspend/disabled): tolak login lewat Auth-Type := Reject —
+  // password TIDAK dihapus agar saat diaktifkan kembali langsung bisa
+  // konek tanpa set ulang.
+  if (customer.status !== "active") {
+    await tx.radCheck.upsert({
+      where: {
+        username_attribute: {
+          username: u,
+          attribute: "Auth-Type",
+        },
+      },
+      update: { value: "Reject", op: ":=" },
+      create: {
+        username: u,
+        attribute: "Auth-Type",
+        op: ":=",
+        value: "Reject",
+      },
+    });
   } else {
+    // Aktif kembali → hapus rule penolakan (password lama sudah ada)
     await tx.radCheck.deleteMany({
-      where: { username: u, attribute: "Cleartext-Password" },
+      where: { username: u, attribute: "Auth-Type" },
     });
   }
 

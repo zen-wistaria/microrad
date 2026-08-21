@@ -37,6 +37,7 @@ services:
     ports:
       - "1812:1812/udp"
       - "1813:1813/udp"
+      - "3799:3799/udp" # CoA / Disconnect-Request (RFC 5176)
     networks:
       - microrad-net
       # microrad-net:

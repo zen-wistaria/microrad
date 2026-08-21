@@ -75,6 +75,15 @@ export async function configureRadiusOnRouter(
     "=accounting=yes",
     "=interim-update=1m",
   ]);
+  // Terima CoA/Disconnect-Request dari server (RFC 5176) — port 3799
+  try {
+    await mikrotik.write("/radius/incoming/set", ["=accept=yes", "=port=3799"]);
+  } catch (e) {
+    console.warn(
+      "[radius] /radius/incoming set gagal (RouterOS lama?) — CoA nonaktif:",
+      e,
+    );
+  }
   return { added: 1, removed: existing.length };
 }
 

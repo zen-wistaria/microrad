@@ -115,34 +115,3 @@ export const GET = asyncApi(async (req: Request) => {
     total,
   });
 });
-
-/** POST /api/v1/sessions/[id]/disconnect — kick sesi dari RouterOS.
- * id sesi = `acct-<acctUniqueId>` — dicari di radacct, lalu kick via API
- * RouterOS (best-effort). FreeRADIUS menerima Stop → hilang dari online. */
-export const POST = asyncApi(async (req: Request) => {
-  await requirePermission("session.update");
-  const url = new URL(req.url);
-  const id = url.pathname.split("/")[4] ?? "";
-  const acctId = id.startsWith("acct-") ? id.slice(5) : null;
-  if (!acctId) {
-    throw new Error("Sesi tidak dikenali.");
-  }
-  const acct = await prisma.radAcct.findUnique({
-    where: { acctUniqueId: acctId },
-  });
-  if (!acct || acct.acctStopTime) {
-    throw new Error("Gagal memutuskan sesi PPPoE atau sesi sudah berakhir.");
-  }
-  const customer = acct.username
-    ? await prisma.customer.findUnique({
-        where: { username: acct.username },
-        select: { nasId: true, username: true },
-      })
-    : null;
-  const { kickSessionByUsername } = await import("@/lib/mikrotik-disconnect");
-  await kickSessionByUsername(
-    customer?.username ?? acct.username ?? "",
-    customer?.nasId ?? null,
-  );
-  return NextResponse.json({ success: true });
-});
