@@ -120,17 +120,31 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
   };
 
   useEffect(() => {
+    let cancelled = false;
     const fetchCounts = async () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
       try {
         const sessions = await getActiveSessions();
-        setActiveSessionCount(sessions.length);
+        if (!cancelled) {
+          setActiveSessionCount(sessions.length);
+        }
       } catch (_e) {
         // silent fallback
       }
     };
+
     fetchCounts();
-    const interval = setInterval(fetchCounts, 5000);
-    return () => clearInterval(interval);
+    // Polling santai setiap 60 detik (hanya saat tab aktif)
+    const interval = setInterval(fetchCounts, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   const isLinkActive = (href: string) => {
