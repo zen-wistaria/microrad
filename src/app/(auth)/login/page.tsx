@@ -43,16 +43,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const result = await login(email, password);
-      const area = result?.area ?? "app";
-      toast.success(
-        area === "portal"
-          ? "Selamat datang di Portal Pelanggan!"
-          : "Login berhasil!",
-      );
-      router.replace(area === "portal" ? "/portal" : "/dashboard");
+      await login(email, password);
+      toast.success("Login manajemen berhasil!");
+      router.replace("/dashboard");
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err) || "Email atau password salah.");
+      toast.error(
+        getErrorMessage(err) || "Email atau password akun manajemen salah.",
+      );
     } finally {
       setLoading(false);
     }
@@ -86,9 +83,10 @@ export default function LoginPage() {
         {/* Login Card */}
         <Card className="border-slate-200/80 shadow-xl backdrop-blur-sm dark:border-slate-800">
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Login App User</CardTitle>
+            <CardTitle className="text-lg">Login Manajemen</CardTitle>
             <CardDescription>
-              Masuk dengan akun administrator, Manager, atau pelanggan.
+              Khusus Administrator & Operator NOC. Pelanggan wajib masuk melalui
+              Portal Pelanggan.
             </CardDescription>
           </CardHeader>
           <CardContent>

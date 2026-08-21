@@ -34,6 +34,11 @@ export const GET = asyncApi(async () => {
   if (!customer) {
     throw new Error("Data pelanggan tidak ditemukan untuk akun ini.");
   }
+  if (customer.status === "disabled") {
+    throw new Error(
+      "Akun pelanggan Anda telah dinonaktifkan (Disabled). Akses portal ditutup.",
+    );
+  }
 
   const [profile, invoices, payments, sessions, loginLogs] = await Promise.all([
     customer.profileId

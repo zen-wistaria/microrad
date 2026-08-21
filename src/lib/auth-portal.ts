@@ -1,5 +1,5 @@
 import { prismaAdapter } from "@better-auth/prisma-adapter";
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { recordPortalLogin } from "./api-auth";
 import { prisma } from "./prisma";
 
@@ -48,6 +48,23 @@ export const authPortal = betterAuth({
   databaseHooks: {
     session: {
       create: {
+        before: async (session) => {
+          const portalUser = await prisma.portalUser.findUnique({
+            where: { id: session.userId },
+            include: { customer: true },
+          });
+          if (!portalUser?.customer) {
+            throw new APIError("FORBIDDEN", {
+              message: "Akun portal tidak terhubung ke data pelanggan aktif.",
+            });
+          }
+          if (portalUser.customer.status === "disabled") {
+            throw new APIError("FORBIDDEN", {
+              message:
+                "Akun pelanggan Anda berstatus Nonaktif (Disabled). Silakan hubungi customer service / administrator.",
+            });
+          }
+        },
         after: async (session) => {
           // Catat login portal pelanggan → PortalLoginLog ("Portal Langganan")
           try {

@@ -63,21 +63,13 @@ export function useAuth() {
     currentUser?.roleId === "role-admin" || currentUser?.role === "admin";
 
   const login = useCallback(async (email: string, password: string) => {
-    // Coba instance #1 (user sistem) dulu; bila gagal, coba portal.
+    // Hanya autentikasi untuk User Sistem (AppUser: Admin/Manager/Operator/NOC).
+    // Customer/Pelanggan diwajibkan login melalui Portal Pelanggan (/portal/login).
     const appRes = await authClient.signIn.email({ email, password });
     if (appRes.error) {
-      const portalRes = await portalAuthClient.signIn.email({
-        email,
-        password,
-      });
-      if (portalRes.error) {
-        throw new Error(
-          portalRes.error.message ??
-            appRes.error.message ??
-            "Email atau password salah.",
-        );
-      }
-      return { area: "portal" as const };
+      throw new Error(
+        appRes.error.message ?? "Email atau password akun manajemen salah.",
+      );
     }
     return { area: "app" as const };
   }, []);

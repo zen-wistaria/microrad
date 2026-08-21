@@ -4,13 +4,15 @@ import { Menu, Radio } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { PortalMobileNav } from "@/components/portal/portal-mobile-nav";
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
 import { Button } from "@/components/ui/button";
 import type { CustomerPortalData } from "@/lib/api/customer-portal";
 import { getCustomerPortalData } from "@/lib/api/customer-portal";
-import { usePortalSession } from "@/lib/auth-portal-client";
+import { portalSignOut, usePortalSession } from "@/lib/auth-portal-client";
 import { PortalContext } from "@/lib/portal-context";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function PortalLayout({
   children,
@@ -31,12 +33,18 @@ export default function PortalLayout({
       const portal = await getCustomerPortalData();
       setPortalData(portal);
     } catch (err: unknown) {
+      const errMsg = getErrorMessage(err);
       console.error("Gagal memuat data portal:", err);
+      if (errMsg.includes("Nonaktif") || errMsg.includes("Disabled")) {
+        toast.error(errMsg);
+        await portalSignOut();
+        router.replace("/portal/login");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [portalSession]);
+  }, [portalSession, router]);
 
   useEffect(() => {
     if (isPending) return;

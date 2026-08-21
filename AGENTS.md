@@ -68,6 +68,7 @@ Sistem menggunakan **dua instance Better-Auth** yang terisolasi untuk membedakan
 | **Relasi Domain** | `AppUser.roleId` $\rightarrow$ `Role` (RBAC) | `PortalUser.customerId` $\rightarrow$ `Customer.id` (1-to-1) |
 | **Audit Hook** | Auto-insert `GlobalLog` (sumber: `"Aplikasi"`) | Auto-insert `PortalLoginLog` & `GlobalLog` (sumber: `"Portal Langganan"`) |
 | **Client Hook** | `useAuth()` via `authClient` (`@/lib/auth-client`) | `usePortal()` via `PortalContext` (`@/lib/portal-context`) |
+| **Status Guard** | Status `disabled` tidak dapat login manajemen | Status `disabled` diblokir dari login portal via `databaseHooks.session.create.before` & auto-invalidation sesi aktif |
 
 ---
 

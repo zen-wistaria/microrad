@@ -213,6 +213,21 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       }
     }
 
+    // ── Jika status menjadi disabled, batalkan seluruh sesi login portal yang sedang aktif ──
+    if (updated.status === "disabled") {
+      const portalUser =
+        existing.portalUser ??
+        (await tx.portalUser.findUnique({
+          where: { customerId: updated.id },
+          select: { id: true },
+        }));
+      if (portalUser) {
+        await tx.portalSession.deleteMany({
+          where: { userId: portalUser.id },
+        });
+      }
+    }
+
     // ── radsync (tabel RADIUS bersama, atomik dengan CRUD) ──
     if (usernameChanged) {
       await moveCustomerRadius(tx, existing.username, updated.username);

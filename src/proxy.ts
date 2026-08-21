@@ -108,7 +108,12 @@ export function proxy(request: NextRequest) {
   if (!pathname.startsWith("/api") && !pathname.startsWith("/_next")) {
     if (!hasAppSession) {
       const url = request.nextUrl.clone();
-      url.pathname = "/login";
+      // Jika yang login adalah customer portal, arahkan langsung ke /portal
+      if (hasPortalSession) {
+        url.pathname = "/portal";
+      } else {
+        url.pathname = "/login";
+      }
       url.search = "";
       return NextResponse.redirect(url);
     }
