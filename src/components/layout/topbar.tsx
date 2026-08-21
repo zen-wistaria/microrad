@@ -3,8 +3,7 @@
 import { ChevronDown, ChevronRight, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
-import { toast } from "sonner";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,8 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getUsers } from "@/lib/api/users";
-import type { AppUser } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
 import { AppUserRoleBadge } from "../common/status-badge";
 import { ThemeToggle } from "../common/theme-toggle";
@@ -42,32 +39,17 @@ const routeTitles: Record<string, string> = {
 };
 
 export function Topbar({ onOpenMobileNav }: TopbarProps) {
-  const [demoUsers, setDemoUsers] = useState<AppUser[]>([]);
-  useEffect(() => {
-    getUsers()
-      .then((users) => setDemoUsers(users.slice(0, 4)))
-      .catch(() => setDemoUsers([]));
-  }, []);
   const pathname = usePathname();
   const router = useRouter();
-  const { currentUser, login, logout } = useAuth();
-  const isAdmin = currentUser?.role === "admin";
+  const { currentUser, logout } = useAuth();
 
   const handleLogout = () => {
-    logout(); // hapus sesi login (localStorage)
+    logout(); // hapus sesi login (localStorage & cookie)
     router.replace("/login"); // langsung redirect ke halaman login
   };
 
   // Generate breadcrumb items
   const pathSegments = pathname.split("/").filter(Boolean);
-
-  const handleSwitchUser = (userId: string) => {
-    const user = demoUsers.find((u) => u.id === userId);
-    if (user) {
-      login(user.email, "password123");
-      toast.info(`Beralih akun ke: ${user.name} (${user.role})`);
-    }
-  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 sm:h-18 w-full items-center justify-between border-b border-slate-200/80 bg-white/80 px-4 sm:px-8 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/80 transition-colors">
@@ -150,7 +132,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
               <ChevronDown className="h-3.5 w-3.5 text-slate-400 hidden sm:block ml-0.5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-xl">
+          <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl">
             <DropdownMenuLabel className="px-3 py-2">
               <p className="text-xs font-normal text-slate-500 dark:text-slate-400">
                 Masuk sebagai
@@ -159,32 +141,6 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
                 {currentUser?.email || "admin@microrad.net"}
               </p>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-
-            <DropdownMenuLabel className="text-[11px] text-slate-400 font-medium px-3 py-1.5">
-              Ganti Akun Cepat (Demo):
-            </DropdownMenuLabel>
-            {isAdmin &&
-              demoUsers.map((user) => (
-                <DropdownMenuItem
-                  key={user.id}
-                  onClick={() => handleSwitchUser(user.id)}
-                  className="justify-between text-xs px-3 py-2 cursor-pointer rounded-lg"
-                >
-                  <span className="font-medium">{user.name}</span>
-                  <span className="text-[10px] text-slate-500 uppercase font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                    {user.role === "operator" && user.roleId === "role-manager"
-                      ? "manager"
-                      : user.role}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            {!isAdmin && (
-              <p className="px-3 py-1.5 text-[11px] text-slate-400">
-                Ganti akun hanya tersedia untuk Administrator.
-              </p>
-            )}
-
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleLogout}

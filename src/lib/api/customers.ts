@@ -37,7 +37,7 @@ function toQueryAll(params?: GetCustomersParams) {
     search.set("status", params.status);
   if (params?.profileId && params.profileId !== "all")
     search.set("profile", params.profileId);
-  search.set("limit", "1000");
+  search.set("limit", String(params?.limit ?? 1000));
   const s = search.toString();
   return s ? `?${s}` : "";
 }

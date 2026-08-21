@@ -49,12 +49,12 @@ export default function DashboardPage() {
     try {
       const [statsData, sessionsData, customersData] = await Promise.all([
         getDashboardStats(),
-        getActiveSessions(),
-        getCustomers(),
+        getActiveSessions({ limit: 5 }),
+        getCustomers({ limit: 5 }),
       ]);
       setStats(statsData);
-      setActiveSessions(sessionsData.slice(0, 5));
-      setRecentCustomers(customersData.slice(0, 5));
+      setActiveSessions(sessionsData);
+      setRecentCustomers(customersData);
     } catch (e) {
       console.error("Error fetching dashboard data", e);
     } finally {

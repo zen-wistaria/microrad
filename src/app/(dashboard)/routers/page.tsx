@@ -31,15 +31,13 @@ import {
   pingRouter,
   syncRouterNow,
 } from "@/lib/api/routers";
-import { getActiveSessions } from "@/lib/api/sessions";
-import type { NasRouter, Session } from "@/lib/types";
+import type { NasRouter } from "@/lib/types";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 type BusyId = `${string}:${string}`;
 
 export default function RoutersPage() {
   const [routers, setRouters] = useState<NasRouter[]>([]);
-  const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<BusyId | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NasRouter | null>(null);
@@ -47,12 +45,8 @@ export default function RoutersPage() {
   const refreshAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [rList, sList] = await Promise.all([
-        getRouters(),
-        getActiveSessions(),
-      ]);
+      const rList = await getRouters();
       setRouters(rList);
-      setActiveSessions(sList);
     } catch {
       toast.error("Gagal memuat daftar router NAS.");
     } finally {
@@ -158,10 +152,6 @@ export default function RoutersPage() {
     }
   };
 
-  const getSessionCountForRouter = (ip: string) => {
-    return activeSessions.filter((s) => s.nasIpAddress === ip).length;
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -219,7 +209,7 @@ export default function RoutersPage() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {routers.map((router) => {
-            const sessionCount = getSessionCountForRouter(router.ipAddress);
+            const sessionCount = router.activeSessionCount ?? 0;
             const isPinging = busy === `${router.id}:ping`;
             const isConnecting = busy === `${router.id}:connect`;
             const isDisconnecting = busy === `${router.id}:disconnect`;
