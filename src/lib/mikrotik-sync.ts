@@ -1,67 +1,89 @@
 /**
- * Poller sinkronisasi router MikroTik — HEARTBEAT STATUS SAJA.
+ * Poller sinkronisasi router MikroTik — HEARTBEAT STATUS ONLINE / OFFLINE.
  *
- * SUMBER KEBENARAN SESI ONLINE & TRAFIK = tabel `radacct` FreeRADIUS
- * (Start / Interim-Update tiap menit / Stop) — dibaca langsung oleh
- * API route; tabel `session` aplikasi TIDAK dipakai lagi.
+ * Status aktif (online / offline) ditentukan murni dari PING (ICMP/TCP reachability),
+ * tanpa membutuhkan kredensial API. Kredensial API hanya digunakan saat mengambil data
+ * sesi PPPoE atau eksekusi perintah RouterOS.
  *
- * Poller ini hanya:
- *  - ping/identity API router → update `status`/`lastSeenAt`
+ * Interval default: 30 detik (MIKROTIK_SYNC_INTERVAL_MS = 30000).
  */
-import { connectRouterOS } from "./mikrotik-client";
+import { pingRouterHost } from "./ping";
 import { prisma } from "./prisma";
 
 export interface SyncSummary {
-  created: number;
-  updated: number;
-  closed: number;
+  id: string;
+  name: string;
+  ipAddress: string;
+  status: "online" | "offline";
+  latencyMs: number;
   error?: string;
 }
 
 const g = globalThis as unknown as {
   __mikrotikSyncStarted?: boolean;
+  __mikrotikSyncTimerId?: ReturnType<typeof setInterval>;
   __mikrotikLastTickAt?: number;
 };
 
-/** Mulai poller interval (dipanggil instrumentation). */
+/** Mulai poller interval (dipanggil dari instrumentation.ts). */
 export function startMikrotikSync(): void {
-  if (process.env.MIKROTIK_SYNC_ENABLED === "false") return;
+  if (process.env.MIKROTIK_SYNC_ENABLED === "false") {
+    console.log(
+      "[mikrotik-sync] poller dinonaktifkan (MIKROTIK_SYNC_ENABLED=false)",
+    );
+    return;
+  }
 
-  const intervalMs = Number(process.env.MIKROTIK_SYNC_INTERVAL_MS ?? "10000");
+  const intervalMs = Number(process.env.MIKROTIK_SYNC_INTERVAL_MS ?? "30000");
+
+  // Bersihkan interval sebelumnya jika ada (mis. saat restart / HMR)
+  if (g.__mikrotikSyncTimerId) {
+    clearInterval(g.__mikrotikSyncTimerId);
+    g.__mikrotikSyncTimerId = undefined;
+  }
 
   const tick = async () => {
     const started = Date.now();
     try {
-      // Guard ekstra: bila tick terakhir masih segar (interval nyata masih
-      // hidup), jangan jalankan ganda — mencegah HMR menyebabkan balapan.
-      const last = g.__mikrotikLastTickAt ?? 0;
-      if (started - last < intervalMs / 2) return;
       g.__mikrotikLastTickAt = started;
       const results = await syncAllRouters();
-      if (results.some((r) => r.error)) {
-        console.log(
-          `[mikrotik-sync] tick: ${results
-            .map((r) => (r.error ? `!${r.error.slice(0, 60)}` : "ok"))
-            .join(", ")} (${Date.now() - started}ms)`,
-        );
-      }
+      const summaryStr = results
+        .map(
+          (r) =>
+            `${r.name} (${r.status}${r.status === "online" ? `, ${r.latencyMs}ms` : ""})`,
+        )
+        .join(", ");
+      const timeStr = new Date().toLocaleTimeString("id-ID");
+      console.log(
+        `[mikrotik-sync] [${timeStr}] poller tick: ${results.length} router checked [${summaryStr || "tidak ada router"}] (${Date.now() - started}ms)`,
+      );
     } catch (e) {
       console.error("[mikrotik-sync] tick error:", e);
     }
   };
 
-  // Tick pertama segera (status router cepat akurat), lalu interval
+  // Jalankan tick pertama segera agar status router akurat saat startup
   void tick();
-  const id = setInterval(() => void tick(), intervalMs);
-  if (typeof id === "object" && "unref" in id) id.unref();
+
+  // Jadwalkan recurring interval setiap 30 detik
+  const timerId = setInterval(() => void tick(), intervalMs);
+  if (typeof timerId === "object" && "unref" in timerId) {
+    timerId.unref();
+  }
+  g.__mikrotikSyncTimerId = timerId;
+  g.__mikrotikSyncStarted = true;
+  console.log(
+    `[mikrotik-sync] poller berjalan dengan interval ${intervalMs / 1000} detik`,
+  );
 }
 
-/** Sinkronkan SEMUA router (sekali per tick). */
+/** Sinkronkan SEMUA router yang syncEnabled = true. */
 export async function syncAllRouters(): Promise<SyncSummary[]> {
   const routers = await prisma.nasRouter.findMany({
-    where: { apiUsername: { not: null }, syncEnabled: true },
+    where: { syncEnabled: true },
     orderBy: { name: "asc" },
   });
+
   const results: SyncSummary[] = [];
   for (const r of routers) {
     results.push(await syncSingleRouter(r));
@@ -69,7 +91,7 @@ export async function syncAllRouters(): Promise<SyncSummary[]> {
   return results;
 }
 
-/** Heartbeat satu router; kembalikan ringkasan. */
+/** Heartbeat satu router (mengecek status via ping). */
 export async function syncSingleRouter(router: {
   id: string;
   ipAddress: string;
@@ -78,41 +100,57 @@ export async function syncSingleRouter(router: {
   apiPassword?: string | null;
   apiPort?: number;
 }): Promise<SyncSummary> {
-  const mark: SyncSummary = { created: 0, updated: 0, closed: 0 };
   const now = new Date();
+  const ping = await pingRouterHost(router.ipAddress, router.apiPort || 8728);
 
-  // Heartbeat — ping/identity API router
-  let conn: Awaited<ReturnType<typeof connectRouterOS>> | null = null;
-  try {
-    conn = await connectRouterOS(router);
-    await conn.write("/system/identity/print");
+  if (ping.alive) {
+    // Router aktif / online via ping
     await prisma.nasRouter.update({
       where: { id: router.id },
       data: { status: "online", lastSeenAt: now, lastSyncedAt: now },
     });
-  } catch (err) {
-    mark.error = err instanceof Error ? err.message : String(err);
+
+    return {
+      id: router.id,
+      name: router.name,
+      ipAddress: router.ipAddress,
+      status: "online",
+      latencyMs: ping.latencyMs,
+    };
+  } else {
+    // Router tidak merespons ping -> offline
     await prisma.nasRouter.update({
       where: { id: router.id },
       data: { status: "offline", lastSeenAt: now },
     });
-    conn?.close();
-    return mark;
-  } finally {
-    conn?.close();
+
+    return {
+      id: router.id,
+      name: router.name,
+      ipAddress: router.ipAddress,
+      status: "offline",
+      latencyMs: ping.latencyMs,
+      error: ping.error || "Host tidak terjangkau (ping timeout)",
+    };
   }
-  return mark;
 }
 
 /**
- * Pastikan satu siklus heartbeat baru saja berjalan (throttle ~12s).
- * Dipanggil ringan dari API — hanya soal status router, bukan sesi.
+ * Pastikan siklus heartbeat berjalan jika belum sempat dieksekusi (throttle ~10s).
+ * Dipanggil secara pasif dari endpoint router / dashboard.
  */
 let lastSyncRun = 0;
-const SYNC_THROTTLE_MS = 12_000;
+const SYNC_THROTTLE_MS = 10_000;
 
 export async function ensureSyncRuns(): Promise<void> {
   if (process.env.MIKROTIK_SYNC_ENABLED === "false") return;
+
+  // Jika background timer belum pernah jalan, jalankan sekarang
+  if (!g.__mikrotikSyncStarted) {
+    startMikrotikSync();
+    return;
+  }
+
   const now = Date.now();
   if (now - lastSyncRun < SYNC_THROTTLE_MS) return;
   lastSyncRun = now;

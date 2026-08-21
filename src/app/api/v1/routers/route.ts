@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
+import { ensureSyncRuns } from "@/lib/mikrotik-sync";
 import { prisma } from "@/lib/prisma";
 import { syncRouterNas } from "@/lib/radsync";
 
 export const GET = asyncApi(async () => {
   await requirePermission("router.read");
+  await ensureSyncRuns();
   const routers = await prisma.nasRouter.findMany({
     orderBy: { name: "asc" },
   });

@@ -92,12 +92,15 @@ function rowToObject(packet: string[]): Record<string, string> {
   return obj;
 }
 
-export function connectRouterOS(router: {
-  ipAddress: string;
-  apiPort?: number;
-  apiUsername?: string | null;
-  apiPassword?: string | null;
-}): Promise<MikrotikConn> {
+export function connectRouterOS(
+  router: {
+    ipAddress: string;
+    apiPort?: number;
+    apiUsername?: string | null;
+    apiPassword?: string | null;
+  },
+  timeoutMsOverride?: number,
+): Promise<MikrotikConn> {
   if (!router.apiUsername) {
     return Promise.reject(
       new Error("Kredensial API RouterOS belum diisi pada router ini."),
@@ -105,7 +108,7 @@ export function connectRouterOS(router: {
   }
   const host = router.ipAddress;
   const port = router.apiPort ?? 8728;
-  const timeoutMs = TIMEOUT_MS();
+  const timeoutMs = timeoutMsOverride ?? TIMEOUT_MS();
 
   return new Promise((resolve, reject) => {
     const socket = net.connect({ host, port });

@@ -85,13 +85,28 @@ export async function disconnectRouterRadius(
 }
 
 export async function syncRouterNow(id: string): Promise<{
-  created: number;
-  updated: number;
-  closed: number;
+  id: string;
+  name: string;
+  ipAddress: string;
+  status: "online" | "offline";
+  latencyMs: number;
   error?: string;
+  created?: number;
+  updated?: number;
+  closed?: number;
 }> {
   return apiFetch<{
-    data: { created: number; updated: number; closed: number; error?: string };
+    data: {
+      id: string;
+      name: string;
+      ipAddress: string;
+      status: "online" | "offline";
+      latencyMs: number;
+      error?: string;
+      created?: number;
+      updated?: number;
+      closed?: number;
+    };
   }>(`/routers/${id}/sync-now`, {
     method: "POST",
     body: JSON.stringify({}),

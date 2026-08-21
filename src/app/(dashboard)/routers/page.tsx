@@ -137,23 +137,23 @@ export default function RoutersPage() {
     }
   };
 
-  // Sinkronisasi manual sesi PPPoE dari router
+  // Sinkronisasi manual status router (ping)
   const handleSyncNow = async (router: NasRouter) => {
     setBusy(`${router.id}:sync`);
     try {
       const s = await syncRouterNow(router.id);
-      if (s.error) {
-        toast.error(`Sinkronisasi ${router.name} gagal: ${s.error}`);
+      if (s.error || s.status === "offline") {
+        toast.error(
+          `Router ${router.name} (${router.ipAddress}) tidak terjangkau / offline.`,
+        );
       } else {
         toast.success(
-          `Sinkronisasi ${router.name} selesai — ${s.created} dibuat, ${s.updated} diperbarui, ${s.closed} ditutup.`,
+          `Status ${router.name} (${router.ipAddress}) berhasil diperbarui: ONLINE (${s.latencyMs}ms).`,
         );
       }
       await refreshAll();
     } catch (err: unknown) {
-      toast.error(
-        getErrorMessage(err) || "Gagal sinkronisasi sesi dari router.",
-      );
+      toast.error(getErrorMessage(err) || "Gagal sinkronisasi status router.");
       setBusy(null);
     }
   };
