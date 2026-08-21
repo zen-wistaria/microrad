@@ -212,7 +212,9 @@ export interface Role {
 export interface AppUser {
   id: string;
   name: string;
+  username?: string | null;
   email: string;
+  password?: string;
   role: AppUserRole;
   roleId?: string; // relasi RBAC ke Role (id role_bawaan/role kustom)
   status: AppUserStatus;

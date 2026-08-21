@@ -16,6 +16,7 @@ type SessionUser = {
   id: string;
   name: string;
   email: string;
+  username?: string | null;
   role?: string | null;
   status?: string | null;
   createdAt?: string | Date | null;
@@ -32,6 +33,10 @@ function toAppUser(
   return {
     id: sessionUser.id,
     name: sessionUser.name,
+    username:
+      typeof sessionUser.username === "string"
+        ? sessionUser.username
+        : undefined,
     email: sessionUser.email,
     role: (sessionUser.role as AppUser["role"]) ?? "operator",
     roleId,
@@ -62,17 +67,36 @@ export function useAuth() {
   const isAdmin =
     currentUser?.roleId === "role-admin" || currentUser?.role === "admin";
 
-  const login = useCallback(async (email: string, password: string) => {
-    // Hanya autentikasi untuk User Sistem (AppUser: Admin/Manager/Operator/NOC).
-    // Customer/Pelanggan diwajibkan login melalui Portal Pelanggan (/portal/login).
-    const appRes = await authClient.signIn.email({ email, password });
-    if (appRes.error) {
-      throw new Error(
-        appRes.error.message ?? "Email atau password akun manajemen salah.",
-      );
-    }
-    return { area: "app" as const };
-  }, []);
+  const login = useCallback(
+    async (emailOrUsername: string, password: string) => {
+      // Hanya autentikasi untuk User Sistem (AppUser: Admin/Manager/Operator/NOC).
+      // Customer/Pelanggan diwajibkan login melalui Portal Pelanggan (/portal/login).
+      const identifier = emailOrUsername.trim();
+      const isEmail = identifier.includes("@");
+
+      let appRes: { error?: { message?: string } | null };
+      if (isEmail) {
+        appRes = await authClient.signIn.email({
+          email: identifier,
+          password,
+        });
+      } else {
+        // Login menggunakan plugin username Better-Auth
+        appRes = await authClient.signIn.username({
+          username: identifier,
+          password,
+        });
+      }
+
+      if (appRes.error) {
+        throw new Error(
+          appRes.error.message ?? "Email/username atau password salah.",
+        );
+      }
+      return { area: "app" as const };
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     await appSignOut();

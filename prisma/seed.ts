@@ -265,7 +265,8 @@ async function main() {
   const appUsers = [
     {
       id: "usr-1",
-      name: "Ahmad Sanjaya (Admin)",
+      name: "Administrator (NOC)",
+      username: "admin",
       email: "admin@microrad.net",
       role: "admin",
       roleId: "role-admin",
@@ -274,6 +275,7 @@ async function main() {
     {
       id: "usr-2",
       name: "Rian Hendrawan (NOC)",
+      username: "operator",
       email: "operator@microrad.net",
       role: "operator",
       roleId: "role-manager",
@@ -282,6 +284,7 @@ async function main() {
     {
       id: "usr-3",
       name: "Bima Santosa (Field Tech)",
+      username: "tech",
       email: "tech@microrad.net",
       role: "operator",
       roleId: "role-manager",
@@ -290,6 +293,7 @@ async function main() {
     {
       id: "usr-4",
       name: "Siti Sarah (Disabled Account)",
+      username: "siti",
       email: "siti.old@microrad.net",
       role: "operator",
       roleId: "role-manager",
@@ -298,6 +302,7 @@ async function main() {
     {
       id: "usr-10",
       name: "Dina Kartika (Finance)",
+      username: "finance",
       email: "finance@microrad.net",
       role: "operator",
       roleId: "role-manager",
@@ -306,6 +311,7 @@ async function main() {
     {
       id: "usr-11",
       name: "Andi Pratama (Manager)",
+      username: "manager",
       email: "manager@microrad.net",
       role: "operator",
       roleId: "role-manager",
@@ -318,6 +324,7 @@ async function main() {
       data: {
         id: u.id,
         name: u.name,
+        username: u.username,
         email: u.email,
         role: u.role === "admin" ? "admin" : "operator",
         roleId: u.roleId,

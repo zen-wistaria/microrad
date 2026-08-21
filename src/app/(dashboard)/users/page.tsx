@@ -324,12 +324,21 @@ export default function UsersPage() {
                             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                               {user.name.charAt(0)}
                             </div>
-                            <span>{user.name}</span>
-                            {isSelf && (
-                              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
-                                Anda
-                              </span>
-                            )}
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span>{user.name}</span>
+                                {isSelf && (
+                                  <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+                                    Anda
+                                  </span>
+                                )}
+                              </div>
+                              {user.username && (
+                                <div className="text-[11px] font-mono text-slate-400 font-normal">
+                                  @{user.username}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-400">

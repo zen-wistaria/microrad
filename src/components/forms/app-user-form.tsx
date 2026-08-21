@@ -3,17 +3,23 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft,
+  AtSign,
   CheckCircle,
   CircleX,
+  Eye,
+  EyeOff,
   FolderKanban,
   Loader2,
+  Lock,
+  Mail,
   ShieldUser,
+  User,
   UserCheck,
   UserCog2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -39,15 +45,57 @@ import { createUser, updateUser } from "@/lib/api/users";
 import type { AppUser, AppUserRole, AppUserStatus, Role } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
-const appUserSchema = z.object({
-  name: z.string().min(2, "Nama minimal 2 karakter"),
-  email: z.string().email("Format email tidak valid"),
-  role: z.enum(["admin", "manager", "operator", "customer"]),
-  roleId: z.string().optional(),
-  status: z.enum(["active", "disabled"]),
-});
+const createAppUserSchema = (isEditing: boolean) =>
+  z
+    .object({
+      name: z.string().min(2, "Nama minimal 2 karakter"),
+      username: z
+        .string()
+        .regex(
+          /^[a-zA-Z0-9_.-]*$/,
+          "Username hanya boleh berisi huruf, angka, garis bawah (_), titik (.), atau strip (-)",
+        )
+        .optional()
+        .or(z.literal("")),
+      email: z.string().email("Format email tidak valid"),
+      password: z.string().optional().or(z.literal("")),
+      role: z.enum(["admin", "manager", "operator", "customer"]),
+      roleId: z.string().optional(),
+      status: z.enum(["active", "disabled"]),
+    })
+    .superRefine((data, ctx) => {
+      if (!isEditing) {
+        if (!data.password || data.password.trim().length < 6) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["password"],
+            message:
+              "Kata sandi wajib diisi minimal 6 karakter untuk pengguna baru",
+          });
+        }
+      } else if (
+        data.password &&
+        data.password.trim().length > 0 &&
+        data.password.trim().length < 6
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["password"],
+          message:
+            "Kata sandi baru minimal 6 karakter (atau kosongkan jika tidak diubah)",
+        });
+      }
+    });
 
-type AppUserFormValues = z.infer<typeof appUserSchema>;
+type AppUserFormValues = {
+  name: string;
+  username?: string;
+  email: string;
+  password?: string;
+  role: "admin" | "manager" | "operator" | "customer";
+  roleId?: string;
+  status: "active" | "disabled";
+};
 
 interface AppUserFormProps {
   initialData?: AppUser;
@@ -60,6 +108,7 @@ export function AppUserForm({
 }: AppUserFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Kumpulan role yang dapat dipilih — dari API (server)
   const [allRoles, setAllRoles] = useState<Role[]>([]);
@@ -72,6 +121,8 @@ export function AppUserForm({
       });
   }, []);
 
+  const schema = useMemo(() => createAppUserSchema(isEditing), [isEditing]);
+
   const {
     register,
     handleSubmit,
@@ -79,10 +130,12 @@ export function AppUserForm({
     watch,
     formState: { errors },
   } = useForm<AppUserFormValues>({
-    resolver: zodResolver(appUserSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       name: initialData?.name || "",
+      username: initialData?.username || "",
       email: initialData?.email || "",
+      password: "",
       role: initialData?.role || "operator",
       roleId: initialData?.roleId || "role-manager",
       status: initialData?.status || "active",
@@ -104,12 +157,15 @@ export function AppUserForm({
     try {
       setSubmitting(true);
       const payload = {
-        name: data.name,
-        email: data.email,
+        name: data.name.trim(),
+        username: data.username?.trim() || undefined,
+        email: data.email.trim(),
+        password: data.password?.trim() || undefined,
         role: data.role as AppUserRole,
         roleId: data.roleId as string,
         status: data.status as AppUserStatus,
       };
+
       if (isEditing && initialData) {
         await updateUser(initialData.id, payload);
         toast.success(`Pengguna ${data.name} berhasil diperbarui.`);
@@ -155,38 +211,134 @@ export function AppUserForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">
-              Nama Lengkap <span className="text-rose-500">*</span>
-            </Label>
-            <Input
-              id="name"
-              placeholder="mis. Ahmad Sanjaya"
-              {...register("name")}
-              className={errors.name ? "border-rose-500" : ""}
-            />
-            {errors.name && (
-              <p className="text-xs text-rose-500">{errors.name.message}</p>
-            )}
-          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* Nama Lengkap */}
+            <div className="space-y-2">
+              <Label htmlFor="name">
+                Nama Lengkap <span className="text-rose-500">*</span>
+              </Label>
+              <div className="relative">
+                <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  id="name"
+                  placeholder="mis. Ahmad Sanjaya"
+                  {...register("name")}
+                  className={`pl-9 ${errors.name ? "border-rose-500" : ""}`}
+                />
+              </div>
+              {errors.name && (
+                <p className="text-xs text-rose-500">{errors.name.message}</p>
+              )}
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email">
-              Alamat Email (Login) <span className="text-rose-500">*</span>
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="mis. ahmad@microrad.net"
-              {...register("email")}
-              className={errors.email ? "border-rose-500" : ""}
-            />
-            {errors.email && (
-              <p className="text-xs text-rose-500">{errors.email.message}</p>
-            )}
+            {/* Username */}
+            <div className="space-y-2">
+              <Label htmlFor="username">
+                Username{" "}
+                <span className="text-xs text-slate-400">(Opsional)</span>
+              </Label>
+              <div className="relative">
+                <AtSign className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  id="username"
+                  placeholder="mis. ahmadsanjaya"
+                  {...register("username")}
+                  className={`pl-9 ${errors.username ? "border-rose-500" : ""}`}
+                />
+              </div>
+              {errors.username ? (
+                <p className="text-xs text-rose-500">
+                  {errors.username.message}
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  Dapat digunakan sebagai identitas login alternatif selain
+                  email.
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* Email */}
+            <div className="space-y-2">
+              <Label htmlFor="email">
+                Alamat Email (Login) <span className="text-rose-500">*</span>
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="mis. ahmad@microrad.net"
+                  {...register("email")}
+                  className={`pl-9 ${errors.email ? "border-rose-500" : ""}`}
+                />
+              </div>
+              {errors.email && (
+                <p className="text-xs text-rose-500">{errors.email.message}</p>
+              )}
+            </div>
+
+            {/* Password */}
+            <div className="space-y-2">
+              <Label htmlFor="password">
+                {isEditing ? (
+                  <>
+                    Kata Sandi Baru{" "}
+                    <span className="text-xs text-slate-400 font-normal">
+                      (Opsional)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Kata Sandi (Password){" "}
+                    <span className="text-rose-500">*</span>
+                  </>
+                )}
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder={
+                    isEditing
+                      ? "Kosongkan jika tidak diubah"
+                      : "Minimal 6 karakter"
+                  }
+                  {...register("password")}
+                  className={`pl-9 pr-10 ${errors.password ? "border-rose-500" : ""}`}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              {errors.password ? (
+                <p className="text-xs text-rose-500">
+                  {errors.password.message}
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  {isEditing
+                    ? "Isi hanya jika ingin mereset password akun pengguna ini."
+                    : "Kata sandi yang digunakan pengguna untuk login ke dashboard."}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* Role Hak Akses */}
             <div className="space-y-2">
               <Label htmlFor="role">Role / Hak Akses</Label>
               <Select value={selectedRoleId} onValueChange={handleRoleChange}>
@@ -222,6 +374,7 @@ export function AppUserForm({
               </p>
             </div>
 
+            {/* Status Akun */}
             <div className="space-y-2">
               <Label htmlFor="status">Status Akun</Label>
               <Select
@@ -253,6 +406,7 @@ export function AppUserForm({
             </div>
           </div>
 
+          {/* Ringkasan Hak Akses */}
           <div className="space-y-2">
             <Label>Ringkasan Hak Akses</Label>
             <div className="rounded-lg border border-slate-100 p-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">

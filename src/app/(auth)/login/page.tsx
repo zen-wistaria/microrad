@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Lock, Mail, Radio } from "lucide-react";
+import { Loader2, Lock, Radio, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type React from "react";
@@ -24,7 +24,7 @@ import { getErrorMessage } from "@/lib/utils";
 export default function LoginPage() {
   const router = useRouter();
   const { login, appUser, portalUser, isLoading } = useAuth();
-  const [email, setEmail] = useState("admin@microrad.net");
+  const [identifier, setIdentifier] = useState("admin");
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
 
@@ -43,12 +43,12 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(identifier, password);
       toast.success("Login manajemen berhasil!");
       router.replace("/dashboard");
     } catch (err: unknown) {
       toast.error(
-        getErrorMessage(err) || "Email atau password akun manajemen salah.",
+        getErrorMessage(err) || "Email/username atau password akun salah.",
       );
     } finally {
       setLoading(false);
@@ -85,23 +85,24 @@ export default function LoginPage() {
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Login Manajemen</CardTitle>
             <CardDescription>
-              Khusus Administrator & Operator NOC. Pelanggan wajib masuk melalui
-              Portal Pelanggan.
+              Khusus Administrator &amp; Operator NOC. Pelanggan wajib masuk
+              melalui Portal Pelanggan.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email Pengguna</Label>
+                <Label htmlFor="identifier">Email atau Username</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nama@microrad.net"
+                    id="identifier"
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder="admin atau nama@microrad.net"
                     required
+                    autoComplete="username"
                     className="pl-9"
                   />
                 </div>

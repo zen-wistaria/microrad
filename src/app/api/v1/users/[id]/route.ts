@@ -17,7 +17,9 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
   const { id } = await ctx.params;
   const body = (await req.json()) as {
     name?: string;
+    username?: string;
     email?: string;
+    password?: string;
     role?: string;
     roleId?: string;
     status?: string;
@@ -28,25 +30,91 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
 
   if (body.email !== undefined) {
     const email = body.email.trim();
+    if (!email) throw new Error("Email tidak boleh kosong.");
     const dup = await prisma.appUser.findFirst({
       where: { email, NOT: { id } },
     });
-    if (dup)
+    if (dup) {
       throw new Error(`Email '${email}' sudah digunakan oleh akun lain.`);
+    }
   }
 
-  const user = await prisma.appUser.update({
-    where: { id },
-    data: {
-      ...(body.name !== undefined ? { name: body.name.trim() } : {}),
-      ...(body.email !== undefined ? { email: body.email.trim() } : {}),
-      ...(body.role !== undefined
-        ? { role: body.role === "admin" ? "admin" : "operator" }
-        : {}),
-      ...(body.roleId !== undefined ? { roleId: body.roleId } : {}),
-      ...(body.status !== undefined ? { status: body.status } : {}),
-    },
+  if (body.username !== undefined && body.username.trim() !== "") {
+    const username = body.username.trim();
+    const dup = await prisma.appUser.findFirst({
+      where: { username, NOT: { id } },
+    });
+    if (dup) {
+      throw new Error(`Username '${username}' sudah digunakan oleh akun lain.`);
+    }
+  }
+
+  let hashedPassword: string | undefined;
+  if (body.password !== undefined && body.password.trim() !== "") {
+    const pwd = body.password.trim();
+    if (pwd.length < 6) {
+      throw new Error("Password minimal 6 karakter.");
+    }
+    const { hashPassword } = await import("@better-auth/utils/password");
+    hashedPassword = await hashPassword(pwd);
+  }
+
+  const targetEmail =
+    body.email !== undefined ? body.email.trim() : existing.email;
+
+  const user = await prisma.$transaction(async (tx) => {
+    const updated = await tx.appUser.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.username !== undefined
+          ? { username: body.username.trim() || null }
+          : {}),
+        ...(body.email !== undefined ? { email: targetEmail } : {}),
+        ...(body.role !== undefined
+          ? { role: body.role === "admin" ? "admin" : "operator" }
+          : {}),
+        ...(body.roleId !== undefined ? { roleId: body.roleId } : {}),
+        ...(body.status !== undefined ? { status: body.status } : {}),
+      },
+    });
+
+    if (hashedPassword) {
+      const existingAccount = await tx.appAccount.findFirst({
+        where: { userId: id, providerId: "credential" },
+      });
+      if (existingAccount) {
+        await tx.appAccount.update({
+          where: { id: existingAccount.id },
+          data: {
+            accountId: targetEmail,
+            password: hashedPassword,
+          },
+        });
+      } else {
+        await tx.appAccount.create({
+          data: {
+            id: `acc-${id}-credential`,
+            userId: id,
+            accountId: targetEmail,
+            providerId: "credential",
+            password: hashedPassword,
+          },
+        });
+      }
+    } else if (
+      body.email !== undefined &&
+      body.email.trim() !== existing.email
+    ) {
+      await tx.appAccount.updateMany({
+        where: { userId: id, providerId: "credential" },
+        data: { accountId: targetEmail },
+      });
+    }
+
+    return updated;
   });
+
   return NextResponse.json({ data: user });
 });
 
