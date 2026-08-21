@@ -18,13 +18,18 @@ export const POST = asyncApi(async (req: Request) => {
     throw new Error("Periode tidak valid.");
   }
 
-  const [customers, existingInvoices] = await Promise.all([
-    prisma.customer.findMany({ where: { status: "active" } }),
-    prisma.invoice.findMany({
-      where: { periodYear: year, periodMonth: month },
-      select: { customerId: true },
-    }),
-  ]);
+  const [customers, existingInvoices, initialCountInPeriod] = await Promise.all(
+    [
+      prisma.customer.findMany({ where: { status: "active" } }),
+      prisma.invoice.findMany({
+        where: { periodYear: year, periodMonth: month },
+        select: { customerId: true },
+      }),
+      prisma.invoice.count({
+        where: { periodYear: year, periodMonth: month },
+      }),
+    ],
+  );
   const existingIds = new Set(existingInvoices.map((i) => i.customerId));
 
   const profiles = await prisma.bandwidthProfile.findMany();
@@ -53,11 +58,7 @@ export const POST = asyncApi(async (req: Request) => {
     const adminFee = 2500;
     const totalAmount = subtotal + adminFee;
     const dueDate = getDueDateFromPeriod(year, month, customer.createdAt);
-
-    const countInPeriod = await prisma.invoice.count({
-      where: { periodYear: year, periodMonth: month },
-    });
-    const seq: number = countInPeriod + newlyCreated.length + 1;
+    const seq: number = initialCountInPeriod + newlyCreated.length + 1;
 
     newlyCreated.push({
       ...(customer ? {} : {}),

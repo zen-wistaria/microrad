@@ -10,15 +10,16 @@ export const GET = asyncApi(async () => {
   const routers = await prisma.nasRouter.findMany({
     orderBy: { name: "asc" },
   });
-  // Sesi aktif per router = radacct online count by NAS IP
-  const onlineAcct = await prisma.radAcct.findMany({
+  // Sesi aktif per router = radacct online count by NAS IP (group by)
+  const onlineCounts = await prisma.radAcct.groupBy({
+    by: ["nasIpAddress"],
     where: { acctStopTime: null },
-    select: { nasIpAddress: true },
+    _count: { _all: true },
   });
   const countByIp = new Map<string, number>();
-  for (const a of onlineAcct) {
-    if (!a.nasIpAddress) continue;
-    countByIp.set(a.nasIpAddress, (countByIp.get(a.nasIpAddress) ?? 0) + 1);
+  for (const c of onlineCounts) {
+    if (!c.nasIpAddress) continue;
+    countByIp.set(c.nasIpAddress, c._count._all);
   }
   const data = routers.map((r) => ({
     ...r,

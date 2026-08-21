@@ -16,16 +16,15 @@ export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   const existing = await prisma.customer.findUnique({ where: { id } });
   if (!existing) throw new Error("Pelanggan tidak ditemukan.");
 
-  const online = await prisma.radAcct.findMany({
+  const online = await prisma.radAcct.findFirst({
     where: { username: existing.username, acctStopTime: null },
     orderBy: { acctStartTime: "desc" },
-    take: 1,
   });
-  if (online[0]) {
+  if (online) {
     // 1) CoA Disconnect-Request via FreeRADIUS (RFC 5176)
     const { sendDisconnect } = await import("@/lib/radius-coa");
     const coaResult = await sendDisconnect(existing.username, {
-      acctSessionId: online[0].acctSessionId ?? undefined,
+      acctSessionId: online.acctSessionId ?? undefined,
     });
 
     // 2) Fallback RouterOS API bila CoA gagal/tidak dijawab ACK
