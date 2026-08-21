@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Loader2, Lock, Mail } from "lucide-react";
+import { Eye, EyeOff, Globe, Loader2, Lock, Mail } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type React from "react";
@@ -25,8 +25,9 @@ import { getErrorMessage } from "@/lib/utils";
 export default function PortalLoginPage() {
   const router = useRouter();
   const { appUser, portalUser, isLoading } = useAuth();
-  const [email, setEmail] = useState("budi.santoso@mail.com");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Auto redirect jika sudah login
@@ -41,10 +42,21 @@ export default function PortalLoginPage() {
 
   const handlePortalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (!email.trim()) {
+      toast.error("Mohon masukkan email pelanggan terdaftar Anda.");
+      return;
+    }
+    if (!password) {
+      toast.error("Mohon masukkan password portal Anda.");
+      return;
+    }
 
+    setLoading(true);
     try {
-      const res = await portalAuthClient.signIn.email({ email, password });
+      const res = await portalAuthClient.signIn.email({
+        email: email.trim(),
+        password,
+      });
       if (res.error) {
         throw new Error(
           res.error.message || "Email atau password portal salah.",
@@ -106,6 +118,7 @@ export default function PortalLoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="nama@domain.com"
                     required
+                    autoComplete="email"
                     className="pl-9"
                   />
                 </div>
@@ -119,13 +132,25 @@ export default function PortalLoginPage() {
                   <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Masukkan kata sandi portal..."
                     required
-                    className="pl-9"
+                    className="pl-9 pr-10"
                   />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
               </div>
 

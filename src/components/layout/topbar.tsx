@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronRight, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import React from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/use-auth";
+import { LogoutDialog } from "../common/logout-dialog";
 import { AppUserRoleBadge } from "../common/status-badge";
 import { ThemeToggle } from "../common/theme-toggle";
 
@@ -40,13 +41,8 @@ const routeTitles: Record<string, string> = {
 
 export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { currentUser, logout } = useAuth();
-
-  const handleLogout = () => {
-    logout(); // hapus sesi login (localStorage & cookie)
-    router.replace("/login"); // langsung redirect ke halaman login
-  };
+  const [logoutDialogOpen, setLogoutDialogOpen] = React.useState(false);
 
   // Generate breadcrumb items
   const pathSegments = pathname.split("/").filter(Boolean);
@@ -143,7 +139,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={handleLogout}
+              onClick={() => setLogoutDialogOpen(true)}
               className="text-xs cursor-pointer text-rose-600 dark:text-rose-400 focus:text-rose-600 dark:focus:text-rose-400 px-3 py-2 rounded-lg"
             >
               <LogOut className="mr-2 h-4 w-4" />
@@ -152,6 +148,14 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <LogoutDialog
+        open={logoutDialogOpen}
+        onOpenChange={setLogoutDialogOpen}
+        onConfirm={logout}
+        title="Konfirmasi Keluar Manajemen"
+        description="Apakah Anda yakin ingin keluar dari portal manajemen MicroRAD? Sesi login Anda akan diakhiri."
+      />
     </header>
   );
 }

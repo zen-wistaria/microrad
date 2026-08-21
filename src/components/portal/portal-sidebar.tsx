@@ -10,7 +10,9 @@ import {
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { LogoutDialog } from "@/components/common/logout-dialog";
 import { Button } from "@/components/ui/button";
 import { portalSignOut } from "@/lib/auth-portal-client";
 
@@ -36,11 +38,17 @@ export function PortalSidebar({
   className = "",
 }: PortalSidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
-  const handleLogout = async () => {
-    await portalSignOut();
-    router.replace("/login");
+  const handleConfirmLogout = async () => {
+    try {
+      await portalSignOut();
+    } catch {
+      // ignore
+    }
+    if (typeof window !== "undefined") {
+      window.location.href = "/portal/login";
+    }
   };
 
   return (
@@ -111,13 +119,21 @@ export function PortalSidebar({
       <div className="border-t border-slate-200/80 p-3 dark:border-slate-800/80">
         <Button
           variant="outline"
-          className="w-full justify-start gap-2 text-slate-600 dark:text-slate-300"
-          onClick={handleLogout}
+          className="w-full justify-start gap-2 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400"
+          onClick={() => setLogoutDialogOpen(true)}
         >
           <LogOut className="h-4 w-4" />
           Keluar
         </Button>
       </div>
+
+      <LogoutDialog
+        open={logoutDialogOpen}
+        onOpenChange={setLogoutDialogOpen}
+        onConfirm={handleConfirmLogout}
+        title="Konfirmasi Keluar Portal"
+        description="Apakah Anda yakin ingin keluar dari Customer Self-Care? Anda perlu login kembali untuk mengakses layanan."
+      />
     </aside>
   );
 }

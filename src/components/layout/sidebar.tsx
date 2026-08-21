@@ -15,14 +15,15 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-// import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 // import { getActiveSessions } from "@/lib/api/sessions";
 import { hasPermission } from "@/lib/rbac";
 import type { Permission } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
 import { cn } from "@/lib/utils";
+import { LogoutDialog } from "../common/logout-dialog";
 
 /** Sysadmin/System Settings item hanya tampil untuk role Admin */
 function canShowSystemItem(user: { role?: string } | null): boolean {
@@ -111,13 +112,8 @@ interface SidebarProps {
 
 export function Sidebar({ className = "", onItemClick }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { currentUser, logout } = useAuth();
-  // const [activeSessionCount, setActiveSessionCount] = useState<number>(0);
-  const handleLogout = () => {
-    logout(); // hapus sesi login (localStorage)
-    router.replace("/login"); // langsung redirect ke halaman login
-  };
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   // useEffect(() => {
   //   let cancelled = false;
@@ -297,7 +293,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={handleLogout}
+            onClick={() => setLogoutDialogOpen(true)}
             title="Keluar"
             className="h-8 w-8 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
           >
@@ -305,6 +301,14 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
           </Button>
         </div>
       </div>
+
+      <LogoutDialog
+        open={logoutDialogOpen}
+        onOpenChange={setLogoutDialogOpen}
+        onConfirm={logout}
+        title="Konfirmasi Keluar Manajemen"
+        description="Apakah Anda yakin ingin keluar dari portal manajemen MicroRAD? Sesi login Anda akan diakhiri."
+      />
     </aside>
   );
 }

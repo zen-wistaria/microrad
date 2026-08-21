@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import { signOut as appSignOut, authClient } from "@/lib/auth-client";
 import { portalAuthClient, portalSignOut } from "@/lib/auth-portal-client";
@@ -49,7 +48,6 @@ function toAppUser(
 }
 
 export function useAuth() {
-  const router = useRouter();
   const { data: appSession, isPending: appLoading } = authClient.useSession();
   const { data: portalSession, isPending: portalLoading } =
     portalAuthClient.useSession();
@@ -99,8 +97,15 @@ export function useAuth() {
   );
 
   const logout = useCallback(async () => {
-    await appSignOut();
-    await portalSignOut();
+    try {
+      await appSignOut();
+      await portalSignOut();
+    } catch {
+      // abaikan error jika sesi sudah terhapus
+    }
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
   }, []);
 
   return useMemo(
@@ -112,10 +117,7 @@ export function useAuth() {
       isAuthenticated,
       isAdmin,
       login,
-      logout: async () => {
-        await logout();
-        router.replace("/login");
-      },
+      logout,
     }),
     [
       currentUser,
@@ -126,7 +128,6 @@ export function useAuth() {
       isAdmin,
       login,
       logout,
-      router,
     ],
   );
 }
