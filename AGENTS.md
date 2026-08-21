@@ -8,180 +8,342 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# MicroRAD PPPoE Manager — Arsitektur Frontend
+# MicroRAD PPPoE Manager — Arsitektur & Spesifikasi Sistem
 
-Frontend Next.js App Router (v16) + React 19 + TypeScript + Tailwind v4 + shadcn/ui + Biome, dengan **mock data di browser (localStorage)** — saat ini **belum ada backend**. Dokumen ini adalah kontrak perilaku yang menjadi acuan untuk membangun backend asli (API + database) agar frontend dapat berjalan tanpa perubahan.
+MicroRAD adalah sistem manajemen ISP / PPPoE terpadu full-stack yang mengintegrasikan **Next.js 16 App Router** (React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui + Biome), **PostgreSQL 16** via **Prisma ORM 7**, **Better-Auth** (dual-instance auth), **FreeRADIUS v3** (modul `rlm_sql` PostgreSQL), dan **MikroTik RouterOS** (protokol binari API + RADIUS CoA RFC 5176).
 
-## 1. Maping Modul → Halaman → Sumber Data
+Dokumen ini adalah **sumber kebenaran tunggal** (Single Source of Truth) untuk arsitektur, skema database, logika bisnis, integrasi jaringan, kontrak REST API, RBAC, dan konvensi pengembangan aplikasi.
 
-| Modul | Route | Data Utama | Sumber Data |
+---
+
+## 1. Topologi Infrastruktur & Alur Data
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ Docker Compose Network (`microrad-net` 172.30.0.0/24)                                   │
+│                                                                                         │
+│  [microrad-postgres] (172.30.0.2:5432 / localhost:5432)                                 │
+│    └─ DB `microrad`: Tabel Aplikasi + Tabel Shared FreeRADIUS (rlm_sql)                 │
+│                                                                                         │
+│  [microrad-freeradius] (172.30.0.3 / localhost:1812, 1813 UDP, 3799 UDP)                │
+│    └─ Alpine FreeRADIUS 3.21 + driver postgresql                                        │
+│       - `read_clients = yes` (baca client MikroTik dari tabel `nas`)                    │
+│       - Baca `radcheck` (password/reject/bind-nas) & `radreply` (IP/QoS Rate-Limit)     │
+│       - Tulis `radacct` (accounting sesi) & `radpostauth` (riwayat login auth)          │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+        ▲                                                              ▲
+        │ Prisma Client (SQL / TCP 5432)                               │ UDP 1812/1813 (AAA)
+        ▼                                                              ▼
+┌──────────────────────────────────────────────┐            ┌─────────────────────────────┐
+│ Next.js 16 Backend & Web App (Host/Server)   │            │ MikroTik RouterOS           │
+│  - REST API `/api/v1/*`                      │ API TCP    │ (PPPoE Server / NAS Client) │
+│  - Better-Auth (App & Portal Instances)      ├───────────►│  - `/ppp/active/print`      │
+│  - Background Poller (`instrumentation.ts`)  │ Port 8728  │  - `/system/identity/print` │
+│  - Atomic `radsync` ke FreeRADIUS            │            │  - CoA Kick (UDP 3799)      │
+└──────────────────────────────────────────────┘            └─────────────────────────────┘
+```
+
+### Siklus Alur Data PPPoE & Accounting
+1. **Autentikasi PPPoE**: Pelanggan dial PPPoE ke MikroTik $\rightarrow$ MikroTik kirim `Access-Request` (port 1812 UDP) ke FreeRADIUS $\rightarrow$ FreeRADIUS membaca tabel `radcheck` (`Cleartext-Password`, `Auth-Type := Reject`, `NAS-IP-Address`) dan `radreply` (`Framed-IP-Address`, `Mikrotik-Rate-Limit`).
+2. **Accounting Live (`radacct`)**: MikroTik mengirim paket `Acct-Status-Type` (`Start`, `Interim-Update` per 1 menit, `Stop`) ke FreeRADIUS (port 1813 UDP) $\rightarrow$ FreeRADIUS menulis langsung ke tabel `radacct`.
+3. **Live Session & Traffic Stats**: Aplikasi membaca sesi aktif langsung dari tabel `radacct` (`acctStopTime IS NULL`), melakukan inflasi real-time durasi dan byte berdasarkan selisih waktu `acctUpdateTime`.
+4. **Heartbeat Poller Router**: Poller background (`src/lib/mikrotik-sync.ts`) dijalankan via `src/instrumentation.ts` setiap 10 detik (`MIKROTIK_SYNC_INTERVAL_MS`), memverifikasi koneksi API ke MikroTik dan memperbarui status router (`online`/`offline`/`unknown`).
+5. **Disconnect / Kick Session**: Admin memutuskan sesi melalui UI $\rightarrow$ aplikasi memicu Disconnect-Request RADIUS CoA (RFC 5176) ke port 3799 UDP atau fallback memanggil API RouterOS `/ppp/active/remove`.
+6. **Sinkronisasi Atomik (`radsync`)**: Setiap mutasi pelanggan, profil bandwidth, dan router NAS di database dieksekusi bersamaan dengan pembaruan tabel FreeRADIUS (`radcheck`, `radreply`, `nas`) dalam satu transaksi database (`Prisma.TransactionClient`).
+
+---
+
+## 2. Arsitektur Autentikasi Ganda (Better-Auth)
+
+Sistem menggunakan **dua instance Better-Auth** yang terisolasi untuk membedakan pengguna manajemen sistem dan pelanggan portal:
+
+| Aspek | Instance #1: User Sistem (`auth`) | Instance #2: User Portal (`authPortal`) |
+|---|---|---|
+| **Rute Endpoint** | `/api/auth/*` | `/api/auth/portal/*` |
+| **Konteks Pengguna** | Administrator & Operator NOC/Finance | Pelanggan Internet (Customer Self-Care) |
+| **Model Database** | `AppUser`, `AppSession`, `AppAccount`, `AppVerification` | `PortalUser`, `PortalSession`, `PortalAccount`, `PortalVerification` |
+| **Tabel DB** | `app_user`, `app_session`, `app_account`, `app_verification` | `portal_user`, `portal_session`, `portal_account`, `portal_verification` |
+| **Prefix Cookie** | `microrad_app` | `microrad_portal` |
+| **Identifier Login** | Email atau Username (plugin `username()`) | Email terdaftar pelanggan |
+| **Relasi Domain** | `AppUser.roleId` $\rightarrow$ `Role` (RBAC) | `PortalUser.customerId` $\rightarrow$ `Customer.id` (1-to-1) |
+| **Audit Hook** | Auto-insert `GlobalLog` (sumber: `"Aplikasi"`) | Auto-insert `PortalLoginLog` & `GlobalLog` (sumber: `"Portal Langganan"`) |
+| **Client Hook** | `useAuth()` via `authClient` (`@/lib/auth-client`) | `usePortal()` via `PortalContext` (`@/lib/portal-context`) |
+
+---
+
+## 3. Skema Basis Data & Model Prisma (`prisma/schema.prisma`)
+
+Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggunakan driver adapter `@prisma/adapter-pg`.
+
+### A. Tabel Domain Aplikasi
+
+- **`Customer` (`customer`)**:
+  - `id` (String PK, format `cust-<timestamp>`)
+  - `username` (String Unique — login PPPoE / `radcheck.username`, case-insensitive di layer API)
+  - `password` (String? — password PPPoE)
+  - `fullName`, `email`, `phone`, `address` (Metadata kontak pelanggan)
+  - `status` (`"active"` | `"suspended"` | `"disabled"`)
+  - `profileId` (FK $\rightarrow$ `BandwidthProfile.id`)
+  - `staticIp` (String? — IP statis pelanggan / `Framed-IP-Address`)
+  - `nasId` (FK $\rightarrow$ `NasRouter.id`?)
+  - `bindOnNas` (Boolean, default `false` — kunci login hanya melalui router `nasId`)
+  - `createdAt`, `updatedAt`, `lastSeenAt` (DateTime)
+
+- **`BandwidthProfile` (`bandwidth_profile`)**:
+  - `id` (String PK, format `prof-<timestamp>`), `name` (String), `price` (Int? IDR/bulan), `description` (String?)
+  - Parameter Dasar: `rateLimitDown` (Int Mbps), `rateLimitUp` (Int Mbps)
+  - Parameter QoS MikroTik (kbps): `burstLimitDown`, `burstLimitUp`, `burstThresholdDown`, `burstThresholdUp`, `burstTimeSeconds`, `priority` (1–8), `limitAtDown` (CIR), `limitAtUp` (CIR)
+  - `customerCount` (Derived di API dari jumlah `Customer` aktif/terkait)
+
+- **`NasRouter` (`nas_router`)**:
+  - `id` (String PK, format `nas-<timestamp>`), `name` (String), `ipAddress` (String Unique — `nasname`), `location` (String?), `type` (`"mikrotik"`)
+  - `status` (`"online"` | `"offline"` | `"unknown"` — determined by live poller)
+  - Kredensial API: `apiUsername`, `apiPassword`, `apiPort` (default 8728)
+  - Pengaturan RADIUS: `radiusSecret`, `radiusEnabled` (Boolean), `syncEnabled` (Boolean)
+  - `lastSeenAt`, `lastSyncedAt` (DateTime)
+
+- **`Invoice` (`invoice`)**:
+  - `id` (String PK, format `inv-<timestamp>`), `invoiceNumber` (String Unique, `INV/YYYY/MM/SEQ`)
+  - `customerId` (FK $\rightarrow$ `Customer`), Snapshot Pelanggan: `customerUsername`, `customerFullName`, `customerPhone`, `customerAddress`
+  - `profileId`, `profileName` (Snapshot profil)
+  - Periode: `periodMonth` (1–12), `periodYear` (Int)
+  - Kalkulasi (IDR): `subtotal`, `taxPercent` (0–100), `tax`, `discount`, `adminFee` (default 2500), `installationFee`, `totalAmount`
+  - `status` (`"paid"` | `"unpaid"` | `"overdue"` | `"cancelled"`)
+  - `issueDate`, `dueDate`, `paidAt` (DateTime)
+  - `paymentMethod` (`qris` | `transfer_bca` | `transfer_mandiri` | `transfer_bri` | `cash` | `other`), `paymentReference`, `notes`
+  - *Unique constraint*: `@@unique([customerId, periodYear, periodMonth])`
+
+- **`PaymentRecord` (`payment_record`)**:
+  - `id` (String PK, format `pay-<timestamp>`), `invoiceId` (FK $\rightarrow$ `Invoice`), `invoiceNumber`, `customerId` (FK $\rightarrow$ `Customer`), `customerName`, `amount` (Int IDR), `paymentMethod`, `paymentReference`, `paidAt`, `receivedBy`, `notes`
+
+- **`Role` (`role`)**:
+  - `id` (String PK), `name`, `description`, `permissions` (String[] — 27 literals), `system` (Boolean — role sistem tidak bisa dihapus)
+
+- **`CompanyProfile` (`company_profile`)**:
+  - `id` (Int PK 1), `brandName`, `fullName`, `address`, `phone`, `email`, `website`, `npwp`, `licenseNo`
+
+- **Audit Logs**:
+  - `GlobalLog` (`global_log`): `id, timestamp, ipAddress, userAgent, userName, source ("Aplikasi" | "Portal Langganan" | "API")`
+  - `PortalLoginLog` (`portal_login_log`): `id, customerId, customerUsername, loginAt, ipAddress, userAgent, source`
+  - `PortalSessionLog` (`portal_session_log`): `id, customerId, customerUsername, nasIpAddress, framedIp, startedAt, stoppedAt, durationSeconds, inputBytes, outputBytes, terminateCause`
+  - `WaTemplate` (`wa_template`): `id (1), template, updatedAt`
+
+### B. Tabel Shared FreeRADIUS v3 (`rlm_sql` PostgreSQL)
+
+> **PENTING**: Query modul bawaan FreeRADIUS membaca/menulis identifier tanpa tanda kutip ganda sehingga PostgreSQL memetakan kolom ke format **LOWERCASE**. Semua mapping `@map("...")` pada model FreeRADIUS wajib mempertahankan penamaan lowercase.
+
+- **`RadCheck` (`radcheck`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
+  - Record: `Cleartext-Password` (password pelanggan), `Auth-Type := Reject` (pelanggan suspended/disabled), `NAS-IP-Address == <IP>` (bind-on-NAS)
+- **`RadReply` (`radreply`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
+  - Record: `Framed-IP-Address` (IP statis), `Mikrotik-Rate-Limit` (QoS string format MikroTik)
+- **`RadAcct` (`radacct`)**: Dikelola langsung oleh FreeRADIUS saat menerima Accounting packet. Kolom: `radacctid`, `acctsessionid`, `acctuniqueid`, `username`, `nasipaddress`, `framedipaddress`, `acctstarttime`, `acctupdatetime`, `acctstoptime`, `acctsessiontime`, `acctinputoctets`, `acctoutputoctets`, `acctterminatecause`, dll.
+- **`RadPostAuth` (`radpostauth`)**: Riwayat respon auth (`Access-Accept`/`Access-Reject`).
+- **`Nas` (`nas`)**: Daftar router NAS (`nasname` = IP MikroTik, `secret` = shared secret).
+
+---
+
+## 4. Mesin Integrasi RADIUS, MikroTik & Poller (`src/lib/*`)
+
+### A. Sinkronisasi Data Atomik (`src/lib/radsync.ts`)
+Semua operasi mutasi data yang mempengaruhi otentikasi/otorisasi RADIUS dijalankan dalam transaksi Prisma bersama data master:
+- **Pelanggan Aktif**: Menulis `radcheck` (`Cleartext-Password`), menghapus `Auth-Type := Reject`.
+- **Pelanggan Suspended / Disabled**: Menulis `radcheck` (`Auth-Type := Reject`), password lama tetap disimpan agar ketika diaktifkan kembali tidak perlu reset password.
+- **Bind-on-NAS**: Jika `bindOnNas = true`, menulis `radcheck` `NAS-IP-Address` = IP Router NAS terpilih.
+- **Profil Bandwidth**: Menulis `radreply` `Mikrotik-Rate-Limit`.
+- **Bulk Profile Sync**: Saat profil diedit, `syncProfileRadiusBulk` memperbarui atribut `Mikrotik-Rate-Limit` di `radreply` untuk semua pelanggan yang menggunakan profil tersebut.
+- **Router NAS**: Menulis/memperbarui baris pada tabel `nas` untuk dibaca oleh FreeRADIUS (`read_clients = yes`).
+
+### B. Format MikroTik QoS Rate-Limit (`src/lib/radius-format.ts`)
+Atribut `Mikrotik-Rate-Limit` disusun dengan format baku RouterOS:
+$$\text{RateLimit} = \text{rx/tx [burst-limit] [burst-threshold] [burst-time] [priority] [limit-at (CIR)]}$$
+Contoh: `10M/10M 15M/15M 8M/8M 10/10 8 5M/5M` (Download/Upload).
+
+### C. Client API MikroTik Native (`src/lib/mikrotik-client.ts`)
+Menggunakan implementasi protokol binari API RouterOS mandiri melalui koneksi raw TCP Socket (port 8728), mendukung RouterOS v6 dan v7 (termasuk penanganan respon `!empty` dan MD5 challenge/plaintext login).
+
+### D. Live Sesi & History Accounting (`src/lib/radacct-sessions.ts` & `src/lib/usage-real.ts`)
+- Sesi aktif dibaca dari `radacct` (`acctStopTime IS NULL`).
+- Durasi real-time dan estimasi pertumbuhan byte upload/download dihitung dari `acctUpdateTime` terakhir.
+- Riwayat statistik penggunaan 30 hari harian dan 12 bulan bulanan dihitung secara presisi dari data `radacct` tanpa menggunakan data sintetik.
+
+---
+
+## 5. Pemetaan Rute Frontend & URL State (`nuqs`)
+
+### A. Rute Aplikasi
+
+| Modul | Route Dashboard | Route Portal Pelanggan | Keterangan & Proteksi |
 |---|---|---|---|
-| Dashboard | `/dashboard` | `DashboardStats` + chart | `getDashboardStats()` |
-| Pelanggan | `/customers`, `/customers/new`, `/customers/[id]`, `/customers/[id]/edit` | `Customer` | `api/customers.ts` → `MockDatabase` (key `microrad_customers`) |
-| Profil Bandwidth | `/profiles`, `/profiles/new`, `/profiles/[id]/edit` | `BandwidthProfile` | `api/profiles.ts` → `MockDatabase` (key `microrad_profiles`) |
-| Router NAS | `/routers`, `/routers/new`, `/routers/[id]/edit` | `NasRouter` | `api/routers.ts` → `MockDatabase` (key `microrad_routers`) |
-| Sesi PPPoE | `/sessions` | `Session` | `api/sessions.ts` → `MockDatabase` (key `microrad_sessions`) |
-| Billing & Tagihan | `/billing`, `/billing/[id]` | `Invoice`, `PaymentRecord` | `api/billing.ts` — **storage terpisah** (key `microrad_invoices_mock`, `microrad_payments_mock`) |
-| Pengguna App | `/users`, `/users/new`, `/users/[id]/edit` | `AppUser` | `api/users.ts` → `MockDatabase` (key `microrad_users`) |
-| Role & Permission | `/roles` | `Role` | `api/roles.ts` → `MockDatabase` (key `microrad_roles`) + `BUILT_IN_ROLES` |
-| Log Global | `/logs` | `GlobalLogEntry` | `api/logs.ts` → `MockDatabase.getGlobalLogs()` (`mock/global-logs.ts`) |
-| Pengaturan | `/settings` | `CompanyProfile` | `api/settings.ts` → `MockDatabase` (key `microrad_company_profile`) |
-| Portal Pelanggan | `/portal`, `/portal/billing`, `/portal/payments`, `/portal/usage`, `/portal/logs` | `CustomerPortalData` | `api/customer-portal.ts` (agregat dari beberapa sumber) |
-| Login | `/login` | `AppUser` | `lib/auth.ts` (key `microrad_auth_user`) |
+| **Autentikasi** | `/login` | `/portal/login` | Login user sistem / login self-care portal |
+| **Dashboard** | `/dashboard` | `/portal` | Ringkasan statistik operasional / status langganan |
+| **Pelanggan** | `/customers`, `/customers/new`, `/customers/[id]`, `/customers/[id]/edit` | — | Manajemen data teknis & PPPoE pelanggan |
+| **Profil Bandwidth** | `/profiles`, `/profiles/new`, `/profiles/[id]/edit` | — | Paket kecepatan internet & QoS |
+| **Router NAS** | `/routers`, `/routers/new`, `/routers/[id]/edit` | — | Konfigurasi MikroTik & status sync |
+| **Sesi PPPoE** | `/sessions` | `/portal/usage`, `/portal/logs` | Monitoring sesi live & riwayat pemakaian |
+| **Billing** | `/billing`, `/billing/[id]` | `/portal/billing`, `/portal/payments` | Invoicing, tagihan, cetak nota, & histori bayar |
+| **Pengguna Sistem** | `/users`, `/users/new`, `/users/[id]/edit` | — | Pengguna internal aplikasi (admin/operator) |
+| **Role & Hak Akses** | `/roles` | — | Konfigurasi RBAC (Admin only) |
+| **Log Aktivitas** | `/logs` | `/portal/logs` | Audit trail login & sesi PPPoE |
+| **Pengaturan** | `/settings` | — | Profil perusahaan & template WhatsApp |
 
-## 2. Model Data (src/lib/types.ts)
+### B. Kontrak URL Query State (`nuqs`)
 
-Semua entity didasarkan pada skema FreeRADIUS/PRD. Field penting untuk backend:
+Semua filter, pencarian, dan pagination tabel tersinkronisasi di URL query string dan wajib dibungkus `<Suspense>`:
 
-- **Customer** — `id, username (radcheck.username — UNIK), password?, fullName, email, phone, address, status (active|suspended|disabled), profileId → BandwidthProfile, staticIp?, nasId?, createdAt, updatedAt, lastSeenAt?, currentSessionId?`
-- **BandwidthProfile** — `id, name, rateLimitDown (Mbps), rateLimitUp (Mbps), price? (IDR), customerCount (DERIVED, dihitung ulang dari customers)`
-- **NasRouter** — `id, name, ipAddress (nasname), type: "mikrotik", status (online|offline|unknown), activeSessionCount (DERIVED)`
-- **Session** — `id, customerId, customerUsername, nasId, nasIpAddress, framedIp?, startedAt, stoppedAt? (undefined = masih online), durationSeconds, inputBytes (AcctInputOctets), outputBytes (AcctOutputOctets), terminateCause?`
-- **Invoice** — lihat §4.
-- **PaymentRecord** — `id, invoiceId, invoiceNumber, customerId, customerName, amount, paymentMethod (qris|transfer_bca|transfer_mandiri|transfer_bri|cash|other), paymentReference?, paidAt, receivedBy, notes?`
-- **AppUser** — `id, name, email (UNIK), role (admin|operator|customer — legacy), roleId? (RBAC → Role), status (active|disabled), createdAt, lastLoginAt?, customerId?`
-- **Role** — `id, name, description?, permissions: Permission[], system: boolean, createdAt, updatedAt`
-- **Permission** — format `"<resource>.<action>"`; resources: `customer, billing, session, profile, router, user`; actions: `read, create, update, delete` + `log.read`, `setting.read`, `setting.update` (27 total)
-- **CompanyProfile** — `brandName, fullName, address?, phone?, email?, website?, npwp?, licenseNo?, updatedAt?`
-- **BillingSummary** — `totalRevenueThisMonth, totalPendingAmount, totalOverdueAmount, paidCount, unpaidCount, overdueCount, totalInvoicesCount` (hitung dari status invoice periode berjalan + total semua periode)
-
-ID dibuat di sisi "server mock": `cust-<ts>`, `prof-<ts>`, `nas-<ts>`, `usr-<ts>`, `role-<ts>`, `inv-<ts>`, `pay-<ts>`. Tanggal memakai **ISO 8601** (`new Date().toISOString()`); `createdAt`/`updatedAt` wajib di-set oleh backend, bukan oleh klien.
-
-## 3. Pola API (src/lib/api/*) — bentuk kontrak backend
-
-- Setiap fungsi **async** dengan `delay(ms)` buatan (120–300ms) untuk simulasi latensi → backend asli adalah REST endpoint yang dipanggil dari fungsi yang sama.
-- List: `getX()` → array; detail: `getXById(id)` → `X | null`.
-- Create: kirim `Omit<X, "id" | "createdAt" | "updatedAt" | derived>`, backend yang set id/timestamp → error `throw new Error("...")` (ditampilkan via `getErrorMessage`).
-- Update: `updateX(id, Partial<X>)` → patch parsial, `updatedAt` di-set backend.
-- Delete: `deleteX(id)` → `{ success: boolean }`, error di-throw bila gagal.
-- Pelanggan: cek **uniqueness username on create & update**; profil: **prevent delete bila masih dipakai pelanggan** (`deleteProfile` error API); router: prevent delete bila ada sesi aktif; user: prevent delete **pengguna terakhir** (`users.length <= 1`); deleteCustomer memutus sesi aktif pelanggan terlebih dahulu.
-- Sesi aktif di-read berupa "live": durasi dan trafik dihitung ulang terhadap `Date.now()` (tanpa persist).
-
-## 4. Module Billing (paling kompleks) — aturan bisnis yang wajib dipindah ke backend
-
-Nomor invoice: `INV/<year>/<MM>/<seq:`03d>` — seq = jumlah invoice pada periode itu + 1.
-
-**Aturan jatuh tempo** (kunci, sudah dua kali dikoreksi user):
-
-```
-due date = tanggal-hari terakhir periode target + 1 bulan
-hari = tanggal registrasi (createdAt) pelanggan, fallback 10
-jam = 23:59:59
-```
-
-`getDueDateFromPeriod(year, month, createdAt?)` di `api/billing.ts`:
-- `month` 1-based; `new Date(year, month, ...)` otomatis = bulan berikutnya (periode+1); Desember → tahun+1.
-- Normalisasi overflow: `if (due.getMonth() !== month % 12) { due.setDate(0); due.setHours(23,59,59,0) }` (mis. registrasi tgl 31 → 31 Feb melimpah, force ke hari terakhir Feb).
-
-**Validasi duplikat** (create invoice manual & generate massal):
-- Per pasangan `(customerId, periodYear, periodMonth)` — 1 invoice per pelanggan per periode.
-- Manual: cek di client dulu, lalu jadi error dari `createInvoice` bila lolos.
-- Generate massal: skip diam-diam (tidak error), dilaporkan sebagai `skippedCount` di toast.
-
-**Komposisi invoice** (hitung di server, frontend hanya menampilkan hasil):
-- `subtotal` (harga paket, autofill dari `BandwidthProfile.price`)
-- `tax = round(subtotal × taxPercent / 100)`; `taxPercent` input 0–100 (validasi di client dan backend)
-- `adminFee` (default 2500)
-- `installationFee` (default 0)
-- `discount` (potongan, default 0)
-- `totalAmount = max(0, subtotal + tax + adminFee + installationFee − discount)`
-
-**Karena invoice & payments disimpan di storage TERPISAH dari db utama**, `resetToDefaults()` (Reset Demo) wajib juga menghapus `microrad_invoices_mock`, `microrad_payments_mock`, dan `microrad_roles`.
-
-**markInvoiceAsPaid(id, {paymentMethod, paymentReference?, paidAt?, notes?})**:
-- Invoice lama yang berstatus `paid` memakai field `paymentMethod` — kolom itu sendiri berevolusi jadi field pada PaymentRecord (lihat §2).
-- Update status invoice → `paid`, set `paidAt`, `paymentMethod`, `paymentReference` (fallback `PAY-<6digit>` jika kosong), `notes` → **tambahkan PaymentRecord** (histori pembayaran!) — 2 write bersamaan, wajib transaksional di backend.
-
-**Bulk generate** (`bulkGenerateInvoices(month, year)`) → `{createdCount, failedCount, skippedCount, invoices}`:
-- Hanya pelanggan `status === "active"`.
-- Skip bila sudah ada invoice periode tsb (di-hitung sebagai `skippedCount`).
-- Gagal bila pelanggan aktif tanpa profil valid (`failedCount`).
-- Tidak pakai PPN (tax=0), `installationFee=0`, hanya `subtotal + adminFee`.
-- Toast di client melaporkan: "X berhasil dibuat, Y gagal, Z di-skip (sudah ada)".
-
-**sendInvoiceReminder(id)** → `{success, message, phone, text}`: pesan WhatsApp via template editan (key `microrad_wa_template`, **tidak dihapus saat reset**). Variabel: `$USER` (fullName fallback username), `$BRAND` (dari CompanyProfile), `$PROFILE`, `$PERIOD` ("Bulan Agustus 2026"), `$TOTAL` (format Rupiah id-ID), `$INVOICE`, `$DUE`. Default template ada di `components/billing/reminder-dialog.tsx`.
-
-**BillingSummary** dihitung dari seluruh invoice: revenue bulan berjalan = invoice `paid` di (periodMonth, periodYear) sekarang; "tertunggak" = `unpaid` (dihitung hanya untuk periode berjalan), "overdue" = `overdue`.
-
-## 5. Tanggal Relatif Mock (penting saat migrasi data)
-
-File `mock/*.mock.ts` menyimpan tanggal sebagai string literal `relMonthsAgoIso(<bulan>, <tanggal>, <menit>)` / `relNowIso(<hari>, <menit>)` (lihat `mock/relative-dates.ts`) **hanya di file source**. Setelah diserialisasi / dibaca dari localStorage, string-string itu **tidak lagi tervalidasi**:
-- `db.ts` punya `resolveMockDates()` yang mengubahnya menjadi ISO saat data dimuat.
-- `api/billing.ts` punya `resolveMockDateString()` (regex sama, dipakai untuk `createdAt` pelanggan saat menghitung due date).
-
-Bila data dipindah ke database asli, tanggal harus sudah berupa **timestamp absolut** — fungsi resolve ini tidak perlu dibawa ke backend.
-
-## 6. Filter & Pagination via nuqs (query string = kontrak URL)
-
-Semua filter & pagination live di URL query string (bisa di-bookmark/share, konsisten saat refresh) — ini pola yang **harus diteruskan ke URL param API backend**:
-
-```
-/getInvoices?page=1&limit=10&search=&status=paid&month=8&paysearch=&tab=invoices
-```
-
-Konvensi (`useQueryState(key, parser)`):
-
-| Key | Parser | Nilai | Dipakai di |
+| Key | Parser & Default | Keterangan & Batasan | Modul yang Menggunakan |
 |---|---|---|---|
-| `page` | `parseAsInteger.withDefault(1)` | halaman aktif | semua tabel |
-| `limit` | `parseAsInteger.withDefault(10).withOptions({ history: "replace" })` | baris/halaman (10/25/50, clamp 1–50) | semua tabel |
-| `search` | `parseAsString.withDefault("")` | keyword | customers, sessions, users, billing, logs |
-| `status` | `parseAsString.withDefault("all")` | filter status | customers, users, billing (invoice status), logs (source) |
-| `profile` | `parseAsString.withDefault("all")` | filter profil | customers |
-| `router` | `parseAsStringEnum([...ipAddress]).withDefault("all")` | filter NAS by IP | sessions |
-| `role` | `parseAsString.withDefault("all")` | filter role | users |
-| `month` | `parseAsString.withDefault("all")` | filter bulan periode (opsi dinamis dari data!) | billing |
-| `paysearch` | `parseAsString.withDefault("")` | pencarian khusus tab pembayaran | billing |
-| `tab` | `parseAsString.withDefault("invoices" / "overview" / "daily")` | tab aktif | billing, customer detail, portal usage |
-| `year` | `parseAsInteger.withDefault(currentYear)` | filter grafik per tahun | customer detail, portal usage |
-| `from` / `to` | `parseAsString.withDefault("")` | rentang tanggal log (to = sampai 23:59:59) | logs |
+| `page` | `parseAsInteger.withDefault(1)` | Halaman aktif (1-indexed, clamp $\ge 1$) | Semua tabel |
+| `limit` | `parseAsInteger.withDefault(10)` | Baris per halaman (pilihan: 10, 25, 50) | Semua tabel |
+| `search` | `parseAsString.withDefault("")` | Keyword pencarian teks | customers, sessions, billing, users, logs |
+| `status` | `parseAsString.withDefault("all")` | Filter status entitas | customers, billing, users, logs (source) |
+| `profile` | `parseAsString.withDefault("all")` | Filter berdasarkan `profileId` | customers |
+| `router` | `parseAsString.withDefault("all")` | Filter berdasarkan IP Router / NAS ID | sessions, customers |
+| `role` | `parseAsString.withDefault("all")` | Filter berdasarkan `roleId` | users |
+| `month` | `parseAsString.withDefault("all")` | Filter bulan periode tagihan (1–12) | billing |
+| `paysearch` | `parseAsString.withDefault("")` | Pencarian tab riwayat pembayaran | billing |
+| `tab` | `parseAsString.withDefault("invoices")` | Tab aktif antarmuka | billing, customer detail, portal usage |
+| `year` | `parseAsInteger.withDefault(currentYear)` | Filter tahun grafik analitik | customer detail, portal usage |
+| `from` / `to` | `parseAsString.withDefault("")` | Rentang tanggal audit log | logs |
 
-Perilaku yang harus dijaga:
-- Uriah utama `filteredX` dihitung **di client** dari semua data (mock memuat semua); backend asli bisa menggantinya dengan query SQL — asalkan hasil akhirnya sama (filter AND + pagination).
-- Rute yang memakai `useQueryState` **wajib dibungkus `<Suspense>`** (mis. billing `export default` membungkus `BillingContent` dengan `<Suspense>`), karena nuqs membutuhkan konteks React.
-- Filter bulan billing **dinamis dari data**, bukan hardcoded: opsi di-generate dari `new Set(invoices.map(inv => inv.periodMonth))`. Perlu dipindahkan ke backend: `GET /invoices/distinct-months` atau disertakan dalam respons list.
-- Saat aksi menambah data (create/bulk), halaman **reset ke `page=1`** dan fungsi read data dipanggil ulang (sumber kebenaran tunggal: storage/backend), bukan rely pada argumen callback.
-- `safeLimit = Math.min(Math.max(limit, 1), 50)`; `safePage = Math.min(Math.max(page, 1), totalPages)`; `totalPages = Math.ceil(filtered.length / safeLimit) || 1`.
+---
 
-## 7. RBAC — aturan otorisasi
+## 6. Kontrak REST API Backend (`/api/v1/*`)
 
-- **Role bawaan** (`BUILT_IN_ROLES` di `lib/rbac.ts`, id `role-admin`, `role-manager`, `role-customer`) tidak tersimpan di localStorage — tidak bisa dihapus. Role kustom simpan di key `microrad_roles` (filter `!system`).
-- `getUserRoleById(roleId)` = role kustom dari localStorage jika ada, else fallback `BUILT_IN_ROLES`.
-- `hasPermission(user, perm)`: **advisor terkenal**: role `role-admin` → selalu `true`; role lain harus punya permission eksplisit di daftarnya.
-- **Pembatasan rute** (`canAccessRoute(user, pathname)` di `dashboard/layout.tsx`):
-  - `role-customer` → hanya `/portal/*`.
-  - `role-admin` → semua jalur KECUALI `/portal`.
-  - `/roles` dan `/settings` → admin-only.
-  - `/logs` → butuh `log.read`.
-  - Rute detail/mutasi: `/customers/new` → `customer.create`, `/customers/:id` (read) → `customer.read`, dst. (lihat `routeToResource` & `routeMutation` di `lib/rbac.ts`).
-- Server asli: **selalu** verifikasi permission di tiap endpoint (frontend hanya menyembunyikan tombol; bukan pengaman).
+Seluruh endpoint API mengembalikan format JSON standar:
+- **Sukses**: `{ data: T }` atau `{ data: T[], total: number }` (paginasi).
+- **Gagal**: `{ error: string }` dengan HTTP status code yang sesuai (400, 401, 403, 404, 409, 500).
 
-## 8. Autentikasi & Portal Pelanggan
+```
+GET    /api/v1/customers                     -> List pelanggan (search, status, profile, router, page, limit)
+POST   /api/v1/customers                     -> Tambah pelanggan baru (+ atomic radsync)
+GET    /api/v1/customers/:id                 -> Detail pelanggan + profil + status sesi
+PUT    /api/v1/customers/:id                 -> Update pelanggan (+ atomic radsync)
+DELETE /api/v1/customers/:id                 -> Hapus pelanggan (+ radsync cleanup + terminate sesi)
+POST   /api/v1/customers/:id/disconnect      -> Putus koneksi PPPoE aktif pelanggan
 
-- Auth murni client: `lib/auth.ts` key `microrad_auth_user` (AppUser). `useAuth()` expose `currentUser, isLoading, isAuthenticated, isAdmin, login, logout`. Default login: user pertama `initialUsers[0]` (admin@microrad.net, role admin). **Tidak ada password** — mock.
-- Arah ke depan: backend dengan session/JWT; data AppUser harus match struktur di §2.
-- Login di page `/login` → simpan user via `setStoredUser()` → layout dashboard redirect kalau belum login.
-- Portal pelanggan: `PortalLayout` (layout `/portal`) memanggil `getCustomerPortalData(user)` → cari customer via `user.customerId` (prioritas) atau fallback email sama dengan `customer.email`. Bungkus data di `PortalContext`; halaman anak pakai `usePortal()` → `{data, loading, refreshing, reload}`.
-- `getCustomerPortalData` return `{customer, profile, summary, usageHistory, invoices, payments, sessions, loginLogs, sessionLogs}`. Ini kontrak endpoint `GET /portal/me` (atau sejenisnya) — semua data milik customer login.
-- `CustomerPortalSummary`: `totalUsage30dBytes, totalDownload30dBytes, totalUpload30dBytes, onlineSessionCount, onlineNow, totalPaidAmount, totalOutstandingAmount, activeInvoiceCount`.
+GET    /api/v1/profiles                      -> List profil bandwidth (+ customerCount derived)
+POST   /api/v1/profiles                      -> Tambah profil bandwidth baru
+GET    /api/v1/profiles/:id                  -> Detail profil bandwidth
+PUT    /api/v1/profiles/:id                  -> Update profil (+ bulk radsync ke seluruh pelanggan terkait)
+DELETE /api/v1/profiles/:id                  -> Hapus profil (ditolak jika masih digunakan pelanggan)
 
-## 9. Utilitas & Konvensi
+GET    /api/v1/routers                       -> List router NAS (+ activeSessionCount derived)
+POST   /api/v1/routers                       -> Tambah router (+ insert row nas FreeRADIUS)
+GET    /api/v1/routers/:id                   -> Detail router
+PUT    /api/v1/routers/:id                   -> Update konfigurasi router (+ update row nas)
+DELETE /api/v1/routers/:id                   -> Hapus router (ditolak jika ada sesi aktif/pelanggan terkait)
+POST   /api/v1/routers/:id/ping              -> Uji konektivitas API MikroTik secara live
+POST   /api/v1/routers/:id/sync-now          -> Jalankan heartbeat & sinkronisasi manual sekarang
+POST   /api/v1/routers/:id/connect-radius    -> Konfigurasi /radius & /ppp aaa pada MikroTik via API
+POST   /api/v1/routers/:id/disconnect-radius -> Nonaktifkan konfigurasi RADIUS pada MikroTik
 
-- Formatting wajib konsisten: `formatRupiah` (Intl id-ID IDR), `formatDate` (id-ID), `formatBytes` (1024-base), `formatDuration` (human), `formatRelativeTime`, `getErrorMessage` — `src/lib/utils.ts`.
-- `StatusBadge` status invoice: `paid | unpaid | overdue | cancelled`; status customer: `active | suspended | disabled`.
-- UI: komponen shadcn/ui di `src/components/ui/*`; `ConfirmDialog` untuk aksi destruktif, `EmptyState` untuk tabel kosong, `Skeleton` untuk loading.
-- Pencarian/pagination client-side: `filteredX` → `paginatedX` (slice) → render di tabel; footer pagination menu "Menampilkan X–Y dari Z" + Select limit (10/25/50) + tombol Sebelumnya/Selanjutnya.
-- Format: `bunx tsc --noEmit` + `bunx biome check --write .` (Biome, bukan ESLint/Prettier).
+GET    /api/v1/sessions                      -> List sesi PPPoE aktif dari radacct (search, router, limit)
+POST   /api/v1/sessions/:id/disconnect       -> Putus sesi spesifik via CoA Disconnect / API RouterOS
 
-## 10. Checklist Pembuatan Backend (ringkasan kontrak)
+GET    /api/v1/billing                       -> List invoice & pembayaran (status, month, search, page, limit)
+POST   /api/v1/billing                       -> Buat invoice manual tunggal
+GET    /api/v1/billing/:id                   -> Detail invoice + histori pembayaran
+PUT    /api/v1/billing/:id                   -> Update status/catatan invoice
+DELETE /api/v1/billing/:id                   -> Hapus invoice (hanya yang belum dibayar)
+POST   /api/v1/billing/:id/pay               -> Transaksi pelunasan tagihan (+ buat PaymentRecord)
+POST   /api/v1/billing/:id/cancel            -> Batalkan invoice
+POST   /api/v1/billing/:id/reminder          -> Format pesan pengingat WhatsApp
+POST   /api/v1/billing/bulk-generate         -> Generate tagihan massal untuk seluruh pelanggan aktif
+GET    /api/v1/billing/summary               -> Ringkasan finansial (total pendapatan, tertunggak, overdue)
+GET    /api/v1/billing/months                -> Daftar bulan periode invoice yang tersedia di database
 
-1. REST API mirror dari fungsi di `src/lib/api/*`; tipe response = tipe di `src/lib/types.ts`; error = `{ error: string }` / HTTP status, ditampilkan via `getErrorMessage`.
-2. Endpoint list mendukung query params: `search`, `status`, `month`, `profile`, `router`, `role`, `from`, `to`, `page`, `limit` → filter AND + pagination (clamp 1–50).
-3. Set `id` (format konsisten), `createdAt`, `updatedAt` di server; hitung field derived (`customerCount`, `activeSessionCount`, `totalAmount`) di server.
-4. Uniqueness: `customer.username` (case-insensitive), `user.email`; relasi FK: `customer.profileId`, `session.customerId`, dsb wajib divalidasi.
-5. Invoice: uniqueness `(customerId, periodYear, periodMonth)`; due date = periode+1 bulan (hari = tgl registrasi, fallback 10, normalisasi akhir bulan); invoice number `INV/YYYY/MM/SEQ`.
-6. Pembayaran & invoice harus **transaksional** (mark paid = update invoice + insert payment record).
-7. RBAC dieksekusi server-side (27 permission; admin = semua).
-8. `GET /portal/me` (atau sejenisnya) mengembalikan agregat data pelanggan login.
-9. Reset demo / seed: bersihkan invoice, payments, roles kustom juga.
-10. Dual-write storage mock (utama + billing) hanya untuk pengembangan — backend asli cukup satu sumber data.
+GET    /api/v1/dashboard                     -> Metrik operasional, router online, dan grafik tren 7 hari
+GET    /api/v1/users                         -> List pengguna sistem
+POST   /api/v1/users                         -> Tambah pengguna sistem (+ buat akun Better-Auth)
+GET    /api/v1/users/:id                     -> Detail pengguna sistem
+PUT    /api/v1/users/:id                     -> Update profil & role pengguna
+DELETE /api/v1/users/:id                     -> Hapus pengguna (mencegah penghapusan admin terakhir)
+
+GET    /api/v1/roles                         -> List role sistem & custom RBAC
+POST   /api/v1/roles                         -> Buat role baru
+GET    /api/v1/roles/:id                     -> Detail role
+PUT    /api/v1/roles/:id                     -> Update role & permission
+DELETE /api/v1/roles/:id                     -> Hapus role custom (role sistem ditolak)
+
+GET    /api/v1/logs                          -> List audit trail global_log (source, from, to, search, page, limit)
+GET    /api/v1/settings                      -> Ambil profil perusahaan & template WhatsApp
+PUT    /api/v1/settings                      -> Simpan profil perusahaan & template WhatsApp
+POST   /api/v1/radius/reload                 -> Trigger reload konfigurasi FreeRADIUS
+
+GET    /api/v1/portal/me                     -> Agregat data profil, tagihan, sesi, & usage pelanggan login
+```
+
+---
+
+## 7. Sistem Otorisasi & RBAC
+
+Sistem mengimplementasikan **Role-Based Access Control (RBAC)** ketat di sisi server (`src/lib/rbac.ts` & `src/lib/api-auth.ts`):
+
+### A. 27 Granular Permissions
+
+| Resource | `read` | `create` | `update` | `delete` |
+|---|:---:|:---:|:---:|:---:|
+| `customer` | `customer.read` | `customer.create` | `customer.update` | `customer.delete` |
+| `billing` | `billing.read` | `billing.create` | `billing.update` | `billing.delete` |
+| `session` | `session.read` | `session.create` | `session.update` | `session.delete` |
+| `profile` | `profile.read` | `profile.create` | `profile.update` | `profile.delete` |
+| `router` | `router.read` | `router.create` | `router.update` | `router.delete` |
+| `user` | `user.read` | `user.create` | `user.update` | `user.delete` |
+| **System** | `log.read` | — | `setting.update` (`setting.read`) | — |
+
+### B. Aturan Otorisasi
+- **Administrator (`role-admin`)**: Memiliki bypass akses penuh ke semua rute dan mutasi data API.
+- **Role Kustom & Manager**: Wajib diverifikasi melalui helper `requirePermission(permission)` pada setiap handler API.
+- **Proteksi UI Rute**: Dieksekusi melalui `canAccessRoute(user, pathname)` di layout dashboard.
+
+---
+
+## 8. Aturan Bisnis Modul Billing
+
+1. **Format Penomoran Invoice**: `INV/YYYY/MM/SEQ` (SEQ: nomor urut 3 digit per periode bulan/tahun).
+2. **Aturan Jatuh Tempo (`dueDate`)**:
+   $$\text{Bulan Jatuh Tempo} = \text{Periode Target} + 1\text{ bulan}$$
+   $$\text{Tanggal} = \text{Tanggal registrasi (createdAt) pelanggan (fallback: tanggal 10)}$$
+   $$\text{Waktu} = \text{23:59:59 WIB}$$
+   *Normalisasi Akhir Bulan*: Jika tanggal registrasi melampaui hari terakhir bulan berikutnya (mis. 31 Januari $\rightarrow$ Februari), tanggal otomatis dipaksa ke hari terakhir bulan tersebut (28/29 Februari).
+3. **Pencegahan Tagihan Ganda**: Pasangan `(customerId, periodYear, periodMonth)` bersifat unik. Invoice manual akan mengembalikan error 409 bila duplikat; bulk generation akan men-skip tagihan yang sudah ada.
+4. **Struktur Kalkulasi Tagihan**:
+   $$\text{Tax} = \text{round}\left(\frac{\text{Subtotal} \times \text{taxPercent}}{100}\right)$$
+   $$\text{TotalTagihan} = \max(0, \text{Subtotal} + \text{Tax} + \text{AdminFee} + \text{InstallationFee} - \text{Discount})$$
+5. **Transaksional Pelunasan (`markInvoiceAsPaid`)**: Update status invoice $\rightarrow$ `"paid"` dan pembuatan record `PaymentRecord` dieksekusi dalam satu transaksi atomik.
+6. **Template Pengingat WhatsApp**: Variabel yang didukung: `$USER`, `$BRAND`, `$PROFILE`, `$PERIOD`, `$TOTAL`, `$INVOICE`, `$DUE`.
+
+---
+
+## 9. Konvensi & Standar Kode
+
+- **Formatting & Linting**: Biome (`bunx biome check --write .`). Jangan gunakan ESLint/Prettier.
+- **Type Checking**: `bunx tsc --noEmit`.
+- **UI Components**: shadcn/ui + Radix UI + Lucide React.
+- **Format Mata Uang & Angka**: `formatRupiah()`, `formatBytes()`, `formatDuration()`, `formatDate()` di `@/lib/utils`.
+- **ID Generator**: Konsisten menggunakan prefix domain: `cust-<ts>`, `prof-<ts>`, `nas-<ts>`, `inv-<ts>`, `pay-<ts>`, `usr-<ts>`, `role-<ts>`.
+
+---
+
+## 10. Panduan Operasional & Perintah Development
+
+```bash
+# 1. Jalankan Infrastruktur Kontainer (Postgres & FreeRADIUS)
+docker compose up -d --build
+
+# 2. Migrasi Database & Seeding
+bun run db:migrate
+bun run db:seed
+
+# 3. Jalankan Aplikasi Next.js Development Server
+bun dev
+
+# 4. Verifikasi & Perbaikan Kode
+bun run lint:fix
+bun run format
+bunx tsc --noEmit
+
+# 5. Uji Otentikasi RADIUS via Container
+docker exec microrad-freeradius sh -c \
+  'echo "User-Name=budi_santoso, User-Password=pass123" | radclient 127.0.0.1 auth testing123'
+```
