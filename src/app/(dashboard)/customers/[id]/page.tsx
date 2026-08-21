@@ -163,12 +163,12 @@ export default function CustomerDetailPage({
 
       // Load data pendukung secara independen — kegagalan satu bagian tidak
       // menghapus data pelanggan yang sudah tampil.
-      // Sesi: HISTORY penuh (online + selesai) dengan filter tahun/bulan.
-      // Pemakaian harian: 30 hari default, atau bulan terpilih.
-      const sessFilter =
-        selectedMonth !== "all"
-          ? { year: selectedYear, month: Number(selectedMonth) }
-          : {};
+      // Sesi: HISTORY penuh (online + selesai) dengan filter tahun/bulan terpilih.
+      // Pemakaian harian: 30 hari default (saat month === "all"), atau bulan terpilih.
+      const sessFilter = {
+        year: selectedYear,
+        month: selectedMonth !== "all" ? Number(selectedMonth) : undefined,
+      };
       const usageFilter =
         selectedMonth !== "all"
           ? { year: selectedYear, month: Number(selectedMonth) }
@@ -764,7 +764,7 @@ export default function CustomerDetailPage({
                       <SelectValue placeholder="Bulan" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Semua Bulan</SelectItem>
+                      <SelectItem value="all">Semua</SelectItem>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                         <SelectItem key={m} value={String(m)}>
                           {new Date(0, m - 1, 1).toLocaleDateString("id-ID", {
