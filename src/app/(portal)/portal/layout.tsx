@@ -40,9 +40,9 @@ export default function PortalLayout({
 
   useEffect(() => {
     if (isPending) return;
-    // Belum login portal → arahkan ke /login
+    // Belum login portal → arahkan ke /portal/login
     if (!portalSession) {
-      router.replace("/login");
+      router.replace("/portal/login");
       return;
     }
     reload();

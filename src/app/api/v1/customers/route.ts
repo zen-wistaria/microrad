@@ -56,6 +56,32 @@ export const GET = asyncApi(async (req: Request) => {
   return NextResponse.json({ data, total });
 });
 
+async function generateServerUniquePppoeUsername(
+  prefix = "user_",
+): Promise<string> {
+  const { generateCandidateUsername } = await import("@/lib/generators");
+  let attempts = 0;
+  while (attempts < 30) {
+    const candidate = generateCandidateUsername(prefix);
+    const [existingCust, existingRad] = await Promise.all([
+      prisma.customer.findFirst({
+        where: { username: { equals: candidate, mode: "insensitive" } },
+        select: { id: true },
+      }),
+      prisma.radCheck.findFirst({
+        where: { username: candidate },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!existingCust && !existingRad) {
+      return candidate;
+    }
+    attempts++;
+  }
+  return `${prefix}${Date.now().toString().slice(-6)}`;
+}
+
 export const POST = asyncApi(async (req: Request) => {
   await requirePermission("customer.create");
   const body = (await req.json()) as {
@@ -70,24 +96,59 @@ export const POST = asyncApi(async (req: Request) => {
     nasId?: string | null;
     bindOnNas?: boolean;
     password?: string;
+    portalPassword?: string;
   };
 
-  const username = body.username?.trim();
-  if (!username) throw new Error("Username PPPoE tidak boleh kosong.");
+  // 1. Username PPPoE: auto-generate jika kosong, pastikan unik
+  let username = body.username?.trim();
+  if (!username) {
+    username = await generateServerUniquePppoeUsername();
+  }
 
-  const dup = await prisma.customer.findFirst({
-    where: { username: { equals: username, mode: "insensitive" } },
-  });
-  if (dup) throw new Error(`Username PPPoE '${username}' sudah terdaftar.`);
+  const [dupCustomer, dupRad] = await Promise.all([
+    prisma.customer.findFirst({
+      where: { username: { equals: username, mode: "insensitive" } },
+    }),
+    prisma.radCheck.findFirst({
+      where: { username },
+    }),
+  ]);
+  if (dupCustomer || dupRad) {
+    throw new Error(`Username PPPoE '${username}' sudah terdaftar.`);
+  }
+
+  // 2. Password PPPoE: auto-generate jika kosong
+  let password = body.password?.trim();
+  if (!password) {
+    const { generatePppoePassword } = await import("@/lib/generators");
+    password = generatePppoePassword();
+  }
+
+  // 3. Email (Portal Pelanggan): opsional, jika ada harus unik
+  const email = body.email?.trim() || null;
+  if (email) {
+    const [dupEmailCustomer, dupEmailPortal] = await Promise.all([
+      prisma.customer.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+      }),
+      prisma.portalUser.findUnique({
+        where: { email },
+      }),
+    ]);
+    if (dupEmailCustomer || dupEmailPortal) {
+      throw new Error(`Email '${email}' sudah digunakan oleh pelanggan lain.`);
+    }
+  }
 
   const customer = await prisma.$transaction(async (tx) => {
+    const customerId = `cust-${Date.now()}`;
     const created = await tx.customer.create({
       data: {
-        id: `cust-${Date.now()}`,
+        id: customerId,
         username,
-        password: body.password || undefined,
+        password,
         fullName: body.fullName?.trim() || undefined,
-        email: body.email?.trim() || undefined,
+        email: email || undefined,
         phone: body.phone?.trim() || undefined,
         address: body.address,
         status: body.status ?? "active",
@@ -97,6 +158,32 @@ export const POST = asyncApi(async (req: Request) => {
         bindOnNas: body.bindOnNas ?? false,
       },
     });
+
+    // Buat akun Portal Pelanggan terpisah jika email disertakan
+    if (email) {
+      const portalPassword = body.portalPassword?.trim() || "password123";
+      const { hashPassword } = await import("@better-auth/utils/password");
+      const hashedPassword = await hashPassword(portalPassword);
+      const portalUserId = `usr-${customerId}`;
+
+      await tx.portalUser.create({
+        data: {
+          id: portalUserId,
+          name: created.fullName || created.username,
+          email,
+          customerId: created.id,
+          accounts: {
+            create: {
+              id: `pacc-${portalUserId}-credential`,
+              accountId: email,
+              providerId: "credential",
+              password: hashedPassword,
+            },
+          },
+        },
+      });
+    }
+
     // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
     const profile = created.profileId
       ? await tx.bandwidthProfile.findUnique({
@@ -121,14 +208,9 @@ export const POST = asyncApi(async (req: Request) => {
           select: { ipAddress: true },
         })
       : null;
-    await syncCustomerRadius(
-      tx,
-      created,
-      profile,
-      body.password ?? undefined,
-      router?.ipAddress,
-    );
+    await syncCustomerRadius(tx, created, profile, password, router?.ipAddress);
     return created;
   });
+
   return NextResponse.json({ data: customer }, { status: 201 });
 });

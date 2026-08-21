@@ -18,6 +18,13 @@ export interface Customer {
   createdAt: string;
   updatedAt: string;
   lastSeenAt?: string; // dari radacct terakhir
+  portalUser?: {
+    id: string;
+    name?: string;
+    email: string;
+    createdAt?: string;
+  } | null;
+  portalPassword?: string;
 }
 
 export interface BandwidthProfile {

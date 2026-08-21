@@ -14,9 +14,9 @@ import {
   Network,
   PowerOff,
   Receipt,
+  Shield,
   Upload,
   User,
-  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -583,13 +583,29 @@ export default function CustomerDetailPage({
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                  <Zap className="h-4 w-4" />
+                  <Shield className="h-4 w-4" />
                   <CardTitle className="text-base">
-                    Paket Bandwidth & Kredensial
+                    Kredensial PPPoE & Paket Bandwidth
                   </CardTitle>
                 </div>
+                <CardDescription>
+                  Kredensial koneksi internet untuk router/ONT pelanggan
+                  (FreeRADIUS).
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-xs sm:text-sm">
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Username PPPoE:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    {customer.username}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Password PPPoE:</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">
+                    {customer.password ? customer.password : "••••••••"}
+                  </span>
+                </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">Profil Paket:</span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
@@ -641,15 +657,18 @@ export default function CustomerDetailPage({
               </CardContent>
             </Card>
 
-            {/* Customer Metadata Card */}
+            {/* Customer Metadata & Portal Account Card */}
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                   <User className="h-4 w-4" />
                   <CardTitle className="text-base">
-                    Informasi Kontak & Lokasi
+                    Informasi Kontak & Akun Portal
                   </CardTitle>
                 </div>
+                <CardDescription>
+                  Identitas pelanggan dan akses akun login web Portal Pelanggan.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-xs sm:text-sm">
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
@@ -662,6 +681,32 @@ export default function CustomerDetailPage({
                   <span className="text-slate-500">No. Telepon / WA:</span>
                   <span className="font-mono font-medium text-slate-900 dark:text-slate-100">
                     {customer.phone || "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Email Akun Portal:</span>
+                  <span className="font-medium text-slate-900 dark:text-slate-100">
+                    {customer.email ||
+                      (customer.portalUser?.email ? (
+                        customer.portalUser.email
+                      ) : (
+                        <span className="text-slate-400 italic">
+                          Belum terdaftar
+                        </span>
+                      ))}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Status Akun Portal:</span>
+                  <span className="font-medium">
+                    {customer.portalUser || customer.email ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Aktif Terhubung
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 italic">Belum Aktif</span>
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">

@@ -79,15 +79,16 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 
 - **`Customer` (`customer`)**:
   - `id` (String PK, format `cust-<timestamp>`)
-  - `username` (String Unique — login PPPoE / `radcheck.username`, case-insensitive di layer API)
-  - `password` (String? — password PPPoE)
-  - `fullName`, `email`, `phone`, `address` (Metadata kontak pelanggan)
+  - `username` (String Unique — login PPPoE / `radcheck.username`, case-insensitive di layer API, auto-generated unik format `user_<6-digit>`, jika diganti otomatis trigger `moveCustomerRadius` ke tabel RADIUS)
+  - `password` (String? — password PPPoE dial-in, auto-generated 8 karakter)
+  - `fullName`, `email`, `phone`, `address` (Metadata kontak pelanggan; `email` digunakan untuk pembuatan akun `PortalUser`)
   - `status` (`"active"` | `"suspended"` | `"disabled"`)
   - `profileId` (FK $\rightarrow$ `BandwidthProfile.id`)
   - `staticIp` (String? — IP statis pelanggan / `Framed-IP-Address`)
   - `nasId` (FK $\rightarrow$ `NasRouter.id`?)
   - `bindOnNas` (Boolean, default `false` — kunci login hanya melalui router `nasId`)
   - `createdAt`, `updatedAt`, `lastSeenAt` (DateTime)
+  - `portalUser` (Relasi 1-to-1 ke `PortalUser` untuk login Customer Self-Care)
 
 - **`BandwidthProfile` (`bandwidth_profile`)**:
   - `id` (String PK, format `prof-<timestamp>`), `name` (String), `price` (Int? IDR/bulan), `description` (String?)

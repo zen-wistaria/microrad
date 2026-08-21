@@ -90,6 +90,8 @@ export function useAuth() {
   return useMemo(
     () => ({
       currentUser,
+      appUser,
+      portalUser,
       isLoading,
       isAuthenticated,
       isAdmin,
@@ -99,6 +101,16 @@ export function useAuth() {
         router.replace("/login");
       },
     }),
-    [currentUser, isLoading, isAuthenticated, isAdmin, login, logout, router],
+    [
+      currentUser,
+      appUser,
+      portalUser,
+      isLoading,
+      isAuthenticated,
+      isAdmin,
+      login,
+      logout,
+      router,
+    ],
   );
 }

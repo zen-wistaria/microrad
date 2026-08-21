@@ -66,6 +66,10 @@ export async function moveCustomerRadius(
     where: { username: oldUsername },
     data: { username: newUsername },
   });
+  await tx.radUserGroup.updateMany({
+    where: { username: oldUsername },
+    data: { username: newUsername },
+  });
 }
 
 /** Hapus baris RADIUS pelanggan (delete customer / nonaktif). */

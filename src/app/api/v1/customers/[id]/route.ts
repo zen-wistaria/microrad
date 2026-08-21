@@ -14,7 +14,19 @@ type Params = Promise<{ id: string }>;
 export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   await requirePermission("customer.read");
   const { id } = await ctx.params;
-  const customer = await prisma.customer.findUnique({ where: { id } });
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+    include: {
+      portalUser: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
   if (!customer) throw new Error("Pelanggan tidak ditemukan.");
 
   // Status online dihitung dari radacct langsung (sumber kebenaran
@@ -62,25 +74,63 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     nasId?: string | null;
     bindOnNas?: boolean;
     password?: string;
+    portalPassword?: string;
   };
 
-  const existing = await prisma.customer.findUnique({ where: { id } });
+  const existing = await prisma.customer.findUnique({
+    where: { id },
+    include: { portalUser: true },
+  });
   if (!existing) throw new Error("Pelanggan tidak ditemukan.");
 
   if (body.username !== undefined) {
     const username = body.username.trim();
-    const dup = await prisma.customer.findFirst({
-      where: {
-        username: { equals: username, mode: "insensitive" },
-        NOT: { id },
-      },
-    });
-    if (dup) {
+    if (!username) throw new Error("Username PPPoE tidak boleh kosong.");
+    const [dupCustomer, dupRad] = await Promise.all([
+      prisma.customer.findFirst({
+        where: {
+          username: { equals: username, mode: "insensitive" },
+          NOT: { id },
+        },
+      }),
+      prisma.radCheck.findFirst({
+        where: {
+          username,
+          NOT: { username: existing.username },
+        },
+      }),
+    ]);
+    if (dupCustomer || dupRad) {
       throw new Error(
         `Username PPPoE '${username}' sudah digunakan pelanggan lain.`,
       );
     }
   }
+
+  // Validasi email jika diubah
+  if (body.email?.trim()) {
+    const email = body.email.trim();
+    const [dupCustEmail, dupPortalEmail] = await Promise.all([
+      prisma.customer.findFirst({
+        where: {
+          email: { equals: email, mode: "insensitive" },
+          NOT: { id },
+        },
+      }),
+      prisma.portalUser.findFirst({
+        where: {
+          email,
+          NOT: existing.portalUser ? { id: existing.portalUser.id } : undefined,
+        },
+      }),
+    ]);
+    if (dupCustEmail || dupPortalEmail) {
+      throw new Error(`Email '${email}' sudah digunakan pelanggan lain.`);
+    }
+  }
+
+  const usernameChanged =
+    body.username !== undefined && body.username.trim() !== existing.username;
 
   const customer = await prisma.$transaction(async (tx) => {
     const updated = await tx.customer.update({
@@ -93,7 +143,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           ? { fullName: body.fullName.trim() || undefined }
           : {}),
         ...(body.email !== undefined
-          ? { email: body.email.trim() || undefined }
+          ? { email: body.email.trim() || null }
           : {}),
         ...(body.phone !== undefined
           ? { phone: body.phone.trim() || undefined }
@@ -114,9 +164,56 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       },
     });
 
+    // ── Update / Create Akun Portal Pelanggan ──
+    const targetEmail =
+      body.email !== undefined ? body.email.trim() : existing.email;
+    if (targetEmail) {
+      const { hashPassword } = await import("@better-auth/utils/password");
+      if (existing.portalUser) {
+        await tx.portalUser.update({
+          where: { id: existing.portalUser.id },
+          data: {
+            email: targetEmail,
+            name: updated.fullName || updated.username,
+          },
+        });
+        if (body.portalPassword?.trim()) {
+          const hashedPassword = await hashPassword(body.portalPassword.trim());
+          await tx.portalAccount.updateMany({
+            where: { userId: existing.portalUser.id },
+            data: { password: hashedPassword, accountId: targetEmail },
+          });
+        } else if (body.email !== undefined) {
+          await tx.portalAccount.updateMany({
+            where: { userId: existing.portalUser.id },
+            data: { accountId: targetEmail },
+          });
+        }
+      } else {
+        // Buat portal user baru jika sebelumnya belum ada
+        const portalPassword = body.portalPassword?.trim() || "password123";
+        const hashedPassword = await hashPassword(portalPassword);
+        const portalUserId = `usr-${updated.id}`;
+        await tx.portalUser.create({
+          data: {
+            id: portalUserId,
+            name: updated.fullName || updated.username,
+            email: targetEmail,
+            customerId: updated.id,
+            accounts: {
+              create: {
+                id: `pacc-${portalUserId}-credential`,
+                accountId: targetEmail,
+                providerId: "credential",
+                password: hashedPassword,
+              },
+            },
+          },
+        });
+      }
+    }
+
     // ── radsync (tabel RADIUS bersama, atomik dengan CRUD) ──
-    const usernameChanged =
-      body.username !== undefined && body.username.trim() !== existing.username;
     if (usernameChanged) {
       await moveCustomerRadius(tx, existing.username, updated.username);
     }
@@ -152,6 +249,21 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     );
     return updated;
   });
+
+  // Jika username berubah dan sedang online di router, putus sesi lama agar login dengan username baru
+  if (usernameChanged) {
+    try {
+      const { kickSessionByUsername } = await import(
+        "@/lib/mikrotik-disconnect"
+      );
+      await kickSessionByUsername(existing.username, existing.nasId);
+    } catch (err) {
+      console.warn(
+        `[disconnect] gagal putus sesi lama saat username diganti:`,
+        err,
+      );
+    }
+  }
 
   // ── CoA: bila profil berubah & user sedang online → push rate-limit baru
   // tanpa disconnect (RFC 5176). Gagal → fallback kick agar re-login.

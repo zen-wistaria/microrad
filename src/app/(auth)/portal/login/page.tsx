@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Lock, Mail, Radio } from "lucide-react";
+import { Globe, Loader2, Lock, Mail } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type React from "react";
@@ -18,41 +18,42 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { portalAuthClient } from "@/lib/auth-portal-client";
 import { useAuth } from "@/lib/use-auth";
 import { getErrorMessage } from "@/lib/utils";
 
-export default function LoginPage() {
+export default function PortalLoginPage() {
   const router = useRouter();
-  const { login, appUser, portalUser, isLoading } = useAuth();
-  const [email, setEmail] = useState("admin@microrad.net");
+  const { appUser, portalUser, isLoading } = useAuth();
+  const [email, setEmail] = useState("budi.santoso@mail.com");
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
 
   // Auto redirect jika sudah login
   useEffect(() => {
     if (isLoading) return;
-    if (appUser) {
-      router.replace("/dashboard");
-    } else if (portalUser) {
+    if (portalUser) {
       router.replace("/portal");
+    } else if (appUser) {
+      router.replace("/dashboard");
     }
-  }, [appUser, portalUser, isLoading, router]);
+  }, [portalUser, appUser, isLoading, router]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handlePortalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const result = await login(email, password);
-      const area = result?.area ?? "app";
-      toast.success(
-        area === "portal"
-          ? "Selamat datang di Portal Pelanggan!"
-          : "Login berhasil!",
-      );
-      router.replace(area === "portal" ? "/portal" : "/dashboard");
+      const res = await portalAuthClient.signIn.email({ email, password });
+      if (res.error) {
+        throw new Error(
+          res.error.message || "Email atau password portal salah.",
+        );
+      }
+      toast.success("Selamat datang di Portal Pelanggan!");
+      router.replace("/portal");
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err) || "Email atau password salah.");
+      toast.error(getErrorMessage(err) || "Gagal masuk ke portal pelanggan.");
     } finally {
       setLoading(false);
     }
@@ -66,35 +67,36 @@ export default function LoginPage() {
       </div>
 
       {/* Background ambient accents */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 left-1/3 -translate-x-1/2 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 left-1/3 -translate-x-1/2 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md space-y-6">
         {/* Brand header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/20 mb-2">
-            <Radio className="h-7 w-7" />
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-tr from-emerald-600 to-teal-600 text-white shadow-xl shadow-emerald-500/20 mb-2">
+            <Globe className="h-7 w-7" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            MicroRAD
+            Customer Self-Care
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Portal Manajemen PPPoE & RADIUS MikroTik
+            Portal Layanan Mandiri Pelanggan Internet
           </p>
         </div>
 
         {/* Login Card */}
         <Card className="border-slate-200/80 shadow-xl backdrop-blur-sm dark:border-slate-800">
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Login App User</CardTitle>
+            <CardTitle className="text-lg">Masuk ke Portal</CardTitle>
             <CardDescription>
-              Masuk dengan akun administrator, Manager, atau pelanggan.
+              Gunakan email terdaftar untuk melihat tagihan, riwayat pemakaian,
+              dan status jaringan Anda.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handlePortalLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email Pengguna</Label>
+                <Label htmlFor="email">Email Terdaftar</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
@@ -102,7 +104,7 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nama@microrad.net"
+                    placeholder="nama@domain.com"
                     required
                     className="pl-9"
                   />
@@ -111,7 +113,7 @@ export default function LoginPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">Password Portal</Label>
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -127,30 +129,34 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full mt-2" disabled={loading}>
+              <Button
+                type="submit"
+                className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={loading}
+              >
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Memverifikasi...
                   </>
                 ) : (
-                  "Masuk ke Dashboard"
+                  "Masuk ke Portal Pelanggan"
                 )}
               </Button>
             </form>
           </CardContent>
           <CardFooter className="flex flex-col gap-2 border-t border-slate-100 pt-4 text-center text-xs text-slate-500 dark:border-slate-800/80">
             <div>
-              Pelanggan Internet?{" "}
+              Administrator / Operator NOC?{" "}
               <Link
-                href="/portal/login"
-                className="font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                href="/login"
+                className="font-medium text-blue-600 hover:underline dark:text-blue-400"
               >
-                Masuk ke Portal Pelanggan &rarr;
+                Login Manajemen &rarr;
               </Link>
             </div>
             <div className="text-[11px] text-slate-400">
-              MicroRAD v0.2 • PPPoE & RADIUS Manager
+              MicroRAD v0.2 • Self-Care Portal
             </div>
           </CardFooter>
         </Card>

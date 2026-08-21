@@ -43,7 +43,20 @@ export function proxy(request: NextRequest) {
   const hasAppSession = request.cookies.has(APP_COOKIE);
   const hasPortalSession = request.cookies.has(PORTAL_COOKIE);
 
-  // ── 1. Path tidak dikenal → 404 ──
+  // ── 1. Path root (/) ──
+  if (pathname === "/") {
+    const url = request.nextUrl.clone();
+    if (hasAppSession) {
+      url.pathname = "/dashboard";
+    } else if (hasPortalSession) {
+      url.pathname = "/portal";
+    } else {
+      url.pathname = "/login";
+    }
+    return NextResponse.redirect(url);
+  }
+
+  // ── 2. Path tidak dikenal → 404 ──
   if (!isKnownRoute(pathname)) {
     return NextResponse.json(
       { error: "Halaman tidak ditemukan." },
@@ -51,23 +64,48 @@ export function proxy(request: NextRequest) {
     );
   }
 
-  // ── 2. /portal → butuh sesi portal ──
+  // ── 3. Halaman Login: Jika sudah login, redirect langsung ──
+  if (pathname === "/login") {
+    if (hasAppSession) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+    if (hasPortalSession) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/portal";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
+  if (pathname === "/portal/login") {
+    if (hasPortalSession) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/portal";
+      return NextResponse.redirect(url);
+    }
+    if (hasAppSession) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
+  // ── 4. /portal → butuh sesi portal ──
   if (pathname.startsWith("/portal")) {
     if (!hasPortalSession) {
       const url = request.nextUrl.clone();
-      url.pathname = "/login";
+      url.pathname = "/portal/login";
       url.search = "";
       return NextResponse.redirect(url);
     }
     return NextResponse.next();
   }
 
-  // ── 3. Area dashboard (semua halaman non-portal) → butuh sesi app ──
-  if (
-    pathname !== "/login" &&
-    !pathname.startsWith("/api") &&
-    !pathname.startsWith("/_next")
-  ) {
+  // ── 5. Area dashboard (semua halaman non-portal) → butuh sesi app ──
+  if (!pathname.startsWith("/api") && !pathname.startsWith("/_next")) {
     if (!hasAppSession) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
