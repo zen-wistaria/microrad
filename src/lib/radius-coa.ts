@@ -43,7 +43,7 @@ async function runRadclient(
     secret,
   ].join(" ");
   const { stdout, stderr } = await execAsync(
-    `printf '%s' ${JSON.stringify(input + "\n")} | ${cmd} 2>&1`,
+    `printf '%s' ${JSON.stringify(`${input}\n`)} | ${cmd} 2>&1`,
     {
       timeout: 15_000,
     },

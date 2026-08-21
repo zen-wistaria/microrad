@@ -16,9 +16,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+// import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { getActiveSessions } from "@/lib/api/sessions";
+// import { getActiveSessions } from "@/lib/api/sessions";
 import { hasPermission } from "@/lib/rbac";
 import type { Permission } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
@@ -113,39 +113,39 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, logout } = useAuth();
-  const [activeSessionCount, setActiveSessionCount] = useState<number>(0);
+  // const [activeSessionCount, setActiveSessionCount] = useState<number>(0);
   const handleLogout = () => {
     logout(); // hapus sesi login (localStorage)
     router.replace("/login"); // langsung redirect ke halaman login
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchCounts = async () => {
-      if (
-        typeof document !== "undefined" &&
-        document.visibilityState !== "visible"
-      ) {
-        return;
-      }
-      try {
-        const sessions = await getActiveSessions();
-        if (!cancelled) {
-          setActiveSessionCount(sessions.length);
-        }
-      } catch (_e) {
-        // silent fallback
-      }
-    };
+  // useEffect(() => {
+  //   let cancelled = false;
+  //   const fetchCounts = async () => {
+  //     if (
+  //       typeof document !== "undefined" &&
+  //       document.visibilityState !== "visible"
+  //     ) {
+  //       return;
+  //     }
+  //     try {
+  //       const sessions = await getActiveSessions();
+  //       if (!cancelled) {
+  //         setActiveSessionCount(sessions.length);
+  //       }
+  //     } catch (_e) {
+  //       // silent fallback
+  //     }
+  //   };
 
-    fetchCounts();
-    // Polling santai setiap 60 detik (hanya saat tab aktif)
-    const interval = setInterval(fetchCounts, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  //   fetchCounts();
+  //   // Polling santai setiap 60 detik (hanya saat tab aktif)
+  //   const interval = setInterval(fetchCounts, 60000);
+  //   return () => {
+  //     cancelled = true;
+  //     clearInterval(interval);
+  //   };
+  // }, []);
 
   const isLinkActive = (href: string) => {
     if (href === "/dashboard") {
@@ -219,7 +219,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                     <span>{item.title}</span>
                   </div>
 
-                  {item.badgeKey === "activeSessions" && (
+                  {/* {item.badgeKey === "activeSessions" && (
                     <span
                       className={cn(
                         "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold transition-all",
@@ -230,7 +230,7 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                     >
                       {activeSessionCount}
                     </span>
-                  )}
+                  )} */}
                 </Link>
               );
             })}
