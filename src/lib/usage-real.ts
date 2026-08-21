@@ -244,6 +244,100 @@ export async function getMonthlyUsageFromSessions(
   return Array.from(months.values());
 }
 
+/** Ambil total akumulasi trafik hari ini dari radacct (sesi online + sesi yang selesai hari ini). */
+export async function getTodayTrafficFromRadacct(
+  prisma: PrismaClient,
+  now = new Date(),
+): Promise<{
+  totalDownloadBytes: number;
+  totalUploadBytes: number;
+  totalTrafficBytes: number;
+}> {
+  const todayKey = dateKeyUTC(now);
+  const todayStart = new Date(now);
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const rows = await prisma.radAcct.findMany({
+    where: {
+      OR: [
+        { acctStopTime: null },
+        { acctStopTime: { gte: todayStart } },
+        { acctUpdateTime: { gte: todayStart } },
+        { acctStartTime: { gte: todayStart } },
+      ],
+    },
+    select: {
+      acctUniqueId: true,
+      acctStartTime: true,
+      acctUpdateTime: true,
+      acctStopTime: true,
+      acctSessionTime: true,
+      acctInputOctets: true,
+      acctOutputOctets: true,
+    },
+  });
+
+  // Dedup per acctUniqueId: ambil baris dengan timestamp terbaru
+  const byUnique = new Map<string, (typeof rows)[0]>();
+  for (const r of rows) {
+    const existing = byUnique.get(r.acctUniqueId);
+    const curTime =
+      r.acctStopTime?.getTime() ??
+      r.acctUpdateTime?.getTime() ??
+      r.acctStartTime?.getTime() ??
+      0;
+    const oldTime =
+      existing?.acctStopTime?.getTime() ??
+      existing?.acctUpdateTime?.getTime() ??
+      existing?.acctStartTime?.getTime() ??
+      0;
+    if (!existing || curTime >= oldTime) {
+      byUnique.set(r.acctUniqueId, r);
+    }
+  }
+
+  let totalDownload = 0;
+  let totalUpload = 0;
+
+  for (const r of byUnique.values()) {
+    // Pastikan sesi ini relevan dengan hari ini (masih aktif atau dimulai/diupdate/berhenti hari ini UTC)
+    const refDate = r.acctStartTime ?? r.acctUpdateTime ?? r.acctStopTime;
+    const isToday =
+      r.acctStopTime === null || (refDate && dateKeyUTC(refDate) === todayKey);
+
+    if (!isToday) continue;
+
+    if (r.acctStopTime) {
+      // Sesi sudah selesai hari ini
+      totalDownload += Number(r.acctOutputOctets ?? 0);
+      totalUpload += Number(r.acctInputOctets ?? 0);
+    } else {
+      // Sesi masih aktif (online) saat ini -> estimasi durasi & inflasi real-time
+      const nowMs = now.getTime();
+      const started = r.acctStartTime ?? now;
+      const baseMs = Number(r.acctSessionTime ?? 0) * 1000;
+      const sinceUpdateMs = r.acctUpdateTime
+        ? Math.max(0, nowMs - new Date(r.acctUpdateTime).getTime())
+        : Math.max(0, nowMs - started.getTime());
+      const duration = Math.max(0, Math.round((baseMs + sinceUpdateMs) / 1000));
+      const growth = 1 + Math.min(duration * 10, 3600) / 3600;
+
+      totalDownload += Number(r.acctOutputOctets ?? 0) * growth;
+      totalUpload += Number(r.acctInputOctets ?? 0) * growth;
+    }
+  }
+
+  const totalDownloadBytes = Math.round(totalDownload);
+  const totalUploadBytes = Math.round(totalUpload);
+  const totalTrafficBytes = totalDownloadBytes + totalUploadBytes;
+
+  return {
+    totalDownloadBytes,
+    totalUploadBytes,
+    totalTrafficBytes,
+  };
+}
+
 /** Tren penggunaan 7 hari terakhir di dashboard — agregasi nyata radacct. */
 export async function getUsageTrendFromRadacct(
   prisma: PrismaClient,
@@ -254,13 +348,42 @@ export async function getUsageTrendFromRadacct(
   since.setUTCHours(0, 0, 0, 0);
 
   const rows = await prisma.radAcct.findMany({
-    where: { acctStartTime: { gte: since } },
+    where: {
+      OR: [
+        { acctStartTime: { gte: since } },
+        { acctStopTime: { gte: since } },
+        { acctUpdateTime: { gte: since } },
+        { acctStopTime: null },
+      ],
+    },
     select: {
+      acctUniqueId: true,
       acctStartTime: true,
+      acctUpdateTime: true,
+      acctStopTime: true,
       acctInputOctets: true,
       acctOutputOctets: true,
     },
   });
+
+  // Dedup per acctUniqueId
+  const byUnique = new Map<string, (typeof rows)[0]>();
+  for (const r of rows) {
+    const existing = byUnique.get(r.acctUniqueId);
+    const curTime =
+      r.acctStopTime?.getTime() ??
+      r.acctUpdateTime?.getTime() ??
+      r.acctStartTime?.getTime() ??
+      0;
+    const oldTime =
+      existing?.acctStopTime?.getTime() ??
+      existing?.acctUpdateTime?.getTime() ??
+      existing?.acctStartTime?.getTime() ??
+      0;
+    if (!existing || curTime >= oldTime) {
+      byUnique.set(r.acctUniqueId, r);
+    }
+  }
 
   const byDay = new Map<string, { download: number; upload: number }>();
   const points: UsageTrendPoint[] = [];
@@ -276,9 +399,10 @@ export async function getUsageTrendFromRadacct(
     });
   }
 
-  for (const r of rows) {
-    if (!r.acctStartTime) continue;
-    const key = dateKeyUTC(r.acctStartTime);
+  for (const r of byUnique.values()) {
+    const refDate = r.acctStartTime ?? r.acctUpdateTime ?? r.acctStopTime;
+    if (!refDate) continue;
+    const key = dateKeyUTC(refDate);
     const day = byDay.get(key);
     if (!day) continue;
     day.download += Number(r.acctOutputOctets ?? 0);
