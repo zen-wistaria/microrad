@@ -4,6 +4,7 @@ import {
   Check,
   CheckSquare,
   Eye,
+  FolderKanban,
   KeyRound,
   Loader2,
   Lock,
@@ -11,7 +12,9 @@ import {
   Plus,
   RefreshCw,
   Shield,
+  ShieldUser,
   Trash2,
+  UserCog2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -304,6 +307,7 @@ export default function RolesSettingsPage() {
                   {roles.map((role) => {
                     const isSystem = role.system;
                     const isAdmin = role.id === "role-admin";
+                    const isManager = role.id === "role-manager";
                     return (
                       <tr
                         key={role.id}
@@ -314,7 +318,13 @@ export default function RolesSettingsPage() {
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-2">
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400">
-                              <Shield className="h-4 w-4" />
+                              {isAdmin ? (
+                                <ShieldUser className="h-5 w-5" />
+                              ) : isManager ? (
+                                <FolderKanban className="h-5 w-5" />
+                              ) : (
+                                <UserCog2 className="h-5 w-5" />
+                              )}
                             </div>
                             <div>
                               <p className="font-semibold text-slate-900 dark:text-slate-100">

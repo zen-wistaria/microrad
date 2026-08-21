@@ -1,7 +1,16 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2, UserCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle,
+  CircleX,
+  FolderKanban,
+  Loader2,
+  ShieldUser,
+  UserCheck,
+  UserCog2,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -187,13 +196,22 @@ export function AppUserForm({
                 <SelectContent>
                   {allRoles.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
-                      {r.id === "role-admin"
-                        ? "🛡️ Administrator (Akses Penuh)"
-                        : r.id === "role-manager"
-                          ? "👔 Manager (Operasional & Keuangan)"
-                          : r.id === "role-customer"
-                            ? "🏠 Pelanggan (Portal Pelanggan)"
-                            : `⭐ ${r.name}`}
+                      {r.id === "role-admin" ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <ShieldUser className="h-4 w-4" />
+                          Administrator (Akses Penuh)
+                        </div>
+                      ) : r.id === "role-manager" ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <FolderKanban className="h-4 w-4" />
+                          Manager (Operasional & Keuangan)
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-2">
+                          <UserCog2 className="h-4 w-4" />
+                          {r.name}
+                        </div>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -218,9 +236,17 @@ export function AppUserForm({
                   <SelectValue placeholder="Pilih Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">🟢 Active (Bisa Login)</SelectItem>
+                  <SelectItem value="active">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="text-green-500 h-4 w-4" /> Active
+                      (Aktif)
+                    </div>
+                  </SelectItem>
                   <SelectItem value="disabled">
-                    ⚪ Disabled (Diblokir)
+                    <div className="flex items-center gap-2">
+                      <CircleX className="text-red-500 h-4 w-4" /> Disabled
+                      (Diblokir)
+                    </div>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -231,50 +257,46 @@ export function AppUserForm({
             <Label>Ringkasan Hak Akses</Label>
             <div className="rounded-lg border border-slate-100 p-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
               {selectedRoleId === "role-admin" && (
-                <p>
-                  🛡️{" "}
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    Administrator
-                  </span>{" "}
-                  — Akses penuh ke semua modul: pelanggan, tagihan, sesi,
-                  router, pengaturan, pengguna aplikasi, dan role.
-                </p>
+                <div className="flex flex-col items-center gap-2 md:flex-row md:items-start">
+                  <ShieldUser className="h-7 w-7 mr-2 text-slate-500 dark:text-slate-400" />
+                  <p>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      Administrator
+                    </span>{" "}
+                    — Akses penuh ke semua modul: pelanggan, tagihan, sesi,
+                    router, pengaturan, pengguna aplikasi, dan role.
+                  </p>
+                </div>
               )}
               {selectedRoleId === "role-manager" && (
-                <p>
-                  👔{" "}
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    Manager
-                  </span>{" "}
-                  — Mengelola operasional harian, laporan keuangan, serta
-                  pengawasan data pelanggan dan layanan dengan batasan izin
-                  lanjutan yang diatur oleh Administrator. Tidak dapat mengelola
-                  pengguna aplikasi, role, router NAS, atau pengaturan sistem.
-                </p>
-              )}
-              {selectedRoleId === "role-customer" && (
-                <p>
-                  🏠{" "}
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    Pelanggan
-                  </span>{" "}
-                  — Hanya dapat membuka portal pelanggan (informasi, pemakaian,
-                  tagihan, pembayaran, dan log pribadi). Tidak memiliki akses
-                  dashboard.
-                </p>
+                <div className="flex flex-col items-center gap-2 md:flex-row md:items-start">
+                  <FolderKanban className="h-10 w-10 mr-2 text-slate-500 dark:text-slate-400" />
+                  <p>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                      Manager
+                    </span>{" "}
+                    — Mengelola operasional harian, laporan keuangan, serta
+                    pengawasan data pelanggan dan layanan dengan batasan izin
+                    lanjutan yang diatur oleh Administrator. Tidak dapat
+                    mengelola pengguna aplikasi, role, router NAS, atau
+                    pengaturan sistem.
+                  </p>
+                </div>
               )}
               {selectedRoleId &&
                 !["role-admin", "role-manager", "role-customer"].includes(
                   selectedRoleId,
                 ) && (
-                  <p>
-                    ⭐{" "}
-                    <span className="font-semibold text-slate-900 dark:text-slate-100">
-                      Role Kustom
-                    </span>{" "}
-                    — Permission read/create/update/delete sesuai konfigurasi
-                    role yang dibuat oleh Administrator.
-                  </p>
+                  <div className="flex flex-col items-center gap-2 md:flex-row md:items-start">
+                    <UserCog2 className="h-7 w-7 mr-2 text-slate-500 dark:text-slate-400" />
+                    <p>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        Role Kustom
+                      </span>{" "}
+                      — Permission read/create/update/delete sesuai konfigurasi
+                      role yang dibuat oleh Administrator.
+                    </p>
+                  </div>
                 )}
             </div>
           </div>

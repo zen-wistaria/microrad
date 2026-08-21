@@ -1,8 +1,10 @@
 import {
   AlertCircle,
   CheckCircle2,
-  Shield,
+  FolderKanban,
+  ShieldUser,
   User,
+  UserCog2,
   Wifi,
   WifiOff,
   XCircle,
@@ -97,15 +99,15 @@ export function AppUserRoleBadge({
   if (roleId && !["role-admin", "role-manager"].includes(roleId)) {
     return (
       <Badge variant="purple" className="font-medium">
-        <Shield className="h-3 w-3" />
-        Role Kustom
+        <UserCog2 className="h-3 w-3 mr-1" />
+        Custom
       </Badge>
     );
   }
   if (roleId === "role-manager") {
     return (
       <Badge variant="purple" className="font-medium">
-        <Shield className="h-3 w-3" />
+        <FolderKanban className="h-3 w-3 mr-1" />
         Manager
       </Badge>
     );
@@ -113,7 +115,7 @@ export function AppUserRoleBadge({
   if (role === "admin") {
     return (
       <Badge variant="purple" className="font-medium">
-        <Shield className="h-3 w-3" />
+        <ShieldUser className="h-3 w-3 mr-1" />
         Admin
       </Badge>
     );
