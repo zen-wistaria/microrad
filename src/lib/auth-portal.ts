@@ -1,11 +1,12 @@
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { APIError, betterAuth } from "better-auth";
+import { username } from "better-auth/plugins";
 import { recordPortalLogin } from "./api-auth";
 import { prisma } from "./prisma";
 
 /**
  * Better Auth — INSTANCE #2: user PORTAL pelanggan.
- * Login pakai email + password; akun terhubung ke Customer via customerId.
+ * Login pakai email/username + password; akun terhubung ke Customer via customerId.
  * Pakai tabel terpisah (portal_user, portal_session, ...) via modelName.
  */
 export const authPortal = betterAuth({
@@ -18,10 +19,12 @@ export const authPortal = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  plugins: [username()],
   user: {
     modelName: "portalUser",
     fields: {
       name: "name",
+      username: "username",
       email: "email",
       emailVerified: "emailVerified",
       image: "image",

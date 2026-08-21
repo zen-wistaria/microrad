@@ -70,29 +70,45 @@ export const GET = asyncApi(async (req: Request) => {
 });
 
 async function generateServerUniquePppoeUsername(
-  prefix = "user_",
+  prefix = "cust_",
 ): Promise<string> {
-  const { generateCandidateUsername } = await import("@/lib/generators");
-  let attempts = 0;
-  while (attempts < 30) {
-    const candidate = generateCandidateUsername(prefix);
-    const [existingCust, existingRad] = await Promise.all([
-      prisma.customer.findFirst({
-        where: { username: { equals: candidate, mode: "insensitive" } },
-        select: { id: true },
-      }),
-      prisma.radCheck.findFirst({
-        where: { username: candidate },
-        select: { id: true },
-      }),
-    ]);
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const datePrefix = `${prefix}${yyyy}${mm}${dd}`;
 
-    if (!existingCust && !existingRad) {
-      return candidate;
+  // Cari seluruh username yang cocok dengan datePrefix hari ini
+  const [custMatches, radMatches] = await Promise.all([
+    prisma.customer.findMany({
+      where: {
+        username: { startsWith: datePrefix, mode: "insensitive" },
+      },
+      select: { username: true },
+    }),
+    prisma.radCheck.findMany({
+      where: {
+        username: { startsWith: datePrefix, mode: "insensitive" },
+      },
+      select: { username: true },
+    }),
+  ]);
+
+  const existingNums = new Set<number>();
+  for (const c of [...custMatches, ...radMatches]) {
+    const seqPart = c.username.slice(datePrefix.length);
+    const num = parseInt(seqPart, 10);
+    if (!Number.isNaN(num)) {
+      existingNums.add(num);
     }
-    attempts++;
   }
-  return `${prefix}${Date.now().toString().slice(-6)}`;
+
+  let seq = 1;
+  while (existingNums.has(seq)) {
+    seq++;
+  }
+
+  return `${datePrefix}${String(seq).padStart(4, "0")}`;
 }
 
 export const POST = asyncApi(async (req: Request) => {
@@ -154,7 +170,7 @@ export const POST = asyncApi(async (req: Request) => {
   }
 
   const customer = await prisma.$transaction(async (tx) => {
-    const customerId = `cust-${Date.now()}`;
+    const customerId = username;
     const created = await tx.customer.create({
       data: {
         id: customerId,
@@ -172,30 +188,33 @@ export const POST = asyncApi(async (req: Request) => {
       },
     });
 
-    // Buat akun Portal Pelanggan terpisah jika email disertakan
-    if (email) {
-      const portalPassword = body.portalPassword?.trim() || "password123";
-      const { hashPassword } = await import("@better-auth/utils/password");
-      const hashedPassword = await hashPassword(portalPassword);
-      const portalUserId = `usr-${customerId}`;
+    // Buat akun Portal Pelanggan terhubung ke Customer (bisa login via username/email)
+    let portalPassword = body.portalPassword?.trim();
+    if (!portalPassword) {
+      const { generatePppoePassword } = await import("@/lib/generators");
+      portalPassword = generatePppoePassword(8);
+    }
+    const { hashPassword } = await import("@better-auth/utils/password");
+    const hashedPassword = await hashPassword(portalPassword);
+    const portalUserId = `usr-${customerId}`;
 
-      await tx.portalUser.create({
-        data: {
-          id: portalUserId,
-          name: created.fullName || created.username,
-          email,
-          customerId: created.id,
-          accounts: {
-            create: {
-              id: `pacc-${portalUserId}-credential`,
-              accountId: email,
-              providerId: "credential",
-              password: hashedPassword,
-            },
+    await tx.portalUser.create({
+      data: {
+        id: portalUserId,
+        name: created.fullName || created.username,
+        username: created.username,
+        email: email || undefined,
+        customerId: created.id,
+        accounts: {
+          create: {
+            id: `pacc-${portalUserId}-credential`,
+            accountId: email || created.username,
+            providerId: "credential",
+            password: hashedPassword,
           },
         },
-      });
-    }
+      },
+    });
 
     // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
     const profile = created.profileId

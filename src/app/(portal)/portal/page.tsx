@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircle,
   AtSign,
   CalendarDays,
   Clock,
@@ -131,6 +132,25 @@ export default function PortalInfoPage() {
         </div>
       </div>
 
+      {/* Alert jika status suspended */}
+      {customer.status === "suspended" && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold">
+                Status Layanan: Ditangguhkan (Suspended / Isolir)
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                Koneksi internet Anda sedang dalam masa penangguhan (isolir).
+                Silakan lakukan pelunasan tagihan pada menu Tagihan atau hubungi
+                customer service kami.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Ringkasan layanan & keuangan */}
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
@@ -176,7 +196,11 @@ export default function PortalInfoPage() {
               Detail Paket Internet
             </CardTitle>
             <CardDescription>
-              Informasi paket langganan yang sedang aktif
+              {customer.status === "active"
+                ? "Informasi paket langganan yang sedang aktif"
+                : customer.status === "suspended"
+                  ? "Layanan paket internet sedang ditangguhkan (Suspended/Isolir)"
+                  : "Layanan paket internet telah dinonaktifkan (Disabled)"}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -25,7 +25,7 @@ import { getErrorMessage } from "@/lib/utils";
 export default function PortalLoginPage() {
   const router = useRouter();
   const { appUser, portalUser, isLoading } = useAuth();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -42,8 +42,8 @@ export default function PortalLoginPage() {
 
   const handlePortalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      toast.error("Mohon masukkan email pelanggan terdaftar Anda.");
+    if (!identifier.trim()) {
+      toast.error("Mohon masukkan email atau username PPPoE Anda.");
       return;
     }
     if (!password) {
@@ -53,13 +53,20 @@ export default function PortalLoginPage() {
 
     setLoading(true);
     try {
-      const res = await portalAuthClient.signIn.email({
-        email: email.trim(),
-        password,
-      });
+      const isEmail = identifier.includes("@");
+      const res = isEmail
+        ? await portalAuthClient.signIn.email({
+            email: identifier.trim(),
+            password,
+          })
+        : await portalAuthClient.signIn.username({
+            username: identifier.trim(),
+            password,
+          });
+
       if (res.error) {
         throw new Error(
-          res.error.message || "Email atau password portal salah.",
+          res.error.message || "Email/username atau password portal salah.",
         );
       }
       toast.success("Selamat datang di Portal Pelanggan!");
@@ -101,24 +108,24 @@ export default function PortalLoginPage() {
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Masuk ke Portal</CardTitle>
             <CardDescription>
-              Gunakan email terdaftar untuk melihat tagihan, riwayat pemakaian,
-              dan status jaringan Anda.
+              Gunakan email terdaftar atau username PPPoE untuk melihat tagihan,
+              riwayat pemakaian, dan status jaringan Anda.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handlePortalLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email Terdaftar</Label>
+                <Label htmlFor="identifier">Email atau Username PPPoE</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nama@domain.com"
+                    id="identifier"
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder="mis. cust_202608210001 atau nama@mail.com"
                     required
-                    autoComplete="email"
+                    autoComplete="username"
                     className="pl-9"
                   />
                 </div>

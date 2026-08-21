@@ -11,13 +11,13 @@ import {
   Globe,
   Loader2,
   Network,
+  RefreshCw,
   Shield,
-  Sparkles,
   User,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -39,10 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createCustomer, updateCustomer } from "@/lib/api/customers";
-import {
-  generateCandidateUsername,
-  generatePppoePassword,
-} from "@/lib/generators";
+import { generatePppoePassword } from "@/lib/generators";
 import type {
   BandwidthProfile,
   Customer,
@@ -55,14 +52,7 @@ const ipv4Regex =
   /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
 const customerSchema = z.object({
-  username: z
-    .string()
-    .min(3, "Username minimal 3 karakter")
-    .max(32, "Username maksimal 32 karakter")
-    .regex(
-      /^[a-zA-Z0-9._-]+$/,
-      "Username hanya boleh huruf, angka, titik, minus, dan underscore (tanpa spasi)",
-    ),
+  username: z.string().optional(),
   password: z
     .string()
     .optional()
@@ -71,9 +61,16 @@ const customerSchema = z.object({
     }),
   email: z
     .string()
-    .email("Format email tidak valid")
     .optional()
-    .or(z.literal("")),
+    .refine(
+      (val) =>
+        !val ||
+        val.trim() === "" ||
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim()),
+      {
+        message: "Format email tidak valid",
+      },
+    ),
   portalPassword: z
     .string()
     .optional()
@@ -127,7 +124,7 @@ export function CustomerForm({
       username: initialData?.username || "",
       password: "",
       email: initialData?.email || initialData?.portalUser?.email || "",
-      portalPassword: "",
+      portalPassword: isEditing ? "" : generatePppoePassword(8),
       fullName: initialData?.fullName || "",
       phone: initialData?.phone || "",
       address: initialData?.address || "",
@@ -139,62 +136,54 @@ export function CustomerForm({
     },
   });
 
-  // Otomatis generate username & password PPPoE saat buat pelanggan baru
-  useEffect(() => {
-    if (!isEditing && !initialData) {
-      setValue("username", generateCandidateUsername(), {
-        shouldValidate: true,
-      });
-      setValue("password", generatePppoePassword(), { shouldValidate: true });
-    }
-  }, [isEditing, initialData, setValue]);
-
   const selectedProfileId = watch("profileId");
   const selectedStatus = watch("status");
   const selectedNasId = watch("nasId");
   const bindOnNas = watch("bindOnNas");
-  const _currentUsername = watch("username");
-  const _currentPassword = watch("password");
 
-  const handleRegenerateUsername = () => {
-    setValue("username", generateCandidateUsername(), { shouldValidate: true });
+  const handleRandomizePppoePassword = () => {
+    setValue("password", generatePppoePassword(8), { shouldValidate: true });
   };
 
-  const handleRegeneratePassword = () => {
-    setValue("password", generatePppoePassword(), { shouldValidate: true });
+  const handleRandomizePortalPassword = () => {
+    setValue("portalPassword", generatePppoePassword(8), {
+      shouldValidate: true,
+    });
   };
 
   const onSubmit = async (data: CustomerFormValues) => {
     try {
       setSubmitting(true);
+      const cleanEmail = data.email?.trim() || undefined;
+      const cleanPortalPassword = data.portalPassword?.trim() || undefined;
+
       if (isEditing && initialData) {
         await updateCustomer(initialData.id, {
-          username: data.username,
-          ...(data.password ? { password: data.password } : {}),
-          email: data.email || undefined,
-          portalPassword: data.portalPassword || undefined,
-          fullName: data.fullName,
-          phone: data.phone,
-          address: data.address,
+          ...(data.password?.trim() ? { password: data.password.trim() } : {}),
+          email: cleanEmail,
+          portalPassword: cleanPortalPassword,
+          fullName: data.fullName?.trim() || undefined,
+          phone: data.phone?.trim() || undefined,
+          address: data.address?.trim() || undefined,
           profileId: data.profileId,
-          staticIp: data.staticIp || undefined,
+          staticIp: data.staticIp?.trim() || undefined,
           nasId: data.nasId || undefined,
           bindOnNas: data.bindOnNas,
           status: data.status as CustomerStatus,
         });
-        toast.success(`Data pelanggan ${data.username} berhasil diperbarui.`);
+        toast.success(
+          `Data pelanggan ${initialData.username} berhasil diperbarui.`,
+        );
         router.push(`/customers/${initialData.id}`);
       } else {
         const created = await createCustomer({
-          username: data.username,
-          password: data.password || generatePppoePassword(),
-          email: data.email || undefined,
-          portalPassword: data.portalPassword || undefined,
-          fullName: data.fullName,
-          phone: data.phone,
-          address: data.address,
+          email: cleanEmail,
+          portalPassword: cleanPortalPassword,
+          fullName: data.fullName?.trim() || undefined,
+          phone: data.phone?.trim() || undefined,
+          address: data.address?.trim() || undefined,
           profileId: data.profileId,
-          staticIp: data.staticIp || undefined,
+          staticIp: data.staticIp?.trim() || undefined,
           nasId: data.nasId || undefined,
           bindOnNas: data.bindOnNas,
           status: data.status as CustomerStatus,
@@ -237,115 +226,98 @@ export function CustomerForm({
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Section 1: PPPoE & RADIUS Authentication */}
+        {/* Section 1: Paket Layanan & Kredensial PPPoE */}
         <Card>
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
               <Shield className="h-5 w-5" />
               <CardTitle className="text-base">
-                Kredensial RADIUS PPPoE
+                {isEditing
+                  ? "Kredensial & Paket Layanan"
+                  : "Paket Layanan & Status"}
               </CardTitle>
             </div>
             <CardDescription>
-              Kredensial dial koneksi internet yang disinkronkan ke FreeRADIUS (
-              <code className="text-xs">radcheck</code>) dan MikroTik PPPoE
-              Server.
+              {isEditing
+                ? "Informasi akun PPPoE dan paket bandwidth pelanggan."
+                : "Pilih paket bandwidth dan status langganan awal pelanggan."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Username PPPoE */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="username">
-                  Username PPPoE <span className="text-rose-500">*</span>
-                </Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRegenerateUsername}
-                  className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                >
-                  <Sparkles className="h-3.5 w-3.5 mr-1" />
-                  Acak Username
-                </Button>
-              </div>
-              <Input
-                id="username"
-                placeholder="mis. user_892341"
-                {...register("username")}
-                className={
-                  errors.username ? "border-rose-500 font-mono" : "font-mono"
-                }
-              />
-              {errors.username ? (
-                <p className="text-xs text-rose-500">
-                  {errors.username.message}
-                </p>
-              ) : (
-                <p className="text-[11px] text-slate-500">
-                  Dibuat otomatis oleh sistem (dijamin unik). Anda tetap dapat
-                  mengubahnya secara manual.
-                </p>
-              )}
-            </div>
-
-            {/* Password PPPoE */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">
-                  Password PPPoE{" "}
-                  {!isEditing && <span className="text-rose-500">*</span>}
-                </Label>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowPppoePassword(!showPppoePassword)}
-                    className="h-7 px-2 text-xs text-slate-500"
-                  >
-                    {showPppoePassword ? (
-                      <>
-                        <EyeOff className="h-3.5 w-3.5 mr-1" /> Sembunyikan
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-3.5 w-3.5 mr-1" /> Tampilkan
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRegeneratePassword}
-                    className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                  >
-                    <Sparkles className="h-3.5 w-3.5 mr-1" />
-                    Acak Password
-                  </Button>
+            {/* Tampilan Khusus Mode Edit: Username & Reset Password PPPoE */}
+            {isEditing && initialData && (
+              <>
+                <div className="space-y-1.5 p-3 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-900/50 dark:border-slate-800">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Username PPPoE (ID Pelanggan)
+                  </span>
+                  <p className="font-mono text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {initialData.username}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    ID unik pelanggan yang digunakan untuk dial PPPoE dan login
+                    portal.
+                  </p>
                 </div>
-              </div>
-              <Input
-                id="password"
-                type={showPppoePassword ? "text" : "password"}
-                placeholder={
-                  isEditing
-                    ? "Kosongkan jika tidak ingin mengubah password PPPoE"
-                    : "Minimal 6 karakter"
-                }
-                {...register("password")}
-                className={
-                  errors.password ? "border-rose-500 font-mono" : "font-mono"
-                }
-              />
-              {errors.password && (
-                <p className="text-xs text-rose-500">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
+
+                {/* Reset Password PPPoE */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Reset Password PPPoE</Label>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowPppoePassword(!showPppoePassword)}
+                        className="h-7 px-2 text-xs text-slate-500"
+                      >
+                        {showPppoePassword ? (
+                          <>
+                            <EyeOff className="h-3.5 w-3.5 mr-1" /> Sembunyikan
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Tampilkan
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRandomizePppoePassword}
+                        className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                        Acak Password
+                      </Button>
+                    </div>
+                  </div>
+                  <Input
+                    id="password"
+                    type={showPppoePassword ? "text" : "password"}
+                    placeholder="Kosongkan jika tidak ingin mengubah password PPPoE"
+                    {...register("password")}
+                    className={
+                      errors.password
+                        ? "border-rose-500 font-mono"
+                        : "font-mono"
+                    }
+                  />
+                  {errors.password ? (
+                    <p className="text-xs text-rose-500">
+                      {errors.password.message}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      Diperbarui langsung ke FreeRADIUS (
+                      <code className="text-xs">radcheck</code>) jika diisi.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* Profil Paket Bandwidth */}
             <div className="space-y-2">
@@ -426,8 +398,8 @@ export function CustomerForm({
             </div>
             <CardDescription>
               Konfigurasi IP statis (
-              <code className="text-xs">radreply: Framed-IP-Address</code>) &
-              router NAS.
+              <code className="text-xs">Framed-IP-Address</code>) & router NAS
+              MikroTik.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -503,8 +475,8 @@ export function CustomerForm({
               </CardTitle>
             </div>
             <CardDescription>
-              Data pelanggan dan akun untuk masuk ke Portal Pelanggan Self-Care
-              (<code className="text-xs">/portal</code>).
+              Data pelanggan dan akses login ke Portal Pelanggan Self-Care (
+              <code className="text-xs">/portal</code>).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -528,25 +500,25 @@ export function CustomerForm({
               </div>
             </div>
 
-            {/* Pemisahan akun portal */}
+            {/* Akun portal self-care */}
             <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
                 <Globe className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <span>Akun Portal Pelanggan (Self-Care Web)</span>
+                <span>Akun Portal Pelanggan (Customer Self-Care)</span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Pelanggan dapat login ke web <code>/portal</code> menggunakan
-                Email & Password ini untuk melihat tagihan, riwayat pemakaian,
-                dan status jaringan secara mandiri.
+                Username PPPoE atau Email terdaftar untuk melihat tagihan,
+                riwayat pemakaian, dan status jaringan secara mandiri.
               </p>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email Pelanggan (Login Portal)</Label>
+                  <Label htmlFor="email">Email Pelanggan (Opsional)</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="mis. budi@gmail.com"
+                    placeholder="mis. budi@gmail.com (opsional)"
                     {...register("email")}
                     className={errors.email ? "border-rose-500" : ""}
                   />
@@ -559,20 +531,38 @@ export function CustomerForm({
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="portalPassword">Password Portal</Label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowPortalPassword(!showPortalPassword)}
-                      className="h-6 px-1.5 text-xs text-slate-500"
-                    >
-                      {showPortalPassword ? (
-                        <EyeOff className="h-3 w-3" />
-                      ) : (
-                        <Eye className="h-3 w-3" />
-                      )}
-                    </Button>
+                    <Label htmlFor="portalPassword">
+                      {isEditing
+                        ? "Reset Password Portal"
+                        : "Password Portal (Opsional)"}
+                    </Label>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setShowPortalPassword(!showPortalPassword)
+                        }
+                        className="h-6 px-1.5 text-xs text-slate-500"
+                      >
+                        {showPortalPassword ? (
+                          <EyeOff className="h-3 w-3" />
+                        ) : (
+                          <Eye className="h-3 w-3" />
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRandomizePortalPassword}
+                        className="h-6 px-1.5 text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Acak Password
+                      </Button>
+                    </div>
                   </div>
                   <Input
                     id="portalPassword"
@@ -580,10 +570,14 @@ export function CustomerForm({
                     placeholder={
                       isEditing
                         ? "Kosongkan jika tidak ingin mengubah password portal"
-                        : "Default: password123"
+                        : "Default: password123 (atau acak)"
                     }
                     {...register("portalPassword")}
-                    className={errors.portalPassword ? "border-rose-500" : ""}
+                    className={
+                      errors.portalPassword
+                        ? "border-rose-500 font-mono"
+                        : "font-mono"
+                    }
                   />
                   {errors.portalPassword && (
                     <p className="text-xs text-rose-500">

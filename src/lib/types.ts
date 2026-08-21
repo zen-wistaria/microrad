@@ -22,7 +22,8 @@ export interface Customer {
   portalUser?: {
     id: string;
     name?: string;
-    email: string;
+    username?: string | null;
+    email?: string | null;
     createdAt?: string;
   } | null;
   portalPassword?: string;

@@ -166,51 +166,55 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
 
     // ── Update / Create Akun Portal Pelanggan ──
     const targetEmail =
-      body.email !== undefined ? body.email.trim() : existing.email;
-    if (targetEmail) {
-      const { hashPassword } = await import("@better-auth/utils/password");
-      if (existing.portalUser) {
-        await tx.portalUser.update({
-          where: { id: existing.portalUser.id },
+      body.email !== undefined ? body.email.trim() || null : existing.email;
+    const { hashPassword } = await import("@better-auth/utils/password");
+
+    if (existing.portalUser) {
+      await tx.portalUser.update({
+        where: { id: existing.portalUser.id },
+        data: {
+          username: updated.username,
+          email: targetEmail,
+          name: updated.fullName || updated.username,
+        },
+      });
+      if (body.portalPassword?.trim()) {
+        const hashedPassword = await hashPassword(body.portalPassword.trim());
+        await tx.portalAccount.updateMany({
+          where: { userId: existing.portalUser.id },
           data: {
-            email: targetEmail,
-            name: updated.fullName || updated.username,
+            password: hashedPassword,
+            accountId: targetEmail || updated.username,
           },
         });
-        if (body.portalPassword?.trim()) {
-          const hashedPassword = await hashPassword(body.portalPassword.trim());
-          await tx.portalAccount.updateMany({
-            where: { userId: existing.portalUser.id },
-            data: { password: hashedPassword, accountId: targetEmail },
-          });
-        } else if (body.email !== undefined) {
-          await tx.portalAccount.updateMany({
-            where: { userId: existing.portalUser.id },
-            data: { accountId: targetEmail },
-          });
-        }
-      } else {
-        // Buat portal user baru jika sebelumnya belum ada
-        const portalPassword = body.portalPassword?.trim() || "password123";
-        const hashedPassword = await hashPassword(portalPassword);
-        const portalUserId = `usr-${updated.id}`;
-        await tx.portalUser.create({
-          data: {
-            id: portalUserId,
-            name: updated.fullName || updated.username,
-            email: targetEmail,
-            customerId: updated.id,
-            accounts: {
-              create: {
-                id: `pacc-${portalUserId}-credential`,
-                accountId: targetEmail,
-                providerId: "credential",
-                password: hashedPassword,
-              },
-            },
-          },
+      } else if (targetEmail !== existing.email) {
+        await tx.portalAccount.updateMany({
+          where: { userId: existing.portalUser.id },
+          data: { accountId: targetEmail || updated.username },
         });
       }
+    } else {
+      // Buat portal user baru jika sebelumnya belum ada
+      const portalPassword = body.portalPassword?.trim() || "password123";
+      const hashedPassword = await hashPassword(portalPassword);
+      const portalUserId = `usr-${updated.id}`;
+      await tx.portalUser.create({
+        data: {
+          id: portalUserId,
+          name: updated.fullName || updated.username,
+          username: updated.username,
+          email: targetEmail || undefined,
+          customerId: updated.id,
+          accounts: {
+            create: {
+              id: `pacc-${portalUserId}-credential`,
+              accountId: targetEmail || updated.username,
+              providerId: "credential",
+              password: hashedPassword,
+            },
+          },
+        },
+      });
     }
 
     // ── Jika status menjadi disabled, batalkan seluruh sesi login portal yang sedang aktif ──

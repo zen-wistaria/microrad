@@ -56,7 +56,7 @@ export async function getCustomerById(id: string): Promise<Customer | null> {
 }
 
 export async function createCustomer(
-  data: Omit<Customer, "id" | "createdAt" | "updatedAt">,
+  data: Partial<Omit<Customer, "id" | "createdAt" | "updatedAt">>,
 ): Promise<Customer> {
   return apiFetch<{ data: Customer }>("/customers", {
     method: "POST",

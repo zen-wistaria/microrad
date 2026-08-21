@@ -16,9 +16,17 @@ export function generatePppoePassword(length = 8): string {
 }
 
 /**
- * Generate kandidat username PPPoE format user_<6 digit angka acak>
+ * Generate kandidat username PPPoE format cust_tahun_bulan_tanggal_order
+ * Contoh: cust_202608210001
  */
-export function generateCandidateUsername(prefix = "user_"): string {
-  const num = Math.floor(100000 + Math.random() * 900000);
-  return `${prefix}${num}`;
+export function generateCandidateUsername(
+  prefix = "cust_",
+  date: Date = new Date(),
+  seq = 1,
+): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const order = String(seq).padStart(4, "0");
+  return `${prefix}${yyyy}${mm}${dd}${order}`;
 }

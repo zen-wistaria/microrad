@@ -699,13 +699,25 @@ export default function CustomerDetailPage({
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">Status Akun Portal:</span>
                   <span className="font-medium">
-                    {customer.portalUser || customer.email ? (
+                    {customer.status === "disabled" ? (
+                      <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400 font-semibold">
+                        <Ban className="h-3.5 w-3.5 text-rose-500" />
+                        Nonaktif (Akses Ditutup)
+                      </span>
+                    ) : customer.status === "suspended" ? (
+                      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+                        Suspended (Terisolir)
+                      </span>
+                    ) : customer.portalUser || customer.email ? (
                       <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        Aktif Terhubung
+                        Aktif
                       </span>
                     ) : (
-                      <span className="text-slate-400 italic">Belum Aktif</span>
+                      <span className="text-slate-400 italic">
+                        Belum Terdaftar
+                      </span>
                     )}
                   </span>
                 </div>

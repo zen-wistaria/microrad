@@ -1,3 +1,4 @@
+import { usernameClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 /**
@@ -9,6 +10,7 @@ export const portalAuthClient = createAuthClient({
     typeof window !== "undefined"
       ? `${window.location.origin}/api/auth/portal`
       : "http://localhost:3000/api/auth/portal",
+  plugins: [usernameClient()],
 });
 
 export const {

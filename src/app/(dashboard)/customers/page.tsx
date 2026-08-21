@@ -3,7 +3,10 @@
 import {
   AlertCircle,
   Ban,
+  CheckCircle,
   CheckCircle2,
+  CircleAlert,
+  CircleX,
   Edit,
   Eye,
   MoreHorizontal,
@@ -279,9 +282,23 @@ export default function CustomersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Semua Status</SelectItem>
-                    <SelectItem value="active">🟢 Active</SelectItem>
-                    <SelectItem value="suspended">🟡 Suspended</SelectItem>
-                    <SelectItem value="disabled">⚪ Disabled</SelectItem>
+                    <SelectItem value="active">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="text-green-500 h-4 w-4" /> Aktif
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="suspended">
+                      <div className="flex items-center gap-2">
+                        <CircleAlert className="text-yellow-500 h-4 w-4" />{" "}
+                        Suspend
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="disabled">
+                      <div className="flex items-center gap-2">
+                        <CircleX className="text-red-500 h-4 w-4" />{" "}
+                        Dinonaktifkan
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
