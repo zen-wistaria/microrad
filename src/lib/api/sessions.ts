@@ -13,10 +13,10 @@ export interface GetSessionsParams {
   router?: string;
 }
 
-async function fetchSessions(
+export async function getSessionsPaginated(
   params: GetSessionsParams = {},
-): Promise<Session[]> {
-  const res = await paginated<Session>("/sessions", {
+): Promise<{ data: Session[]; total: number }> {
+  return paginated<Session>("/sessions", {
     activeOnly: params.activeOnly ? "true" : undefined,
     customerId: params.customerId,
     nasId: params.nasId,
@@ -25,7 +25,16 @@ async function fetchSessions(
     year: params.year,
     month: params.month,
     page: params.page ?? 1,
-    limit: params.limit ?? 1000,
+    limit: params.limit ?? 10,
+  });
+}
+
+async function fetchSessions(
+  params: GetSessionsParams = {},
+): Promise<Session[]> {
+  const res = await getSessionsPaginated({
+    ...params,
+    limit: params.limit ?? 50,
   });
   return res.data;
 }

@@ -21,8 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getGlobalLogs } from "@/lib/api/logs";
+import { getGlobalLogsPaginated } from "@/lib/api/logs";
 import type { GlobalLogEntry } from "@/lib/types";
+import { useDebounce } from "@/lib/use-debounce";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -46,6 +47,7 @@ const SOURCE_OPTIONS = [
 
 export default function GlobalLogsPage() {
   const [logs, setLogs] = useState<GlobalLogEntry[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Filter (via nuqs — konsisten saat refresh)
@@ -53,6 +55,9 @@ export default function GlobalLogsPage() {
     "search",
     parseAsString.withDefault(""),
   );
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
   const [sourceFilter, setSourceFilter] = useQueryState(
     "source",
     parseAsString.withDefault("all"),
@@ -73,29 +78,48 @@ export default function GlobalLogsPage() {
     parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+  const safePage = Math.max(page, 1);
+  const totalPages = Math.ceil(totalCount / safeLimit) || 1;
+
+  // Sync debounced search to URL state
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch);
+      setPage(1);
+    }
+  }, [debouncedSearch, search, setSearch, setPage]);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
   const fetchLogs = useCallback(async () => {
     try {
       setLoading(true);
-      const result = await getGlobalLogs({
+      const result = await getGlobalLogsPaginated({
         search: search.trim() || undefined,
         source: sourceFilter,
         from: fromDate || undefined,
         to: toDate || undefined,
+        page: safePage,
+        limit: safeLimit,
       });
-      setLogs(result);
+      setLogs(result.data);
+      setTotalCount(result.total);
     } catch {
       setLogs([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
-  }, [search, sourceFilter, fromDate, toDate]);
+  }, [search, sourceFilter, fromDate, toDate, safePage, safeLimit]);
 
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
 
   const handleReset = () => {
+    setSearchInput("");
     setSearch("");
     setSourceFilter("all");
     setFromDate("");
@@ -103,15 +127,7 @@ export default function GlobalLogsPage() {
     setPage(1);
   };
 
-  // Pagination slice
-  const totalPages = Math.ceil(logs.length / safeLimit) || 1;
-  const safePage = Math.min(Math.max(page, 1), totalPages);
-  const paginatedLogs = useMemo(() => {
-    const start = (safePage - 1) * safeLimit;
-    return logs.slice(start, start + safeLimit);
-  }, [logs, safePage, safeLimit]);
-
-  // Ringkasan jumlah per sumber (2 label: Aplikasi / Portal Langganan + API cadangan)
+  // Ringkasan jumlah per sumber (berdasarkan batch halaman aktif)
   const counts = useMemo(() => {
     const c = { app: 0, portal: 0, api: 0 };
     for (const l of logs) {
@@ -205,8 +221,8 @@ export default function GlobalLogsPage() {
               <Input
                 id="log-search"
                 placeholder="mis. Budi, admin, 36.84..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="h-9"
               />
             </div>
@@ -255,9 +271,9 @@ export default function GlobalLogsPage() {
           <CardTitle className="text-base flex items-center gap-2">
             <ScrollText className="h-4 w-4 text-slate-400" />
             Riwayat Login
-            {logs.length > 0 && (
+            {totalCount > 0 && (
               <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                {logs.length}
+                {totalCount}
               </span>
             )}
           </CardTitle>
@@ -286,7 +302,7 @@ export default function GlobalLogsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {paginatedLogs.map((log) => (
+                  {logs.map((log) => (
                     <tr
                       key={log.id}
                       className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -334,21 +350,21 @@ export default function GlobalLogsPage() {
           )}
 
           {/* Pagination Footer */}
-          {!loading && logs.length > 0 && (
+          {!loading && totalCount > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span>
                   Menampilkan{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min((safePage - 1) * safeLimit + 1, logs.length)}
+                    {Math.min((safePage - 1) * safeLimit + 1, totalCount)}
                   </span>{" "}
                   -{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(safePage * safeLimit, logs.length)}
+                    {Math.min(safePage * safeLimit, totalCount)}
                   </span>{" "}
                   dari{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {logs.length}
+                    {totalCount}
                   </span>{" "}
                   log
                 </span>

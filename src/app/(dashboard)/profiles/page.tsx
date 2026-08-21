@@ -26,14 +26,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getCustomers } from "@/lib/api/customers";
 import { deleteProfile, getProfiles } from "@/lib/api/profiles";
-import type { BandwidthProfile, Customer } from "@/lib/types";
+import type { BandwidthProfile } from "@/lib/types";
 import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
 export default function ProfilesPage() {
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<BandwidthProfile | null>(
     null,
@@ -42,12 +40,8 @@ export default function ProfilesPage() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [profList, custList] = await Promise.all([
-        getProfiles(),
-        getCustomers(),
-      ]);
+      const profList = await getProfiles();
       setProfiles(profList);
-      setCustomers(custList);
     } catch {
       toast.error("Gagal memuat profil bandwidth.");
     } finally {
@@ -69,11 +63,6 @@ export default function ProfilesPage() {
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || "Gagal menghapus profil.");
     }
-  };
-
-  // Count active subscribers for each profile
-  const subscriberCounts = (profileId: string) => {
-    return customers.filter((c) => c.profileId === profileId).length;
   };
 
   return (
@@ -133,7 +122,7 @@ export default function ProfilesPage() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {profiles.map((profile) => {
-            const count = subscriberCounts(profile.id);
+            const count = profile.customerCount ?? 0;
 
             return (
               <Card

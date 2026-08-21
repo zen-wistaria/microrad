@@ -32,12 +32,14 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getRouters } from "@/lib/api/routers";
-import { disconnectSession, getActiveSessions } from "@/lib/api/sessions";
+import { disconnectSession, getSessionsPaginated } from "@/lib/api/sessions";
 import type { NasRouter, Session } from "@/lib/types";
+import { useDebounce } from "@/lib/use-debounce";
 import { formatBytes, getErrorMessage } from "@/lib/utils";
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [routers, setRouters] = useState<NasRouter[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -47,6 +49,9 @@ export default function SessionsPage() {
     "search",
     parseAsString.withDefault(""),
   );
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
   const [routerFilter, setRouterFilter] = useQueryState(
     "router",
     parseAsStringEnum(["all", ...routers.map((r) => r.ipAddress)]).withDefault(
@@ -61,18 +66,40 @@ export default function SessionsPage() {
     parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+  const safePage = Math.max(page, 1);
+  const totalPages = Math.ceil(totalCount / safeLimit) || 1;
 
   // Disconnect Target
   const [disconnectSessionTarget, setDisconnectSessionTarget] =
     useState<Session | null>(null);
 
+  // Sync debounced search to URL state
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch);
+      setPage(1);
+    }
+  }, [debouncedSearch, search, setSearch, setPage]);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
   const fetchData = useCallback(async () => {
     try {
-      const [sessList, routerList] = await Promise.all([
-        getActiveSessions(),
+      setLoading(true);
+      const [sessRes, routerList] = await Promise.all([
+        getSessionsPaginated({
+          activeOnly: true,
+          search: search.trim() || undefined,
+          router: routerFilter === "all" ? undefined : routerFilter,
+          page: safePage,
+          limit: safeLimit,
+        }),
         getRouters(),
       ]);
-      setSessions(sessList);
+      setSessions(sessRes.data);
+      setTotalCount(sessRes.total);
       setRouters(routerList);
     } catch (e) {
       console.error(e);
@@ -80,7 +107,7 @@ export default function SessionsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [search, routerFilter, safePage, safeLimit]);
 
   useEffect(() => {
     fetchData();
@@ -111,29 +138,6 @@ export default function SessionsPage() {
       toast.error(getErrorMessage(err) || "Gagal memutuskan sesi PPPoE.");
     }
   };
-
-  const filteredSessions = useMemo(() => {
-    return sessions.filter((s) => {
-      const matchSearch =
-        search === "" ||
-        s.customerUsername.toLowerCase().includes(search.toLowerCase()) ||
-        s.framedIp?.includes(search) ||
-        s.nasIpAddress.includes(search);
-
-      const matchRouter =
-        routerFilter === "all" || s.nasIpAddress === routerFilter;
-
-      return matchSearch && matchRouter;
-    });
-  }, [sessions, search, routerFilter]);
-
-  // Pagination slice
-  const totalPages = Math.ceil(filteredSessions.length / safeLimit) || 1;
-  const safePage = Math.min(Math.max(page, 1), totalPages);
-  const paginatedSessions = useMemo(() => {
-    const start = (safePage - 1) * safeLimit;
-    return filteredSessions.slice(start, start + safeLimit);
-  }, [filteredSessions, safePage, safeLimit]);
 
   // Aggregate KPI Stats
   const totalDownloadActive = useMemo(
@@ -256,8 +260,8 @@ export default function SessionsPage() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <Input
                 placeholder="Cari username pelanggan, framed IP, atau NAS IP..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 text-xs sm:text-sm"
               />
             </div>
@@ -279,13 +283,15 @@ export default function SessionsPage() {
                 </Select>
               </div>
 
-              {(search || routerFilter !== "all") && (
+              {(search || searchInput || routerFilter !== "all") && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
+                    setSearchInput("");
                     setSearch("");
                     setRouterFilter("all");
+                    setPage(1);
                   }}
                   className="text-xs text-slate-500"
                 >
@@ -326,7 +332,7 @@ export default function SessionsPage() {
                       </td>
                     </tr>
                   ))
-                ) : filteredSessions.length === 0 ? (
+                ) : sessions.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-12">
                       <EmptyState
@@ -341,7 +347,7 @@ export default function SessionsPage() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedSessions.map((session) => {
+                  sessions.map((session) => {
                     const routerObj = routers.find(
                       (r) => r.ipAddress === session.nasIpAddress,
                     );
@@ -417,24 +423,21 @@ export default function SessionsPage() {
           </div>
 
           {/* Pagination Footer */}
-          {!loading && filteredSessions.length > 0 && (
+          {!loading && totalCount > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span>
                   Menampilkan{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(
-                      (safePage - 1) * safeLimit + 1,
-                      filteredSessions.length,
-                    )}
+                    {Math.min((safePage - 1) * safeLimit + 1, totalCount)}
                   </span>{" "}
                   -{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(safePage * safeLimit, filteredSessions.length)}
+                    {Math.min(safePage * safeLimit, totalCount)}
                   </span>{" "}
                   dari{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {filteredSessions.length}
+                    {totalCount}
                   </span>{" "}
                   sesi
                 </span>

@@ -17,6 +17,7 @@ export interface Customer {
   bindOnNas?: boolean; // hanya boleh login lewat router nasId (radcheck NAS-IP-Address)
   createdAt: string;
   updatedAt: string;
+  isOnline?: boolean;
   lastSeenAt?: string; // dari radacct terakhir
   portalUser?: {
     id: string;

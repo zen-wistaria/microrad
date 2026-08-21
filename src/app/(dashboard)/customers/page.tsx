@@ -45,27 +45,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   deleteCustomer,
   disconnectCustomer,
-  getCustomers,
+  getCustomersPaginated,
   updateCustomer,
 } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
-import { getActiveSessions } from "@/lib/api/sessions";
 import { hasPermission } from "@/lib/rbac";
-import type {
-  BandwidthProfile,
-  Customer,
-  CustomerStatus,
-  Session,
-} from "@/lib/types";
+import type { BandwidthProfile, Customer, CustomerStatus } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
+import { useDebounce } from "@/lib/use-debounce";
 import { formatRelativeTime, getErrorMessage } from "@/lib/utils";
 
 export default function CustomersPage() {
   const { currentUser } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [onlineUsernames, setOnlineUsernames] = useState<Set<string>>(
-    new Set(),
-  );
+  const [totalCount, setTotalCount] = useState(0);
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -74,6 +67,9 @@ export default function CustomersPage() {
     "search",
     parseAsString.withDefault(""),
   );
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
   const [statusFilter, setStatusFilter] = useQueryState(
     "status",
     parseAsString.withDefault("all"),
@@ -90,6 +86,8 @@ export default function CustomersPage() {
     parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+  const safePage = Math.max(page, 1);
+  const totalPages = Math.ceil(totalCount / safeLimit) || 1;
 
   // Dialog State
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
@@ -97,53 +95,45 @@ export default function CustomersPage() {
     null,
   );
 
+  // Sync debounced search input to nuqs URL state
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch);
+      setPage(1);
+    }
+  }, [debouncedSearch, search, setSearch, setPage]);
+
+  // Keep local input in sync if URL search param is changed externally (e.g. back/forward or reset)
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [custList, profList, onlineSess] = await Promise.all([
-        getCustomers(),
+      const [custRes, profList] = await Promise.all([
+        getCustomersPaginated({
+          search: search.trim() || undefined,
+          status: statusFilter,
+          profileId: profileFilter,
+          page: safePage,
+          limit: safeLimit,
+        }),
         getProfiles(),
-        getActiveSessions().catch(() => [] as Session[]),
       ]);
-      setCustomers(custList);
+      setCustomers(custRes.data);
+      setTotalCount(custRes.total);
       setProfiles(profList);
-      setOnlineUsernames(new Set(onlineSess.map((s) => s.customerUsername)));
     } catch (_e) {
       toast.error("Gagal memuat data pelanggan.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [search, statusFilter, profileFilter, safePage, safeLimit]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Filtered customers
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
-      const matchSearch =
-        search === "" ||
-        c.username.toLowerCase().includes(search.toLowerCase()) ||
-        c.fullName?.toLowerCase().includes(search.toLowerCase()) ||
-        c.staticIp?.includes(search) ||
-        c.phone?.includes(search);
-
-      const matchStatus = statusFilter === "all" || c.status === statusFilter;
-      const matchProfile =
-        profileFilter === "all" || c.profileId === profileFilter;
-
-      return matchSearch && matchStatus && matchProfile;
-    });
-  }, [customers, search, statusFilter, profileFilter]);
-
-  // Paginated customers
-  const totalPages = Math.ceil(filteredCustomers.length / safeLimit) || 1;
-  const safePage = Math.min(Math.max(page, 1), totalPages);
-  const paginatedCustomers = useMemo(() => {
-    const start = (safePage - 1) * safeLimit;
-    return filteredCustomers.slice(start, start + safeLimit);
-  }, [filteredCustomers, safePage, safeLimit]);
 
   const profileMap = useMemo(() => {
     const map = new Map<string, BandwidthProfile>();
@@ -268,11 +258,8 @@ export default function CustomersPage() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <Input
                 placeholder="Cari username, nama, telepon, atau IP..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 text-xs sm:text-sm"
               />
             </div>
@@ -322,12 +309,14 @@ export default function CustomersPage() {
               </div>
 
               {(search ||
+                searchInput ||
                 statusFilter !== "all" ||
                 profileFilter !== "all") && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
+                    setSearchInput("");
                     setSearch("");
                     setStatusFilter("all");
                     setProfileFilter("all");
@@ -368,7 +357,7 @@ export default function CustomersPage() {
                       </td>
                     </tr>
                   ))
-                ) : paginatedCustomers.length === 0 ? (
+                ) : customers.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-12">
                       <EmptyState
@@ -393,8 +382,8 @@ export default function CustomersPage() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedCustomers.map((customer) => {
-                    const isOnline = onlineUsernames.has(customer.username);
+                  customers.map((customer) => {
+                    const isOnline = Boolean(customer.isOnline);
                     const profile = profileMap.get(customer.profileId);
 
                     return (
@@ -590,24 +579,21 @@ export default function CustomersPage() {
           </div>
 
           {/* Pagination Footer */}
-          {!loading && filteredCustomers.length > 0 && (
+          {!loading && totalCount > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span>
                   Menampilkan{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(
-                      (safePage - 1) * safeLimit + 1,
-                      filteredCustomers.length,
-                    )}
+                    {Math.min((safePage - 1) * safeLimit + 1, totalCount)}
                   </span>{" "}
                   -{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(safePage * safeLimit, filteredCustomers.length)}
+                    {Math.min(safePage * safeLimit, totalCount)}
                   </span>{" "}
                   dari{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {filteredCustomers.length}
+                    {totalCount}
                   </span>{" "}
                   pelanggan
                 </span>

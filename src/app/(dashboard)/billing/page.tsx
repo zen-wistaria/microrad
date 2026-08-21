@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { BulkGenerateDialog } from "@/components/billing/bulk-generate-dialog";
 import { CreateInvoiceDialog } from "@/components/billing/create-invoice-dialog";
@@ -52,8 +52,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   deleteInvoice,
   getBillingSummary,
-  getInvoices,
-  getPayments,
+  getInvoicesPaginated,
+  getPaymentsPaginated,
 } from "@/lib/api/billing";
 import { getCustomers } from "@/lib/api/customers";
 import { getProfiles } from "@/lib/api/profiles";
@@ -66,11 +66,14 @@ import type {
   PaymentRecord,
 } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
+import { useDebounce } from "@/lib/use-debounce";
 import { formatDate, formatRupiah, getErrorMessage } from "@/lib/utils";
 
 function BillingContent() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [totalInvoicesCount, setTotalInvoicesCount] = useState(0);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [totalPaymentsCount, setTotalPaymentsCount] = useState(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [profiles, setProfiles] = useState<BandwidthProfile[]>([]);
   const [summary, setSummary] = useState<BillingSummary | null>(null);
@@ -81,6 +84,9 @@ function BillingContent() {
     "search",
     parseAsString.withDefault(""),
   );
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
   const [statusFilter, setStatusFilter] = useQueryState(
     "status",
     parseAsString.withDefault("all"),
@@ -94,6 +100,9 @@ function BillingContent() {
     "paysearch",
     parseAsString.withDefault(""),
   );
+  const [paymentSearchInput, setPaymentSearchInput] = useState(paymentSearch);
+  const debouncedPaymentSearch = useDebounce(paymentSearchInput, 350);
+
   const [activeTab, setActiveTab] = useQueryState(
     "tab",
     parseAsString.withDefault("invoices"),
@@ -106,6 +115,34 @@ function BillingContent() {
     parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+  const safePage = Math.max(page, 1);
+
+  const invoiceTotalPages = Math.ceil(totalInvoicesCount / safeLimit) || 1;
+  const paymentTotalPages = Math.ceil(totalPaymentsCount / safeLimit) || 1;
+
+  // Sync debounced search to URL state
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch);
+      setPage(1);
+    }
+  }, [debouncedSearch, search, setSearch, setPage]);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
+  // Sync debounced payment search to URL state
+  useEffect(() => {
+    if (debouncedPaymentSearch !== paymentSearch) {
+      setPaymentSearch(debouncedPaymentSearch);
+      setPage(1);
+    }
+  }, [debouncedPaymentSearch, paymentSearch, setPaymentSearch, setPage]);
+
+  useEffect(() => {
+    setPaymentSearchInput(paymentSearch);
+  }, [paymentSearch]);
 
   const { currentUser } = useAuth();
   const canCreateBilling = hasPermission(currentUser, "billing.create");
@@ -120,17 +157,27 @@ function BillingContent() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [invList, payList, custList, profList, sumData] = await Promise.all(
-        [
-          getInvoices(),
-          getPayments(),
-          getCustomers(),
-          getProfiles(),
-          getBillingSummary(),
-        ],
-      );
-      setInvoices(invList);
-      setPayments(payList);
+      const [invRes, payRes, custList, profList, sumData] = await Promise.all([
+        getInvoicesPaginated({
+          search: search.trim() || undefined,
+          status: statusFilter,
+          month: monthFilter,
+          page: safePage,
+          limit: safeLimit,
+        }),
+        getPaymentsPaginated({
+          paysearch: paymentSearch.trim() || undefined,
+          page: safePage,
+          limit: safeLimit,
+        }),
+        getCustomers(),
+        getProfiles(),
+        getBillingSummary(),
+      ]);
+      setInvoices(invRes.data);
+      setTotalInvoicesCount(invRes.total);
+      setPayments(payRes.data);
+      setTotalPaymentsCount(payRes.total);
       setCustomers(custList);
       setProfiles(profList);
       setSummary(sumData);
@@ -139,56 +186,11 @@ function BillingContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [search, statusFilter, monthFilter, paymentSearch, safePage, safeLimit]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  const filteredInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
-      const matchSearch =
-        search === "" ||
-        inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
-        inv.customerUsername.toLowerCase().includes(search.toLowerCase()) ||
-        inv.customerFullName?.toLowerCase().includes(search.toLowerCase()) ||
-        inv.customerPhone?.includes(search);
-
-      const matchStatus = statusFilter === "all" || inv.status === statusFilter;
-      const matchMonth =
-        monthFilter === "all" || String(inv.periodMonth) === monthFilter;
-
-      return matchSearch && matchStatus && matchMonth;
-    });
-  }, [invoices, search, statusFilter, monthFilter]);
-
-  // Pagination slice untuk tab tagihan
-  const invoiceTotalPages = Math.ceil(filteredInvoices.length / safeLimit) || 1;
-  const invoiceSafePage = Math.min(Math.max(page, 1), invoiceTotalPages);
-  const paginatedInvoices = useMemo(() => {
-    const start = (invoiceSafePage - 1) * safeLimit;
-    return filteredInvoices.slice(start, start + safeLimit);
-  }, [filteredInvoices, invoiceSafePage, safeLimit]);
-
-  // Pagination slice untuk tab pembayaran (dengan pencarian)
-  const filteredPayments = useMemo(() => {
-    const q = paymentSearch.toLowerCase().trim();
-    if (!q) return payments;
-    return payments.filter(
-      (p) =>
-        p.paymentReference?.toLowerCase().includes(q) ||
-        p.invoiceNumber.toLowerCase().includes(q) ||
-        p.customerName?.toLowerCase().includes(q) ||
-        p.customerId.toLowerCase().includes(q),
-    );
-  }, [payments, paymentSearch]);
-
-  const paymentTotalPages = Math.ceil(filteredPayments.length / safeLimit) || 1;
-  const paymentSafePage = Math.min(Math.max(page, 1), paymentTotalPages);
-  const paginatedPayments = useMemo(() => {
-    const start = (paymentSafePage - 1) * safeLimit;
-    return filteredPayments.slice(start, start + safeLimit);
-  }, [filteredPayments, paymentSafePage, safeLimit]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -208,25 +210,22 @@ function BillingContent() {
     setInvoices((prev) =>
       prev.map((i) => (i.id === updatedInvoice.id ? updatedInvoice : i)),
     );
-    const [payList, sumData] = await Promise.all([
-      getPayments(),
+    const [payRes, sumData] = await Promise.all([
+      getPaymentsPaginated({
+        paysearch: paymentSearch.trim() || undefined,
+        page: safePage,
+        limit: safeLimit,
+      }),
       getBillingSummary(),
     ]);
-    setPayments(payList);
+    setPayments(payRes.data);
+    setTotalPaymentsCount(payRes.total);
     setSummary(sumData);
   };
 
   const handleBulkSuccess = async (_allInvoices: Invoice[]) => {
-    // Selalu baca langsung dari storage — ini sumber kebenaran tunggal.
-    // Argumen onSuccess tidak digunakan karena bisa berisi daftar yang
-    // tidak lengkap (mis. bila render ulang terjadi di tengah proses).
-    const fresh = await getInvoices();
-    setInvoices(fresh);
-    // Reset ke halaman 1 agar baris hasil generate langsung terlihat
-    // (bulan hasil generate bisa tidak ada di halaman aktif sebelumnya).
     setPage(1);
-    const sumData = await getBillingSummary();
-    setSummary(sumData);
+    await fetchData();
   };
 
   return (
@@ -412,8 +411,8 @@ function BillingContent() {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     placeholder="Cari nomor tagihan, username, nama pelanggan..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     className="pl-9 text-xs"
                   />
                 </div>
@@ -464,12 +463,14 @@ function BillingContent() {
                   </div>
 
                   {(search ||
+                    searchInput ||
                     statusFilter !== "all" ||
                     monthFilter !== "all") && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => {
+                        setSearchInput("");
                         setSearch("");
                         setStatusFilter("all");
                         setMonthFilter("all");
@@ -514,7 +515,7 @@ function BillingContent() {
                           </td>
                         </tr>
                       ))
-                    ) : filteredInvoices.length === 0 ? (
+                    ) : invoices.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="py-12">
                           <EmptyState
@@ -527,7 +528,7 @@ function BillingContent() {
                         </td>
                       </tr>
                     ) : (
-                      paginatedInvoices.map((inv) => (
+                      invoices.map((inv) => (
                         <tr
                           key={inv.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
@@ -631,28 +632,25 @@ function BillingContent() {
                 </table>
               </div>
 
-              {/* Pagination Footer — Tagihan */}
-              {!loading && filteredInvoices.length > 0 && (
+              {/* Pagination Footer — Invoices */}
+              {!loading && totalInvoicesCount > 0 && (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span>
                       Menampilkan{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
                         {Math.min(
-                          (invoiceSafePage - 1) * safeLimit + 1,
-                          filteredInvoices.length,
+                          (safePage - 1) * safeLimit + 1,
+                          totalInvoicesCount,
                         )}
                       </span>{" "}
                       -{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {Math.min(
-                          invoiceSafePage * safeLimit,
-                          filteredInvoices.length,
-                        )}
+                        {Math.min(safePage * safeLimit, totalInvoicesCount)}
                       </span>{" "}
                       dari{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {filteredInvoices.length}
+                        {totalInvoicesCount}
                       </span>{" "}
                       tagihan
                     </span>
@@ -679,13 +677,13 @@ function BillingContent() {
                       variant="outline"
                       size="sm"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={invoiceSafePage === 1}
+                      disabled={safePage === 1}
                       className="h-8 px-3 text-xs"
                     >
                       Sebelumnya
                     </Button>
                     <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                      Hal {invoiceSafePage} dari {invoiceTotalPages}
+                      Hal {safePage} dari {invoiceTotalPages}
                     </span>
                     <Button
                       variant="outline"
@@ -693,7 +691,7 @@ function BillingContent() {
                       onClick={() =>
                         setPage((p) => Math.min(invoiceTotalPages, p + 1))
                       }
-                      disabled={invoiceSafePage === invoiceTotalPages}
+                      disabled={safePage === invoiceTotalPages}
                       className="h-8 px-3 text-xs"
                     >
                       Selanjutnya
@@ -715,19 +713,17 @@ function BillingContent() {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input
                     placeholder="Cari referensi, no. invoice, nama pelanggan..."
-                    value={paymentSearch}
-                    onChange={(e) => {
-                      setPaymentSearch(e.target.value);
-                      setPage(1);
-                    }}
+                    value={paymentSearchInput}
+                    onChange={(e) => setPaymentSearchInput(e.target.value)}
                     className="pl-9 text-xs"
                   />
                 </div>
-                {paymentSearch && (
+                {(paymentSearch || paymentSearchInput) && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => {
+                      setPaymentSearchInput("");
                       setPaymentSearch("");
                       setPage(1);
                     }}
@@ -771,7 +767,7 @@ function BillingContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {filteredPayments.length === 0 ? (
+                    {payments.length === 0 ? (
                       <tr>
                         <td
                           colSpan={7}
@@ -783,7 +779,7 @@ function BillingContent() {
                         </td>
                       </tr>
                     ) : (
-                      paginatedPayments.map((p) => (
+                      payments.map((p) => (
                         <tr
                           key={p.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
@@ -822,27 +818,24 @@ function BillingContent() {
               </div>
 
               {/* Pagination Footer — Pembayaran */}
-              {!loading && filteredPayments.length > 0 && (
+              {!loading && totalPaymentsCount > 0 && (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span>
                       Menampilkan{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
                         {Math.min(
-                          (paymentSafePage - 1) * safeLimit + 1,
-                          filteredPayments.length,
+                          (safePage - 1) * safeLimit + 1,
+                          totalPaymentsCount,
                         )}
                       </span>{" "}
                       -{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {Math.min(
-                          paymentSafePage * safeLimit,
-                          filteredPayments.length,
-                        )}
+                        {Math.min(safePage * safeLimit, totalPaymentsCount)}
                       </span>{" "}
                       dari{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {filteredPayments.length}
+                        {totalPaymentsCount}
                       </span>{" "}
                       pembayaran
                     </span>
@@ -869,13 +862,13 @@ function BillingContent() {
                       variant="outline"
                       size="sm"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={paymentSafePage === 1}
+                      disabled={safePage === 1}
                       className="h-8 px-3 text-xs"
                     >
                       Sebelumnya
                     </Button>
                     <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                      Hal {paymentSafePage} dari {paymentTotalPages}
+                      Hal {safePage} dari {paymentTotalPages}
                     </span>
                     <Button
                       variant="outline"
@@ -883,7 +876,7 @@ function BillingContent() {
                       onClick={() =>
                         setPage((p) => Math.min(paymentTotalPages, p + 1))
                       }
-                      disabled={paymentSafePage === paymentTotalPages}
+                      disabled={safePage === paymentTotalPages}
                       className="h-8 px-3 text-xs"
                     >
                       Selanjutnya
@@ -918,12 +911,8 @@ function BillingContent() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSuccess={(_newInv, values) => {
-          // Pastikan state selalu segar — sumber kebenaran tunggal di localStorage.
-          getInvoices().then((fresh) => {
-            setInvoices(fresh);
-            setPage(1);
-          });
-          getBillingSummary().then(setSummary);
+          setPage(1);
+          fetchData();
 
           // Pelanggan sekarang punya tagihan di bulan ini — sinkronkan juga
           // di state customers agar dialog tidak salah "keburu edit" saat

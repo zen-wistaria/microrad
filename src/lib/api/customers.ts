@@ -9,18 +9,25 @@ export interface GetCustomersParams {
   limit?: number;
 }
 
+/** List pelanggan terpaginasi dengan total — query param: search, status, profileId→profile, page, limit */
+export async function getCustomersPaginated(
+  params?: GetCustomersParams,
+): Promise<{ data: Customer[]; total: number }> {
+  return paginated<Customer>("/customers", {
+    search: params?.search,
+    status: params?.status,
+    profile: params?.profileId,
+    page: params?.page,
+    limit: params?.limit,
+  });
+}
+
 /** List pelanggan — query param: search, status, profileId→profile, page, limit */
 export async function getCustomers(
   params?: GetCustomersParams,
 ): Promise<Customer[]> {
   if (params?.page !== undefined && params?.limit !== undefined) {
-    const res = await paginated<Customer>("/customers", {
-      search: params.search,
-      status: params.status,
-      profile: params.profileId,
-      page: params.page,
-      limit: params.limit,
-    });
+    const res = await getCustomersPaginated(params);
     return res.data;
   }
   // Tanpa pagination eksplisit → ambil semua (limit besar)

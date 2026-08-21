@@ -16,16 +16,35 @@ export interface GetInvoicesParams {
   limit?: number;
 }
 
+export async function getInvoicesPaginated(
+  params?: GetInvoicesParams,
+): Promise<{ data: Invoice[]; total: number }> {
+  return paginated<Invoice>("/billing", {
+    search: params?.search,
+    status: params?.status,
+    month: params?.month,
+    tab: "invoices",
+    page: params?.page,
+    limit: params?.limit,
+  });
+}
+
+export async function getPaymentsPaginated(params?: {
+  paysearch?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ data: PaymentRecord[]; total: number }> {
+  return paginated<PaymentRecord>("/billing", {
+    paysearch: params?.paysearch,
+    tab: "payments",
+    page: params?.page,
+    limit: params?.limit,
+  });
+}
+
 export function getInvoices(params?: GetInvoicesParams): Promise<Invoice[]> {
   if (params?.page !== undefined && params?.limit !== undefined) {
-    return paginated<Invoice>("/billing", {
-      search: params.search,
-      status: params.status,
-      month: params.month,
-      tab: "invoices",
-      page: params.page,
-      limit: params.limit,
-    }).then((r) => r.data);
+    return getInvoicesPaginated(params).then((r) => r.data);
   }
   // Tanpa pagination → semua invoice
   return apiFetch<{ data: Invoice[]; total: number }>(

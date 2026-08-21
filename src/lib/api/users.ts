@@ -1,6 +1,22 @@
 import type { AppUser } from "@/lib/types";
 import { apiFetch, paginated } from "./client";
 
+export async function getUsersPaginated(params?: {
+  search?: string;
+  status?: string;
+  role?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ data: AppUser[]; total: number }> {
+  return paginated<AppUser>("/users", {
+    search: params?.search,
+    status: params?.status,
+    role: params?.role,
+    page: params?.page,
+    limit: params?.limit,
+  });
+}
+
 export async function getUsers(params?: {
   search?: string;
   status?: string;
@@ -9,13 +25,7 @@ export async function getUsers(params?: {
   limit?: number;
 }): Promise<AppUser[]> {
   if (params?.page !== undefined && params?.limit !== undefined) {
-    const res = await paginated<AppUser>("/users", {
-      search: params.search,
-      status: params.status,
-      role: params.role,
-      page: params.page,
-      limit: params.limit,
-    });
+    const res = await getUsersPaginated(params);
     return res.data;
   }
   // Tanpa pagination → semua (limit besar)
@@ -23,7 +33,7 @@ export async function getUsers(params?: {
   if (params?.search) q.set("search", params.search);
   if (params?.status && params.status !== "all") q.set("status", params.status);
   if (params?.role && params.role !== "all") q.set("role", params.role);
-  q.set("limit", "1000");
+  q.set("limit", String(params?.limit ?? 1000));
   const res = await apiFetch<{ data: AppUser[] }>(`/users?${q.toString()}`);
   return res.data;
 }

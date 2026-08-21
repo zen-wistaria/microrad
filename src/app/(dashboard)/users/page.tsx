@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -29,16 +29,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { deleteUser, getUsers, updateUser } from "@/lib/api/users";
+import { deleteUser, getUsersPaginated, updateUser } from "@/lib/api/users";
 import { hasPermission } from "@/lib/rbac";
 import type { AppUser, AppUserStatus } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
+import { useDebounce } from "@/lib/use-debounce";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 export default function UsersPage() {
   const { currentUser } = useAuth();
   const canManageUsers = hasPermission(currentUser, "user.create");
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
 
@@ -47,6 +49,9 @@ export default function UsersPage() {
     "search",
     parseAsString.withDefault(""),
   );
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
   const [statusFilter, setStatusFilter] = useQueryState(
     "status",
     parseAsString.withDefault("all"),
@@ -63,48 +68,43 @@ export default function UsersPage() {
     parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
   );
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+  const safePage = Math.max(page, 1);
+  const totalPages = Math.ceil(totalCount / safeLimit) || 1;
+
+  // Sync debounced search to URL state
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch);
+      setPage(1);
+    }
+  }, [debouncedSearch, search, setSearch, setPage]);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const list = await getUsers();
-      setUsers(list);
+      const res = await getUsersPaginated({
+        search: search.trim() || undefined,
+        status: statusFilter,
+        role: roleFilter,
+        page: safePage,
+        limit: safeLimit,
+      });
+      setUsers(res.data);
+      setTotalCount(res.total);
     } catch (_e) {
       toast.error("Gagal memuat pengguna aplikasi.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [search, statusFilter, roleFilter, safePage, safeLimit]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Filtered users (search + status + role)
-  const filteredUsers = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    return users.filter((u) => {
-      const matchSearch =
-        q === "" ||
-        u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q);
-      const matchStatus = statusFilter === "all" || u.status === statusFilter;
-      const matchRole =
-        roleFilter === "all" ||
-        (roleFilter === "manager"
-          ? u.roleId === "role-manager"
-          : u.role === roleFilter);
-      return matchSearch && matchStatus && matchRole;
-    });
-  }, [users, search, statusFilter, roleFilter]);
-
-  // Pagination slice
-  const totalPages = Math.ceil(filteredUsers.length / safeLimit) || 1;
-  const safePage = Math.min(Math.max(page, 1), totalPages);
-  const paginatedUsers = useMemo(() => {
-    const start = (safePage - 1) * safeLimit;
-    return filteredUsers.slice(start, start + safeLimit);
-  }, [filteredUsers, safePage, safeLimit]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -187,11 +187,8 @@ export default function UsersPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="Cari nama pengguna atau email..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 text-xs sm:text-sm"
               />
             </div>
@@ -237,11 +234,15 @@ export default function UsersPage() {
                 </Select>
               </div>
 
-              {(search || statusFilter !== "all" || roleFilter !== "all") && (
+              {(search ||
+                searchInput ||
+                statusFilter !== "all" ||
+                roleFilter !== "all") && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
+                    setSearchInput("");
                     setSearch("");
                     setStatusFilter("all");
                     setRoleFilter("all");
@@ -283,7 +284,7 @@ export default function UsersPage() {
                       </td>
                     </tr>
                   ))
-                ) : filteredUsers.length === 0 ? (
+                ) : users.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-12">
                       <EmptyState
@@ -310,7 +311,7 @@ export default function UsersPage() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedUsers.map((user) => {
+                  users.map((user) => {
                     const isSelf = user.id === currentUser?.id;
 
                     return (
@@ -401,24 +402,21 @@ export default function UsersPage() {
           </div>
 
           {/* Pagination Footer */}
-          {!loading && filteredUsers.length > 0 && (
+          {!loading && totalCount > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span>
                   Menampilkan{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(
-                      (safePage - 1) * safeLimit + 1,
-                      filteredUsers.length,
-                    )}
+                    {Math.min((safePage - 1) * safeLimit + 1, totalCount)}
                   </span>{" "}
                   -{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(safePage * safeLimit, filteredUsers.length)}
+                    {Math.min(safePage * safeLimit, totalCount)}
                   </span>{" "}
                   dari{" "}
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {filteredUsers.length}
+                    {totalCount}
                   </span>{" "}
                   pengguna
                 </span>

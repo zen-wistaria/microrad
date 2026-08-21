@@ -47,8 +47,21 @@ export const GET = asyncApi(async (req: Request) => {
     }),
   ]);
 
+  const usernames = rows.map((c) => c.username);
+  const activeRadacct = usernames.length
+    ? await prisma.radAcct.findMany({
+        where: {
+          username: { in: usernames },
+          acctStopTime: null,
+        },
+        select: { username: true },
+      })
+    : [];
+  const onlineUsernames = new Set(activeRadacct.map((r) => r.username));
+
   const data = rows.map((c) => ({
     ...c,
+    isOnline: onlineUsernames.has(c.username),
     lastSeenAt: c.lastSeenAt ? c.lastSeenAt.toISOString() : undefined,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
