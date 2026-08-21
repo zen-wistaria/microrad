@@ -12,7 +12,7 @@ import {
   Wifi,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { UsageTrendChart } from "@/components/charts/usage-trend-chart";
 import { LiveDurationCounter } from "@/components/common/live-counter";
 import { CustomerStatusBadge } from "@/components/common/status-badge";
@@ -36,6 +36,14 @@ export default function DashboardPage() {
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const totalTraffic7DaysBytes = useMemo(() => {
+    if (!stats?.usageTrend) return 0;
+    return stats.usageTrend.reduce(
+      (acc, point) => acc + (point.downloadBytes + point.uploadBytes),
+      0,
+    );
+  }, [stats?.usageTrend]);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -245,15 +253,15 @@ export default function DashboardPage() {
               </CardDescription>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-500">Total Trafik Hari Ini</p>
+              <p className="text-xs text-slate-500">Total Trafik 7 Hari</p>
               <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                {formatBytes(stats?.totalTrafficTodayBytes ?? 0)}
+                {formatBytes(totalTraffic7DaysBytes)}
               </p>
             </div>
           </CardHeader>
           <CardContent>
             {loading || !stats ? (
-              <Skeleton className="h-[300px] w-full" />
+              <Skeleton className="h-75 w-full" />
             ) : (
               <UsageTrendChart data={stats.usageTrend} />
             )}
@@ -301,22 +309,20 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-lg border border-slate-200 p-3.5 dark:border-slate-800 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">
-                  FreeRADIUS Backend Status:
+            <div className="rounded-lg bg-emerald-50/70 p-4 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/40">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                  Total Trafik
                 </span>
-                <span className="font-semibold text-emerald-600 flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
-                  Siap Terhubung
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Mode Sinkronisasi:</span>
-                <span className="font-mono text-slate-700 dark:text-slate-300">
-                  Mock Engine v1
+                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                  {stats
+                    ? `${Math.round((stats.totalTrafficTodayBytes / (stats.totalTrafficTodayBytes || 1)) * 100)}%`
+                    : "0%"}
                 </span>
               </div>
+              <p className="mt-1 text-xl font-bold text-emerald-950 dark:text-emerald-100">
+                {formatBytes(stats?.totalTrafficTodayBytes ?? 0)}
+              </p>
             </div>
           </CardContent>
           <div className="p-6 pt-0">
@@ -471,7 +477,7 @@ export default function DashboardPage() {
                         <td className="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100">
                           {cust.username}
                         </td>
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400 truncate max-w-[140px]">
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-400 truncate max-w-35">
                           {cust.fullName || "-"}
                         </td>
                         <td className="py-3 px-4">
