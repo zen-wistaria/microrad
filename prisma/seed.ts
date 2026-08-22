@@ -81,8 +81,10 @@ async function main() {
   await prisma.appVerification.deleteMany();
   await prisma.appUser.deleteMany();
   await prisma.customer.deleteMany();
+  await prisma.pppProfile.deleteMany();
+  await prisma.profileGroup.deleteMany();
+  await prisma.bandwidth.deleteMany();
   await prisma.nasRouter.deleteMany();
-  await prisma.bandwidthProfile.deleteMany();
   await prisma.role.deleteMany();
   await prisma.companyProfile.deleteMany();
   await prisma.waTemplate.deleteMany();
@@ -104,23 +106,7 @@ async function main() {
   }
   console.log(`✓ ${roles.length} role (tanpa role-customer)`);
 
-  // ── 2. Bandwidth Profiles ──
-  for (const p of initialProfiles) {
-    await prisma.bandwidthProfile.create({
-      data: {
-        id: p.id,
-        name: p.name,
-        rateLimitDown: p.rateLimitDown,
-        rateLimitUp: p.rateLimitUp,
-        price: p.price,
-      },
-    });
-  }
-  console.log(`✓ ${initialProfiles.length} profil bandwidth`);
-
-  // ── 3. Router NAS ──
-  // nas-1 diberi kredensial demo (sesuaikan dengan CHR yang di-init).
-  // Status di-set "unknown" — poller/ping nyata yang menentukan.
+  // ── 2. Router NAS ──
   for (const r of initialRouters) {
     await prisma.nasRouter.create({
       data: {
@@ -167,7 +153,60 @@ async function main() {
     });
   }
 
-  // ── 4. Customers (tanggal dire-resolve) ──
+  // ── 3. Bandwidth Configurations ──
+  const initialBws = [
+    { id: "bw-1", name: "5 Mbps Simetris", maxDown: 5, maxUp: 2 },
+    { id: "bw-2", name: "10 Mbps Simetris", maxDown: 10, maxUp: 5 },
+    { id: "bw-3", name: "20 Mbps Simetris", maxDown: 20, maxUp: 10 },
+    { id: "bw-4", name: "50 Mbps Gamer", maxDown: 50, maxUp: 25 },
+    { id: "bw-5", name: "100 Mbps Dedicated", maxDown: 100, maxUp: 50 },
+  ];
+  for (const bw of initialBws) {
+    await prisma.bandwidth.create({
+      data: {
+        id: bw.id,
+        name: bw.name,
+        maxDownload: bw.maxDown,
+        maxDownloadUnit: "Mbps",
+        maxUpload: bw.maxUp,
+        maxUploadUnit: "Mbps",
+      },
+    });
+  }
+  console.log(`✓ ${initialBws.length} konfigurasi bandwidth`);
+
+  // ── 4. Profile Group ──
+  const grp1 = await prisma.profileGroup.create({
+    data: {
+      id: "grp-1",
+      name: "Group-MikroTik-Node1",
+      nasId: "nas-1",
+      type: "PPP",
+      ipModule: "sql",
+      localAddress: "10.10.10.1",
+      rangeIpStart: "10.10.10.2",
+      rangeIpEnd: "10.10.10.254",
+      dnsServers: "8.8.8.8,8.8.4.4",
+    },
+  });
+  console.log(`✓ 1 Profile Group (${grp1.name})`);
+
+  // ── 5. PPP Profiles ──
+  for (const p of initialProfiles) {
+    await prisma.pppProfile.create({
+      data: {
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        profileGroupId: "grp-1",
+        bandwidthId: p.bandwidthId || "bw-1",
+        priority: p.priority || 8,
+      },
+    });
+  }
+  console.log(`✓ ${initialProfiles.length} PPP Profile`);
+
+  // ── 6. Customers (tanggal dire-resolve) ──
   for (const c of initialCustomers) {
     await prisma.customer.create({
       data: {
@@ -190,15 +229,15 @@ async function main() {
   }
   console.log(`✓ ${initialCustomers.length} pelanggan`);
 
-  // radsync: radcheck (Cleartext-Password) + radreply (Framed-IP-Address,
-  // Mikrotik-Rate-Limit) — dibaca FreeRADIUS untuk otentikasi PPPoE.
-  const profiles = await prisma.bandwidthProfile.findMany();
-  const profileMap = new Map(profiles.map((p) => [p.id, p]));
+  // radsync: radcheck (Cleartext-Password) + radreply (Framed-IP-Address, Mikrotik-Rate-Limit)
+  const pppProfiles = await prisma.pppProfile.findMany({
+    include: { bandwidth: true },
+  });
+  const profileMap = new Map(pppProfiles.map((p) => [p.id, p]));
   let radCount = 0;
   for (const c of await prisma.customer.findMany()) {
     const mock = initialCustomers.find((m) => m.id === c.id);
     if (!mock) continue;
-    // Password PPPoE pelanggan: pakai bentuk yang konsisten (demo)
     const password =
       mock.username === "budi_santoso" ? "pass123" : "password123";
     if (c.status === "active") {
@@ -238,8 +277,8 @@ async function main() {
       radCount += 1;
     }
     const prof = c.profileId ? profileMap.get(c.profileId) : null;
-    if (prof) {
-      const rate = `${Math.round(prof.rateLimitDown)}M/${Math.round(prof.rateLimitUp)}M`;
+    if (prof?.bandwidth) {
+      const rate = `${prof.bandwidth.maxDownload}M/${prof.bandwidth.maxUpload}M`;
       await prisma.radReply.upsert({
         where: {
           username_attribute: {

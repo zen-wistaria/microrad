@@ -44,6 +44,14 @@ export const GET = asyncApi(async (req: Request) => {
       orderBy: { createdAt: "desc" },
       skip: (safePage - 1) * safeLimit,
       take: safeLimit,
+      include: {
+        profile: {
+          include: {
+            bandwidth: true,
+            profileGroup: true,
+          },
+        },
+      },
     }),
   ]);
 
@@ -225,30 +233,33 @@ export const POST = asyncApi(async (req: Request) => {
     });
 
     // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
-    const profile = created.profileId
-      ? await tx.bandwidthProfile.findUnique({
+    const pppProf = created.profileId
+      ? await tx.pppProfile.findUnique({
           where: { id: created.profileId },
-          select: {
-            rateLimitDown: true,
-            rateLimitUp: true,
-            burstLimitDown: true,
-            burstLimitUp: true,
-            burstThresholdDown: true,
-            burstThresholdUp: true,
-            burstTimeSeconds: true,
-            priority: true,
-            limitAtDown: true,
-            limitAtUp: true,
-          },
+          include: { bandwidth: true, profileGroup: true },
         })
       : null;
+
     const router = created.nasId
       ? await tx.nasRouter.findUnique({
           where: { id: created.nasId },
           select: { ipAddress: true },
         })
       : null;
-    await syncCustomerRadius(tx, created, profile, password, router?.ipAddress);
+
+    await syncCustomerRadius(
+      tx,
+      created,
+      pppProf
+        ? {
+            bandwidth: pppProf.bandwidth,
+            priority: pppProf.priority,
+            dnsServers: pppProf.profileGroup?.dnsServers,
+          }
+        : null,
+      password,
+      router?.ipAddress,
+    );
     return created;
   });
 

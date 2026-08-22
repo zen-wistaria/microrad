@@ -17,6 +17,12 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   const customer = await prisma.customer.findUnique({
     where: { id },
     include: {
+      profile: {
+        include: {
+          bandwidth: true,
+          profileGroup: true,
+        },
+      },
       portalUser: {
         select: {
           id: true,
@@ -252,33 +258,30 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     if (usernameChanged) {
       await moveCustomerRadius(tx, existing.username, updated.username);
     }
-    const profile = updated.profileId
-      ? await tx.bandwidthProfile.findUnique({
+    const pppProf = updated.profileId
+      ? await tx.pppProfile.findUnique({
           where: { id: updated.profileId },
-          select: {
-            rateLimitDown: true,
-            rateLimitUp: true,
-            burstLimitDown: true,
-            burstLimitUp: true,
-            burstThresholdDown: true,
-            burstThresholdUp: true,
-            burstTimeSeconds: true,
-            priority: true,
-            limitAtDown: true,
-            limitAtUp: true,
-          },
+          include: { bandwidth: true, profileGroup: true },
         })
       : null;
+
     const router = updated.nasId
       ? await tx.nasRouter.findUnique({
           where: { id: updated.nasId },
           select: { ipAddress: true },
         })
       : null;
+
     await syncCustomerRadius(
       tx,
       updated,
-      profile,
+      pppProf
+        ? {
+            bandwidth: pppProf.bandwidth,
+            priority: pppProf.priority,
+            dnsServers: pppProf.profileGroup?.dnsServers,
+          }
+        : null,
       body.password ?? undefined,
       router?.ipAddress,
     );
@@ -307,11 +310,12 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     "profileId" in body && body.profileId !== existing.profileId;
   const newProfile =
     profileChanged && customer.profileId
-      ? await prisma.bandwidthProfile.findUnique({
+      ? await prisma.pppProfile.findUnique({
           where: { id: customer.profileId },
+          include: { bandwidth: true },
         })
       : null;
-  if (profileChanged && newProfile) {
+  if (profileChanged && newProfile && newProfile.bandwidth) {
     try {
       const online = await prisma.radAcct.findFirst({
         where: { username: customer.username, acctStopTime: null },
@@ -319,31 +323,12 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
         select: { acctSessionId: true },
       });
       if (online) {
-        const rate = await import("@/lib/radius-format").then((m) =>
-          m.rateLimitValue({
-            maxDownload: `${newProfile.rateLimitDown}M`,
-            maxUpload: `${newProfile.rateLimitUp}M`,
-            burstDownload: newProfile.burstLimitDown
-              ? `${newProfile.burstLimitDown}k`
-              : undefined,
-            burstUpload: newProfile.burstLimitUp
-              ? `${newProfile.burstLimitUp}k`
-              : undefined,
-            burstThresholdDownload: newProfile.burstThresholdDown
-              ? `${newProfile.burstThresholdDown}k`
-              : undefined,
-            burstThresholdUp: newProfile.burstThresholdUp
-              ? `${newProfile.burstThresholdUp}k`
-              : undefined,
-            burstTimeSeconds: newProfile.burstTimeSeconds ?? undefined,
-            priority: newProfile.priority ?? undefined,
-            limitAtDownload: newProfile.limitAtDown
-              ? `${newProfile.limitAtDown}k`
-              : undefined,
-            limitAtUp: newProfile.limitAtUp
-              ? `${newProfile.limitAtUp}k`
-              : undefined,
-          }),
+        const { formatBandwidthRateLimit } = await import(
+          "@/lib/radius-format"
+        );
+        const rate = formatBandwidthRateLimit(
+          newProfile.bandwidth,
+          newProfile.priority,
         );
         const coa = await sendCoa(
           customer.username,

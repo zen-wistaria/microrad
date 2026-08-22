@@ -47,10 +47,10 @@ import {
 } from "@/lib/api/hooks";
 import { generatePppoePassword } from "@/lib/generators";
 import type {
-  BandwidthProfile,
   Customer,
   CustomerStatus,
   NasRouter,
+  PppProfile,
 } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -86,7 +86,7 @@ const customerSchema = z.object({
   fullName: z.string().optional(),
   phone: z.string().optional(),
   address: z.string().optional(),
-  profileId: z.string().min(1, "Wajib memilih profil bandwidth"),
+  profileId: z.string().min(1, "Wajib memilih paket PPP Profile"),
   staticIp: z
     .string()
     .optional()
@@ -109,7 +109,7 @@ type CustomerFormValues = z.infer<typeof customerSchema>;
 
 interface CustomerFormProps {
   initialData?: Customer;
-  profiles: BandwidthProfile[];
+  profiles: PppProfile[];
   routers: NasRouter[];
   isEditing?: boolean;
 }
@@ -401,10 +401,11 @@ export function CustomerForm({
               </div>
             )}
 
-            {/* Profil Paket Bandwidth */}
+            {/* Profil Paket Layanan (PPP Profile) */}
             <div className="space-y-2">
               <Label htmlFor="profileId">
-                Profil Paket Bandwidth <span className="text-rose-500">*</span>
+                Paket Layanan (PPP Profile){" "}
+                <span className="text-rose-500">*</span>
               </Label>
               <Select
                 value={selectedProfileId}
@@ -413,14 +414,21 @@ export function CustomerForm({
                 }
               >
                 <SelectTrigger id="profileId">
-                  <SelectValue placeholder="Pilih Profil Paket" />
+                  <SelectValue placeholder="Pilih Paket Layanan (PPP Profile)" />
                 </SelectTrigger>
                 <SelectContent>
-                  {profiles.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} ({p.rateLimitDown}M / {p.rateLimitUp}M)
-                    </SelectItem>
-                  ))}
+                  {profiles.map((p) => {
+                    const bw = p.bandwidth;
+                    const speedStr = bw
+                      ? `(↓${bw.maxDownload} ${bw.maxDownloadUnit} / ↑${bw.maxUpload} ${bw.maxUploadUnit})`
+                      : "";
+                    return (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} {speedStr} — Rp{" "}
+                        {p.price?.toLocaleString("id-ID")}/bln
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               {errors.profileId && (

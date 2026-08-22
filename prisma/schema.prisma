@@ -170,16 +170,16 @@ model Role {
 // DOMAIN
 // ═══════════════════════════════════════════════════════════════
 model Customer {
-  id         String    @id
-  username   String    @unique // radcheck.username (unik, case-insensitive di API)
-  password   String? // radcheck password (hanya untuk display/update)
-  fullName   String?
-  email      String?
-  phone      String?
-  address    String?
-  status     String    @default("active") // active | suspended | disabled
-  profileId  String?
-  staticIp   String?
+  id               String    @id
+  username         String    @unique // radcheck.username (unik, case-insensitive di API)
+  password         String? // radcheck password (hanya untuk display/update)
+  fullName         String?
+  email            String?
+  phone            String?
+  address          String?
+  status           String    @default("active") // active | suspended | disabled
+  profileId        String? // FK -> PppProfile.id
+  staticIp         String?
   nasId            String?
   bindOnNas        Boolean   @default(false) // hanya boleh login lewat router tertentu
   sessionMode      String    @default("single") // single | multi
@@ -189,7 +189,7 @@ model Customer {
   updatedAt        DateTime  @updatedAt
   lastSeenAt       DateTime?
 
-  profile           BandwidthProfile?  @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  profile           PppProfile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
   router            NasRouter?         @relation(fields: [nasId], references: [id], onDelete: SetNull)
   invoices          Invoice[]
   payments          PaymentRecord[]
@@ -200,27 +200,72 @@ model Customer {
   @@map("customer")
 }
 
-model BandwidthProfile {
-  id                 String   @id
-  name               String
-  rateLimitDown      Int // Mbps
-  rateLimitUp        Int // Mbps
-  burstLimitDown     Int? // kbps
-  burstLimitUp       Int? // kbps
-  burstThresholdDown Int? // kbps
-  burstThresholdUp   Int? // kbps
-  burstTimeSeconds   Int? // detik
-  priority           Int? // 1-8
-  limitAtDown        Int? // kbps (CIR)
-  limitAtUp          Int? // kbps (CIR)
-  price              Int? // IDR/bulan
-  description        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+model Bandwidth {
+  id                         String   @id // bw-<timestamp>
+  name                       String
+  minUpload                  Int?     // CIR Upload (angka)
+  minUploadUnit              String   @default("Kbps") // "Kbps" | "Mbps"
+  minDownload                Int?     // CIR Download (angka)
+  minDownloadUnit            String   @default("Kbps") // "Kbps" | "Mbps"
+  maxUpload                  Int      // Max Upload (angka)
+  maxUploadUnit              String   @default("Mbps") // "Kbps" | "Mbps"
+  maxDownload                Int      // Max Download (angka)
+  maxDownloadUnit            String   @default("Mbps") // "Kbps" | "Mbps"
 
-  customers Customer[]
+  // Burst configuration (opsional, jika salah satu diisi, kelimanya wajib diisi)
+  burstLimitUpload           Int?
+  burstLimitUploadUnit       String?  @default("Mbps") // "Kbps" | "Mbps"
+  burstLimitDownload         Int?
+  burstLimitDownloadUnit     String?  @default("Mbps") // "Kbps" | "Mbps"
+  burstThresholdUpload       Int?
+  burstThresholdUploadUnit   String?  @default("Mbps") // "Kbps" | "Mbps"
+  burstThresholdDownload     Int?
+  burstThresholdDownloadUnit String?  @default("Mbps") // "Kbps" | "Mbps"
+  burstTime                  Int?     // Detik (1 - 600)
 
-  @@map("bandwidth_profile")
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  pppProfiles                PppProfile[]
+
+  @@map("bandwidth")
+}
+
+model ProfileGroup {
+  id           String   @id // grp-<timestamp>
+  name         String
+  nasId        String   // FK -> NasRouter.id
+  type         String   @default("PPP") // Saat ini "PPP"
+  ipModule     String   @default("sql") // "sql" (SQL IP Module) | "mikrotik_pool" (Mikrotik IP Pool)
+  localAddress String   // IP Gateway Local PPP (misal "10.10.10.1")
+  rangeIpStart String   // Awal rentang IP pool (misal "10.10.10.2")
+  rangeIpEnd   String   // Akhir rentang IP pool (misal "10.10.10.254")
+  dnsServers   String   @default("8.8.8.8,8.8.4.4") // DNS Server
+  parentQueue  String?  // Parent queue name di RouterOS (opsional)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  nasRouter    NasRouter    @relation(fields: [nasId], references: [id], onDelete: Restrict)
+  pppProfiles  PppProfile[]
+
+  @@map("profile_group")
+}
+
+model PppProfile {
+  id             String   @id // ppp-<timestamp>
+  name           String
+  price          Int      @default(0) // IDR / bulan
+  profileGroupId String
+  bandwidthId    String
+  priority       Int      @default(8) // 1 - 8 (default 8)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  profileGroup   ProfileGroup @relation(fields: [profileGroupId], references: [id], onDelete: Restrict)
+  bandwidth      Bandwidth    @relation(fields: [bandwidthId], references: [id], onDelete: Restrict)
+  customers      Customer[]
+
+  @@map("ppp_profile")
 }
 
 model NasRouter {
@@ -243,7 +288,8 @@ model NasRouter {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  customers Customer[]
+  customers     Customer[]
+  profileGroups ProfileGroup[]
 
   @@map("nas_router")
 }

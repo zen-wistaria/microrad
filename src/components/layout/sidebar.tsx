@@ -2,9 +2,12 @@
 
 import {
   Activity,
+  Gauge,
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Network,
+  Package,
   Radio,
   Receipt,
   Router as RouterIcon,
@@ -12,13 +15,11 @@ import {
   Settings2,
   ShieldCheck,
   Users,
-  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-// import { getActiveSessions } from "@/lib/api/sessions";
 import { hasPermission } from "@/lib/rbac";
 import type { Permission } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
@@ -31,17 +32,15 @@ function canShowSystemItem(user: { role?: string } | null): boolean {
   return user.role === "admin";
 }
 
-interface MainNavItem {
+interface NavItem {
   title: string;
   href: string;
   icon: typeof LayoutDashboard;
   matchExact?: boolean;
-  badgeKey?: "activeSessions";
-  /** Permission read yang dibutuhkan (null = semua user non-pelanggan) */
   permission?: Permission;
 }
 
-const mainNavItems: MainNavItem[] = [
+const mainNavItems: NavItem[] = [
   {
     title: "Dashboard",
     href: "/dashboard",
@@ -63,20 +62,34 @@ const mainNavItems: MainNavItem[] = [
     title: "Sesi Aktif",
     href: "/sessions",
     icon: Activity,
-    badgeKey: "activeSessions",
     permission: "session.read",
-  },
-  {
-    title: "Profil Bandwidth",
-    href: "/profiles",
-    icon: Zap,
-    permission: "profile.read",
   },
   {
     title: "Router NAS",
     href: "/routers",
     icon: RouterIcon,
     permission: "router.read",
+  },
+];
+
+const serviceNavItems: NavItem[] = [
+  {
+    title: "PPP Profile",
+    href: "/ppp-profiles",
+    icon: Package,
+    permission: "profile.read",
+  },
+  {
+    title: "Konfigurasi Bandwidth",
+    href: "/bandwidths",
+    icon: Gauge,
+    permission: "profile.read",
+  },
+  {
+    title: "Profile Group",
+    href: "/profile-groups",
+    icon: Network,
+    permission: "profile.read",
   },
 ];
 
@@ -155,6 +168,10 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
     (item) => !item.permission || hasPermission(currentUser, item.permission),
   );
 
+  const visibleServiceItems = serviceNavItems.filter(
+    (item) => !item.permission || hasPermission(currentUser, item.permission),
+  );
+
   return (
     <aside
       className={cn(
@@ -214,19 +231,44 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
                     />
                     <span>{item.title}</span>
                   </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
 
-                  {/* {item.badgeKey === "activeSessions" && (
-                    <span
+        {/* Paket & Layanan Section */}
+        {visibleServiceItems.length > 0 && (
+          <div className="mt-6 space-y-1">
+            <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Paket & Layanan
+            </div>
+            {visibleServiceItems.map((item) => {
+              const active = isLinkActive(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onItemClick}
+                  className={cn(
+                    "group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-blue-50 text-blue-600 font-semibold dark:bg-blue-950/50 dark:text-blue-400 shadow-xs"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon
                       className={cn(
-                        "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold transition-all",
-                        activeSessionCount > 0
-                          ? "bg-emerald-500 text-white shadow-xs"
-                          : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+                        "h-4 w-4 shrink-0 transition-colors",
+                        active
+                          ? "text-blue-600 dark:text-blue-400"
+                          : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
                       )}
-                    >
-                      {activeSessionCount}
-                    </span>
-                  )} */}
+                    />
+                    <span>{item.title}</span>
+                  </div>
                 </Link>
               );
             })}

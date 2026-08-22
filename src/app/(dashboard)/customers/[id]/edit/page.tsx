@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useCustomerQuery,
-  useProfilesQuery,
+  usePppProfilesQuery,
   useRoutersQuery,
 } from "@/lib/api/hooks";
 
@@ -20,9 +20,11 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
 
   const { data: customer, isLoading: customerLoading } =
     useCustomerQuery(customerId);
-  const { data: profiles = [], isLoading: profilesLoading } =
-    useProfilesQuery();
+  const { data: profilesRes, isLoading: profilesLoading } =
+    usePppProfilesQuery();
   const { data: routers = [], isLoading: routersLoading } = useRoutersQuery();
+
+  const profiles = profilesRes?.data || [];
 
   const loading =
     (customerLoading || profilesLoading || routersLoading) && !customer;

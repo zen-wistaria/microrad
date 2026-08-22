@@ -3,13 +3,14 @@
 import { CustomerForm } from "@/components/forms/customer-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useProfilesQuery, useRoutersQuery } from "@/lib/api/hooks";
+import { usePppProfilesQuery, useRoutersQuery } from "@/lib/api/hooks";
 
 export default function NewCustomerPage() {
-  const { data: profiles = [], isLoading: profilesLoading } =
-    useProfilesQuery();
+  const { data: profilesRes, isLoading: profilesLoading } =
+    usePppProfilesQuery();
   const { data: routers = [], isLoading: routersLoading } = useRoutersQuery();
 
+  const profiles = profilesRes?.data || [];
   const loading = (profilesLoading || routersLoading) && profiles.length === 0;
 
   return (
@@ -19,8 +20,8 @@ export default function NewCustomerPage() {
           Tambah Pelanggan Baru
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Daftarkan akun pelanggan baru ke sistem FreeRADIUS dan tentukan profil
-          batas kecepatan bandwidth.
+          Daftarkan akun pelanggan baru ke sistem FreeRADIUS dan tentukan paket
+          layanan PPP Profile.
         </p>
       </div>
 

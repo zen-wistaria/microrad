@@ -213,13 +213,17 @@ export default function PortalInfoPage() {
             <div>
               <p className="text-[11px] text-slate-500">Kecepatan Download</p>
               <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                {profile.rateLimitDown} Mbps
+                {profile.bandwidth
+                  ? `${profile.bandwidth.maxDownload} ${profile.bandwidth.maxDownloadUnit}`
+                  : "-"}
               </p>
             </div>
             <div>
               <p className="text-[11px] text-slate-500">Kecepatan Upload</p>
               <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                {profile.rateLimitUp} Mbps
+                {profile.bandwidth
+                  ? `${profile.bandwidth.maxUpload} ${profile.bandwidth.maxUploadUnit}`
+                  : "-"}
               </p>
             </div>
             <div>
@@ -236,11 +240,14 @@ export default function PortalInfoPage() {
                 {periodLabel}
               </p>
             </div>
-            {profile.description && (
+            {profile.profileGroup && (
               <div className="sm:col-span-2 lg:col-span-4">
-                <p className="text-[11px] text-slate-500">Deskripsi</p>
+                <p className="text-[11px] text-slate-500">
+                  Profile Group (Gateway)
+                </p>
                 <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                  {profile.description}
+                  {profile.profileGroup.name} (Gateway:{" "}
+                  {profile.profileGroup.localAddress})
                 </p>
               </div>
             )}

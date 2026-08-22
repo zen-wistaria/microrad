@@ -69,7 +69,7 @@ import {
   useCustomerUsageHistoryQuery,
   useDisconnectCustomerMutation,
   useInvoicesQuery,
-  useProfileQuery,
+  usePppProfileQuery,
   useRouterNasQuery,
   useUpdateCustomerMutation,
 } from "@/lib/api/hooks";
@@ -157,7 +157,8 @@ export default function CustomerDetailPage({
     isFetching: customerFetching,
   } = useCustomerQuery(customerId);
 
-  const { data: profile } = useProfileQuery(customer?.profileId || "");
+  const { data: pppProfRes } = usePppProfileQuery(customer?.profileId || "");
+  const profile = pppProfRes?.data || customer?.profile;
   const { data: routerNas } = useRouterNasQuery(customer?.nasId || "");
   const { data: activeSession } = useCustomerActiveSessionQuery(customerId);
   const { data: sessionHistory = [] } = useCustomerSessionsQuery(
@@ -583,18 +584,16 @@ export default function CustomerDetailPage({
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">Profil Paket:</span>
+                  <span className="text-slate-500">Paket Layanan:</span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
                     {profile ? `${profile.name}` : "-"}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">
-                    Rate Limit Download / Upload:
-                  </span>
+                  <span className="text-slate-500">Kecepatan (Bandwidth):</span>
                   <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                    {profile
-                      ? `${profile.rateLimitDown} Mbps / ${profile.rateLimitUp} Mbps`
+                    {profile?.bandwidth
+                      ? `↓${profile.bandwidth.maxDownload} ${profile.bandwidth.maxDownloadUnit} / ↑${profile.bandwidth.maxUpload} ${profile.bandwidth.maxUploadUnit}`
                       : "-"}
                   </span>
                 </div>
@@ -604,6 +603,17 @@ export default function CustomerDetailPage({
                     {profile?.price ? formatRupiah(profile.price) : "-"}
                   </span>
                 </div>
+                {profile?.profileGroup && (
+                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-500">
+                      Profile Group (Gateway):
+                    </span>
+                    <span className="font-medium text-slate-900 dark:text-slate-100">
+                      {profile.profileGroup.name} (
+                      {profile.profileGroup.localAddress})
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">IP Statis (Framed-IP):</span>
                   <span className="font-mono font-medium text-slate-900 dark:text-slate-100">

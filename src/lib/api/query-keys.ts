@@ -29,7 +29,28 @@ export const queryKeys = {
       ["customers", "monthly-usage", id, year] as const,
   },
 
-  // Bandwidth Profiles
+  // Bandwidths
+  bandwidths: {
+    all: ["bandwidths"] as const,
+    list: () => ["bandwidths", "list"] as const,
+    detail: (id: string) => ["bandwidths", "detail", id] as const,
+  },
+
+  // Profile Groups
+  profileGroups: {
+    all: ["profile-groups"] as const,
+    list: () => ["profile-groups", "list"] as const,
+    detail: (id: string) => ["profile-groups", "detail", id] as const,
+  },
+
+  // PPP Profiles
+  pppProfiles: {
+    all: ["ppp-profiles"] as const,
+    list: () => ["ppp-profiles", "list"] as const,
+    detail: (id: string) => ["ppp-profiles", "detail", id] as const,
+  },
+
+  // Legacy Profiles
   profiles: {
     all: ["profiles"] as const,
     list: (params?: GetProfilesParams) =>

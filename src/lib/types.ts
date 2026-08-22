@@ -2,6 +2,74 @@
 
 export type CustomerStatus = "active" | "suspended" | "disabled";
 
+export type RateUnit = "Kbps" | "Mbps";
+export type IpModuleType = "sql" | "mikrotik_pool";
+
+export interface Bandwidth {
+  id: string;
+  name: string;
+  minUpload?: number | null;
+  minUploadUnit: RateUnit;
+  minDownload?: number | null;
+  minDownloadUnit: RateUnit;
+  maxUpload: number;
+  maxUploadUnit: RateUnit;
+  maxDownload: number;
+  maxDownloadUnit: RateUnit;
+
+  burstLimitUpload?: number | null;
+  burstLimitUploadUnit?: RateUnit | null;
+  burstLimitDownload?: number | null;
+  burstLimitDownloadUnit?: RateUnit | null;
+  burstThresholdUpload?: number | null;
+  burstThresholdUploadUnit?: RateUnit | null;
+  burstThresholdDownload?: number | null;
+  burstThresholdDownloadUnit?: RateUnit | null;
+  burstTime?: number | null; // detik
+
+  createdAt: string;
+  updatedAt: string;
+  pppProfileCount?: number; // derived
+}
+
+export interface ProfileGroup {
+  id: string;
+  name: string;
+  nasId: string;
+  nasRouter?: {
+    id: string;
+    name: string;
+    ipAddress: string;
+  };
+  type: string; // "PPP"
+  ipModule: IpModuleType;
+  localAddress: string; // IP Gateway (e.g. 10.10.10.1)
+  rangeIpStart: string; // e.g. 10.10.10.2
+  rangeIpEnd: string; // e.g. 10.10.10.254
+  dnsServers: string; // default "8.8.8.8,8.8.4.4"
+  parentQueue?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  pppProfileCount?: number; // derived
+}
+
+export interface PppProfile {
+  id: string;
+  name: string;
+  price: number; // IDR / bulan
+  profileGroupId: string;
+  profileGroup?: ProfileGroup;
+  bandwidthId: string;
+  bandwidth?: Bandwidth;
+  priority: number; // 1-8 (default 8)
+  createdAt: string;
+  updatedAt: string;
+  customerCount?: number; // derived
+}
+
+// Backward compatibility alias for parts expecting BandwidthProfile
+export type BandwidthProfile = PppProfile;
+
 export interface Customer {
   id: string;
   username: string; // radcheck.username (login PPPoE)
@@ -11,7 +79,8 @@ export interface Customer {
   phone?: string;
   address?: string;
   status: CustomerStatus;
-  profileId: string; // relasi ke BandwidthProfile (Mikrotik-Rate-Limit)
+  profileId: string; // relasi ke PppProfile
+  profile?: PppProfile | null;
   staticIp?: string; // radreply: Framed-IP-Address
   nasId?: string; // NAS default/terakhir dipakai
   bindOnNas?: boolean; // hanya boleh login lewat router tertentu (radnasallow)
@@ -30,25 +99,6 @@ export interface Customer {
     createdAt?: string;
   } | null;
   portalPassword?: string;
-}
-
-export interface BandwidthProfile {
-  id: string;
-  name: string; // mis. "Paket 10Mbps - Home"
-  rateLimitDown: number; // dalam Mbps
-  rateLimitUp: number; // dalam Mbps
-  price?: number; // harga bulanan dalam Rupiah (IDR)
-  description?: string;
-  // ── QoS lanjutan ala MikroTik (opsional; kbps) ──
-  burstLimitDown?: number | null; // burst-limit rx (kbps)
-  burstLimitUp?: number | null; // burst-limit tx (kbps)
-  burstThresholdDown?: number | null; // burst-threshold rx (kbps)
-  burstThresholdUp?: number | null; // burst-threshold tx (kbps)
-  burstTimeSeconds?: number | null; // burst-time (detik)
-  priority?: number | null; // 1-8, 1 tertinggi
-  limitAtDown?: number | null; // limit-at rx / CIR (kbps)
-  limitAtUp?: number | null; // limit-at tx / CIR (kbps)
-  customerCount: number; // derived jumlah customer yang memakai profile ini
 }
 
 export type InvoiceStatus = "paid" | "unpaid" | "overdue" | "cancelled";

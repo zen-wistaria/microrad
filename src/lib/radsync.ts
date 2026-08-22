@@ -6,7 +6,11 @@
  * transaksi yang sama dengan CRUD aplikasi (atomic).
  */
 import type { Prisma } from "@/generated/prisma";
-import { rateLimitValue } from "./radius-format";
+import {
+  type BandwidthRateInput,
+  formatBandwidthRateLimit,
+  rateLimitValue,
+} from "./radius-format";
 
 /** Bentuk minimal data yang dibutuhkan radsync (dari prisma/route). */
 export interface RadiusCustomerInput {
@@ -20,15 +24,18 @@ export interface RadiusCustomerInput {
   allowedNasIps?: string[];
 }
 export interface RadiusProfileInput {
-  rateLimitDown: number;
-  rateLimitUp: number;
-  // Opsional: parameter QoS lanjutan ala MikroTik (burst/priority/limit-at)
+  // Dukungan data baru BandwidthRateInput
+  bandwidth?: BandwidthRateInput | null;
+  priority?: number | null;
+  dnsServers?: string | null;
+  // Backward compatibility fields
+  rateLimitDown?: number;
+  rateLimitUp?: number;
   burstLimitDown?: number | null;
   burstLimitUp?: number | null;
   burstThresholdDown?: number | null;
   burstThresholdUp?: number | null;
   burstTimeSeconds?: number | null;
-  priority?: number | null;
   limitAtDown?: number | null;
   limitAtUp?: number | null;
 }
@@ -102,9 +109,6 @@ async function syncCustomerRadiusRows(
   const u = username ?? customer.username;
   const bindNasIp = nasIpAddress ?? customer.nasIpAddress ?? null;
   // Aktif → radcheck Cleartext-Password (suspend/disabled → hindari login).
-  // HAPUS password hanya bila eksplisit (argumen password string kosong =
-  // "hapus"); saat argumen tidak diberikan (edit patrial, mis. ganti profil)
-  // baris lama dipertahankan agar kredensial tidak hilang.
   if (customer.status === "active" && password) {
     await tx.radCheck.upsert({
       where: {
@@ -120,13 +124,9 @@ async function syncCustomerRadiusRows(
     });
   } else if (customer.status === "active" && !password) {
     // Aktif tanpa argumen password — pertahankan baris Cleartext-Password
-    // yang sudah ada (jangan dihapus / ditimpa).
   }
-  // status tidak aktif → Auth-Type Reject (password tetap disimpan)
 
-  // Non-aktif (suspend/disabled): tolak login lewat Auth-Type := Reject —
-  // password TIDAK dihapus agar saat diaktifkan kembali langsung bisa
-  // konek tanpa set ulang.
+  // Non-aktif (suspend/disabled): tolak login lewat Auth-Type := Reject
   if (customer.status !== "active") {
     await tx.radCheck.upsert({
       where: {
@@ -144,15 +144,13 @@ async function syncCustomerRadiusRows(
       },
     });
   } else {
-    // Aktif kembali → hapus rule penolakan (password lama sudah ada)
+    // Aktif kembali → hapus rule penolakan
     await tx.radCheck.deleteMany({
       where: { username: u, attribute: "Auth-Type" },
     });
   }
 
   // ── Session Control (Simultaneous-Use) ──
-  // Single session: Simultaneous-Use := 1
-  // Multi session: Simultaneous-Use := maxSimultaneous (default 2)
   const simultaneousCount =
     customer.sessionMode === "multi"
       ? String(Math.max(customer.maxSimultaneous || 2, 1))
@@ -171,12 +169,10 @@ async function syncCustomerRadiusRows(
   });
 
   // ── NAS Binding Whitelist (radnasallow) ──
-  // Hapus semua binding router lama untuk user ini
   await tx.radNasAllow.deleteMany({
     where: { username: u },
   });
 
-  // Jika bindOnNas aktif, simpan daftar IP router yang diizinkan ke radnasallow
   const targetNasIps: string[] = [];
   if (customer.bindOnNas) {
     if (customer.allowedNasIps && customer.allowedNasIps.length > 0) {
@@ -222,82 +218,140 @@ async function syncCustomerRadiusRows(
     });
   }
 
-  // radreply: Mikrotik-Rate-Limit dari profil (bila ada)
+  // radreply: Mikrotik-Rate-Limit dari profil
   if (profile) {
-    const rate = rateLimitValue({
-      maxDownload: `${profile.rateLimitDown}M`,
-      maxUpload: `${profile.rateLimitUp}M`,
-      burstDownload: profile.burstLimitDown
-        ? `${profile.burstLimitDown}k`
-        : undefined,
-      burstUpload: profile.burstLimitUp
-        ? `${profile.burstLimitUp}k`
-        : undefined,
-      burstThresholdDownload: profile.burstThresholdDown
-        ? `${profile.burstThresholdDown}k`
-        : undefined,
-      burstThresholdUp: profile.burstThresholdUp
-        ? `${profile.burstThresholdUp}k`
-        : undefined,
-      burstTimeSeconds: profile.burstTimeSeconds ?? undefined,
-      priority: profile.priority ?? undefined,
-      limitAtDownload: profile.limitAtDown
-        ? `${profile.limitAtDown}k`
-        : undefined,
-      limitAtUp: profile.limitAtUp ? `${profile.limitAtUp}k` : undefined,
-    });
-    await tx.radReply.upsert({
-      where: {
-        username_attribute: { username: u, attribute: "Mikrotik-Rate-Limit" },
-      },
-      update: { value: rate },
-      create: {
-        username: u,
-        attribute: "Mikrotik-Rate-Limit",
-        op: ":=",
-        value: rate,
-      },
-    });
+    let rate = "";
+    if (profile.bandwidth) {
+      rate = formatBandwidthRateLimit(profile.bandwidth, profile.priority ?? 8);
+    } else if (profile.rateLimitDown && profile.rateLimitUp) {
+      rate = rateLimitValue({
+        maxDownload: `${profile.rateLimitDown}M`,
+        maxUpload: `${profile.rateLimitUp}M`,
+        burstDownload: profile.burstLimitDown
+          ? `${profile.burstLimitDown}k`
+          : undefined,
+        burstUpload: profile.burstLimitUp
+          ? `${profile.burstLimitUp}k`
+          : undefined,
+        burstThresholdDownload: profile.burstThresholdDown
+          ? `${profile.burstThresholdDown}k`
+          : undefined,
+        burstThresholdUp: profile.burstThresholdUp
+          ? `${profile.burstThresholdUp}k`
+          : undefined,
+        burstTimeSeconds: profile.burstTimeSeconds ?? undefined,
+        priority: profile.priority ?? undefined,
+        limitAtDownload: profile.limitAtDown
+          ? `${profile.limitAtDown}k`
+          : undefined,
+        limitAtUp: profile.limitAtUp ? `${profile.limitAtUp}k` : undefined,
+      });
+    }
+
+    if (rate) {
+      await tx.radReply.upsert({
+        where: {
+          username_attribute: { username: u, attribute: "Mikrotik-Rate-Limit" },
+        },
+        update: { value: rate },
+        create: {
+          username: u,
+          attribute: "Mikrotik-Rate-Limit",
+          op: ":=",
+          value: rate,
+        },
+      });
+    } else {
+      await tx.radReply.deleteMany({
+        where: { username: u, attribute: "Mikrotik-Rate-Limit" },
+      });
+    }
+
+    // DNS Server reply attributes
+    if (profile.dnsServers) {
+      const dnsParts = profile.dnsServers
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (dnsParts[0]) {
+        await tx.radReply.upsert({
+          where: {
+            username_attribute: {
+              username: u,
+              attribute: "MS-Primary-DNS-Server",
+            },
+          },
+          update: { value: dnsParts[0], op: ":=" },
+          create: {
+            username: u,
+            attribute: "MS-Primary-DNS-Server",
+            op: ":=",
+            value: dnsParts[0],
+          },
+        });
+      }
+      if (dnsParts[1]) {
+        await tx.radReply.upsert({
+          where: {
+            username_attribute: {
+              username: u,
+              attribute: "MS-Secondary-DNS-Server",
+            },
+          },
+          update: { value: dnsParts[1], op: ":=" },
+          create: {
+            username: u,
+            attribute: "MS-Secondary-DNS-Server",
+            op: ":=",
+            value: dnsParts[1],
+          },
+        });
+      }
+    }
   } else {
     await tx.radReply.deleteMany({
-      where: { username: u, attribute: "Mikrotik-Rate-Limit" },
+      where: {
+        username: u,
+        attribute: {
+          in: [
+            "Mikrotik-Rate-Limit",
+            "MS-Primary-DNS-Server",
+            "MS-Secondary-DNS-Server",
+          ],
+        },
+      },
     });
   }
 }
 
 /**
- * Perbarui Mikrotik-Rate-Limit semua pelanggan suatu profil
- * (saat rateLimit profil diubah).
+ * Perbarui Mikrotik-Rate-Limit semua pelanggan suatu profil PPP
  */
-export async function syncProfileRadius(
+export async function syncPppProfileRadiusBulk(
   tx: Prisma.TransactionClient,
-  profile: RadiusProfileInput,
-  customerUsernames: string[],
+  pppProfileId: string,
 ) {
-  if (customerUsernames.length === 0) return;
-  const rate = rateLimitValue({
-    maxDownload: `${profile.rateLimitDown}M`,
-    maxUpload: `${profile.rateLimitUp}M`,
-    burstDownload: profile.burstLimitDown
-      ? `${profile.burstLimitDown}k`
-      : undefined,
-    burstUpload: profile.burstLimitUp ? `${profile.burstLimitUp}k` : undefined,
-    burstThresholdDownload: profile.burstThresholdDown
-      ? `${profile.burstThresholdDown}k`
-      : undefined,
-    burstThresholdUp: profile.burstThresholdUp
-      ? `${profile.burstThresholdUp}k`
-      : undefined,
-    burstTimeSeconds: profile.burstTimeSeconds ?? undefined,
-    priority: profile.priority ?? undefined,
-    limitAtDownload: profile.limitAtDown
-      ? `${profile.limitAtDown}k`
-      : undefined,
-    limitAtUp: profile.limitAtUp ? `${profile.limitAtUp}k` : undefined,
+  const pppProfile = await tx.pppProfile.findUnique({
+    where: { id: pppProfileId },
+    include: { bandwidth: true, profileGroup: true },
   });
+  if (!pppProfile || !pppProfile.bandwidth) return;
+
+  const customers = await tx.customer.findMany({
+    where: { profileId: pppProfileId },
+    select: { username: true },
+  });
+  if (customers.length === 0) return;
+
+  const usernames = customers.map((c) => c.username);
+  const rate = formatBandwidthRateLimit(
+    pppProfile.bandwidth,
+    pppProfile.priority,
+  );
+
   await tx.radReply.updateMany({
     where: {
-      username: { in: customerUsernames },
+      username: { in: usernames },
       attribute: "Mikrotik-Rate-Limit",
     },
     data: { value: rate },

@@ -194,7 +194,7 @@ export const POST = asyncApi(async (req: Request) => {
   });
   if (!customer) throw new Error("Pelanggan tidak ditemukan.");
   const profile = customer.profileId
-    ? await prisma.bandwidthProfile.findUnique({
+    ? await prisma.pppProfile.findUnique({
         where: { id: customer.profileId },
       })
     : null;

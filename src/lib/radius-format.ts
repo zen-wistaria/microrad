@@ -139,6 +139,72 @@ export function rateLimitValue(cfg: RateLimitConfig): string {
   return parts.join(" ");
 }
 
+export interface BandwidthRateInput {
+  minUpload?: number | null;
+  minUploadUnit?: string | null;
+  minDownload?: number | null;
+  minDownloadUnit?: string | null;
+  maxUpload: number;
+  maxUploadUnit?: string | null;
+  maxDownload: number;
+  maxDownloadUnit?: string | null;
+  burstLimitUpload?: number | null;
+  burstLimitUploadUnit?: string | null;
+  burstLimitDownload?: number | null;
+  burstLimitDownloadUnit?: string | null;
+  burstThresholdUpload?: number | null;
+  burstThresholdUploadUnit?: string | null;
+  burstThresholdDownload?: number | null;
+  burstThresholdDownloadUnit?: string | null;
+  burstTime?: number | null;
+}
+
+function unitVal(
+  val?: number | null,
+  unit?: string | null,
+): string | undefined {
+  if (val === undefined || val === null || val <= 0) return undefined;
+  const u = (unit ?? "Mbps").toLowerCase().startsWith("k") ? "k" : "M";
+  return `${val}${u}`;
+}
+
+export function formatBandwidthRateLimit(
+  bw: BandwidthRateInput,
+  priority = 8,
+): string {
+  const maxDown = unitVal(bw.maxDownload, bw.maxDownloadUnit) || "1M";
+  const maxUp = unitVal(bw.maxUpload, bw.maxUploadUnit) || maxDown;
+
+  const hasBurst = Boolean(
+    bw.burstLimitDownload &&
+      bw.burstLimitUpload &&
+      bw.burstThresholdDownload &&
+      bw.burstThresholdUpload &&
+      bw.burstTime,
+  );
+
+  return rateLimitValue({
+    maxDownload: maxDown,
+    maxUpload: maxUp,
+    burstDownload: hasBurst
+      ? unitVal(bw.burstLimitDownload, bw.burstLimitDownloadUnit)
+      : undefined,
+    burstUpload: hasBurst
+      ? unitVal(bw.burstLimitUpload, bw.burstLimitUploadUnit)
+      : undefined,
+    burstThresholdDownload: hasBurst
+      ? unitVal(bw.burstThresholdDownload, bw.burstThresholdDownloadUnit)
+      : undefined,
+    burstThresholdUp: hasBurst
+      ? unitVal(bw.burstThresholdUpload, bw.burstThresholdUploadUnit)
+      : undefined,
+    burstTimeSeconds: hasBurst ? (bw.burstTime ?? undefined) : undefined,
+    priority: priority || 8,
+    limitAtDownload: unitVal(bw.minDownload, bw.minDownloadUnit),
+    limitAtUp: unitVal(bw.minUpload, bw.minUploadUnit),
+  });
+}
+
 // Keep backward-compat callers (radsync) working
 export function rateLimitValueOld(downMbps: number, upMbps: number): string {
   return rateLimitValue({
