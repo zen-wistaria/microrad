@@ -73,6 +73,9 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     staticIp?: string;
     nasId?: string | null;
     bindOnNas?: boolean;
+    sessionMode?: "single" | "multi" | string;
+    maxSimultaneous?: number;
+    allowedNasIps?: string[];
     password?: string;
     portalPassword?: string;
   };
@@ -158,6 +161,19 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           : {}),
         ...("nasId" in body ? { nasId: body.nasId ?? null } : {}),
         ...(body.bindOnNas !== undefined ? { bindOnNas: body.bindOnNas } : {}),
+        ...(body.sessionMode !== undefined
+          ? { sessionMode: body.sessionMode }
+          : {}),
+        ...(body.maxSimultaneous !== undefined
+          ? { maxSimultaneous: Number(body.maxSimultaneous) || 1 }
+          : {}),
+        ...(body.allowedNasIps !== undefined
+          ? {
+              allowedNasIps: Array.isArray(body.allowedNasIps)
+                ? body.allowedNasIps
+                : [],
+            }
+          : {}),
         ...(body.password !== undefined
           ? { password: body.password || undefined }
           : {}),

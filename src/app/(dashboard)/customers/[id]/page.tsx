@@ -35,6 +35,7 @@ import {
   InvoiceStatusBadge,
   PaymentMethodBadge,
 } from "@/components/common/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -614,12 +615,62 @@ export default function CustomerDetailPage({
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">Router NAS Ditugaskan:</span>
-                  <span className="font-medium text-slate-900 dark:text-slate-100">
-                    {routerNas
-                      ? `${routerNas.name} (${routerNas.ipAddress})`
-                      : "Semua NAS"}
+                  <span className="text-slate-500">
+                    Mode Sesi (Simultaneous-Use):
                   </span>
+                  <span className="font-medium text-slate-900 dark:text-slate-100">
+                    {customer.sessionMode === "multi" ? (
+                      <Badge
+                        variant="secondary"
+                        className="text-violet-600 bg-violet-50 dark:bg-violet-950/40 dark:text-violet-300"
+                      >
+                        Multi Session (Maks {customer.maxSimultaneous || 2}{" "}
+                        Sesi)
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-slate-700 dark:text-slate-300"
+                      >
+                        Single Session (1 Sesi)
+                      </Badge>
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Router NAS Diizinkan:</span>
+                  <div className="text-right">
+                    {customer.bindOnNas ? (
+                      customer.allowedNasIps &&
+                      customer.allowedNasIps.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 justify-end max-w-[240px]">
+                          {customer.allowedNasIps.map((ip) => (
+                            <Badge
+                              key={ip}
+                              variant="outline"
+                              className="font-mono text-[10px] text-indigo-600 border-indigo-200 dark:border-indigo-800"
+                            >
+                              {ip}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-indigo-600 border-indigo-200"
+                        >
+                          {routerNas ? routerNas.name : "Terkunci"}
+                        </Badge>
+                      )
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className="text-slate-600 dark:text-slate-400"
+                      >
+                        Semua Router NAS
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span className="text-slate-500">Terakhir Online:</span>

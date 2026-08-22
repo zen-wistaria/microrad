@@ -180,11 +180,14 @@ model Customer {
   status     String    @default("active") // active | suspended | disabled
   profileId  String?
   staticIp   String?
-  nasId      String?
-  bindOnNas  Boolean   @default(false) // hanya boleh login lewat router ini
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  lastSeenAt DateTime?
+  nasId            String?
+  bindOnNas        Boolean   @default(false) // hanya boleh login lewat router tertentu
+  sessionMode      String    @default("single") // single | multi
+  maxSimultaneous  Int       @default(1) // batas simultan jika multi
+  allowedNasIps    String[]  @default([]) // whitelist IP router NAS
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  lastSeenAt       DateTime?
 
   profile           BandwidthProfile?  @relation(fields: [profileId], references: [id], onDelete: SetNull)
   router            NasRouter?         @relation(fields: [nasId], references: [id], onDelete: SetNull)
@@ -410,6 +413,18 @@ model RadReply {
   @@unique([username, attribute]) // upsert radsync
   @@index([username])
   @@map("radreply")
+}
+
+// FreeRADIUS whitelist router NAS per user (check_nas_binding policy)
+model RadNasAllow {
+  id           Int      @id @default(autoincrement())
+  username     String
+  nasIpAddress String   @map("nasipaddress")
+  createdAt    DateTime @default(now())
+
+  @@unique([username, nasIpAddress])
+  @@index([username])
+  @@map("radnasallow")
 }
 
 // Dipakai query bawaan FreeRADIUS (authorize_group_check / reply / users)

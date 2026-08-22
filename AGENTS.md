@@ -135,7 +135,9 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 > **PENTING**: Query modul bawaan FreeRADIUS membaca/menulis identifier tanpa tanda kutip ganda sehingga PostgreSQL memetakan kolom ke format **LOWERCASE**. Semua mapping `@map("...")` pada model FreeRADIUS wajib mempertahankan penamaan lowercase.
 
 - **`RadCheck` (`radcheck`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
-  - Record: `Cleartext-Password` (password pelanggan), `Auth-Type := Reject` (pelanggan suspended/disabled), `NAS-IP-Address == <IP>` (bind-on-NAS)
+  - Record: `Cleartext-Password` (password pelanggan), `Auth-Type := Reject` (pelanggan suspended/disabled), `Simultaneous-Use := 1` (Single Session) / `Simultaneous-Use := N` (Multi Session).
+- **`RadNasAllow` (`radnasallow`)**: `id` (Serial PK), `username`, `nasipaddress`
+  - Whitelist router NAS per user: dibaca oleh policy unlang FreeRADIUS `check_nas_binding` saat `bindOnNas = true`.
 - **`RadReply` (`radreply`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
   - Record: `Framed-IP-Address` (IP statis), `Mikrotik-Rate-Limit` (QoS string format MikroTik)
 - **`RadAcct` (`radacct`)**: Dikelola langsung oleh FreeRADIUS saat menerima Accounting packet. Kolom: `radacctid`, `acctsessionid`, `acctuniqueid`, `username`, `nasipaddress`, `framedipaddress`, `acctstarttime`, `acctupdatetime`, `acctstoptime`, `acctsessiontime`, `acctinputoctets`, `acctoutputoctets`, `acctterminatecause`, dll.
@@ -150,7 +152,8 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 Semua operasi mutasi data yang mempengaruhi otentikasi/otorisasi RADIUS dijalankan dalam transaksi Prisma bersama data master:
 - **Pelanggan Aktif**: Menulis `radcheck` (`Cleartext-Password`), menghapus `Auth-Type := Reject`.
 - **Pelanggan Suspended / Disabled**: Menulis `radcheck` (`Auth-Type := Reject`), password lama tetap disimpan agar ketika diaktifkan kembali tidak perlu reset password.
-- **Bind-on-NAS**: Jika `bindOnNas = true`, menulis `radcheck` `NAS-IP-Address` = IP Router NAS terpilih.
+- **Session Control (`Simultaneous-Use`)**: Menulis `radcheck` `Simultaneous-Use` := `1` (Single Session) atau `maxSimultaneous` (Multi Session).
+- **NAS Whitelist Binding (`radnasallow`)**: Saat `bindOnNas = true`, menulis baris router IP yang diizinkan ke tabel `radnasallow`. FreeRADIUS mengevaluasi policy `check_nas_binding` untuk menolak router yang tidak di-whitelist. Jika `bindOnNas = false`, baris di `radnasallow` dihapus sehingga bebas login dari router NAS mana pun.
 - **Profil Bandwidth**: Menulis `radreply` `Mikrotik-Rate-Limit`.
 - **Bulk Profile Sync**: Saat profil diedit, `syncProfileRadiusBulk` memperbarui atribut `Mikrotik-Rate-Limit` di `radreply` untuk semua pelanggan yang menggunakan profil tersebut.
 - **Router NAS**: Menulis/memperbarui baris pada tabel `nas` untuk dibaca oleh FreeRADIUS (`read_clients = yes`).

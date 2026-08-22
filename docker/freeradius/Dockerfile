@@ -9,16 +9,20 @@ RUN apk add --no-cache freeradius freeradius-postgresql freeradius-utils bash
 #  - mods-enabled/sql   -> file penuh (bukan symlink), read_clients=yes,
 #                          kredensial DB di-templating entrypoint.sh
 #  - clients.conf       -> localhost + subnet docker (secret testing123)
+#  - policy.d/nasbind   -> unlang policy check_nas_binding & check_multi_session_diff_nas
 #  - entrypoint.sh      -> tunggu postgres, templating, radiusd -f
 COPY mods-enabled/sql /etc/raddb/mods-enabled/sql
 COPY clients.conf /etc/raddb/clients.conf
+COPY policy-nasbind.conf /etc/raddb/policy.d/nasbind
+
 # Listen CoA/Disconnect (port 3799) — append ke radiusd.conf
 COPY listen-coa.conf /etc/raddb/listen-coa.conf
 RUN cat /etc/raddb/listen-coa.conf >> /etc/raddb/radiusd.conf
 
-# Aktifkan modul sql: ganti "-sql" (disabled) -> "sql" di authorize,
-# accounting, post-auth (+ Post-Auth-Type REJECT). Bagian session sudah `sql`.
-RUN sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/default \
+# Aktifkan modul sql & policy check_nas_binding di authorize section
+RUN sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas/ }' /etc/raddb/sites-enabled/default \
+ && sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas/ }' /etc/raddb/sites-enabled/inner-tunnel \
+ && sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/default \
  && sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/inner-tunnel
 
 COPY entrypoint.sh /entrypoint.sh

@@ -124,6 +124,9 @@ export const POST = asyncApi(async (req: Request) => {
     staticIp?: string;
     nasId?: string | null;
     bindOnNas?: boolean;
+    sessionMode?: "single" | "multi" | string;
+    maxSimultaneous?: number;
+    allowedNasIps?: string[];
     password?: string;
     portalPassword?: string;
   };
@@ -185,6 +188,11 @@ export const POST = asyncApi(async (req: Request) => {
         staticIp: body.staticIp?.trim() || undefined,
         nasId: body.nasId ?? undefined,
         bindOnNas: body.bindOnNas ?? false,
+        sessionMode: body.sessionMode || "single",
+        maxSimultaneous: Number(body.maxSimultaneous) || 1,
+        allowedNasIps: Array.isArray(body.allowedNasIps)
+          ? body.allowedNasIps
+          : [],
       },
     });
 

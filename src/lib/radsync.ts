@@ -15,6 +15,9 @@ export interface RadiusCustomerInput {
   staticIp?: string | null;
   bindOnNas?: boolean;
   nasIpAddress?: string | null;
+  sessionMode?: "single" | "multi" | string;
+  maxSimultaneous?: number;
+  allowedNasIps?: string[];
 }
 export interface RadiusProfileInput {
   rateLimitDown: number;
@@ -70,6 +73,10 @@ export async function moveCustomerRadius(
     where: { username: oldUsername },
     data: { username: newUsername },
   });
+  await tx.radNasAllow.updateMany({
+    where: { username: oldUsername },
+    data: { username: newUsername },
+  });
 }
 
 /** Hapus baris RADIUS pelanggan (delete customer / nonaktif). */
@@ -80,6 +87,7 @@ export async function removeCustomerRadius(
   await tx.radCheck.deleteMany({ where: { username } });
   await tx.radReply.deleteMany({ where: { username } });
   await tx.radUserGroup.deleteMany({ where: { username } });
+  await tx.radNasAllow.deleteMany({ where: { username } });
 }
 
 /** Implementasi bersama syncCustomerRadiusRows (pakai target username). */
@@ -142,28 +150,57 @@ async function syncCustomerRadiusRows(
     });
   }
 
-  // Bind-on-NAS: aktif & terkunci ke router → radcheck NAS-IP-Address == IP
-  // (FreeRADIUS cocokkan atribut request NAS-IP-Address; login dari NAS lain
-  //  akan Access-Reject)
-  const bindIp = customer.bindOnNas ? bindNasIp : null;
-  if (customer.status === "active" && bindIp) {
-    await tx.radCheck.upsert({
-      where: {
-        username_attribute: { username: u, attribute: "NAS-IP-Address" },
-      },
-      update: { value: bindIp, op: ":=" },
-      create: {
+  // ── Session Control (Simultaneous-Use) ──
+  // Single session: Simultaneous-Use := 1
+  // Multi session: Simultaneous-Use := maxSimultaneous (default 2)
+  const simultaneousCount =
+    customer.sessionMode === "multi"
+      ? String(Math.max(customer.maxSimultaneous || 2, 1))
+      : "1";
+  await tx.radCheck.upsert({
+    where: {
+      username_attribute: { username: u, attribute: "Simultaneous-Use" },
+    },
+    update: { value: simultaneousCount, op: ":=" },
+    create: {
+      username: u,
+      attribute: "Simultaneous-Use",
+      op: ":=",
+      value: simultaneousCount,
+    },
+  });
+
+  // ── NAS Binding Whitelist (radnasallow) ──
+  // Hapus semua binding router lama untuk user ini
+  await tx.radNasAllow.deleteMany({
+    where: { username: u },
+  });
+
+  // Jika bindOnNas aktif, simpan daftar IP router yang diizinkan ke radnasallow
+  const targetNasIps: string[] = [];
+  if (customer.bindOnNas) {
+    if (customer.allowedNasIps && customer.allowedNasIps.length > 0) {
+      targetNasIps.push(...customer.allowedNasIps.filter(Boolean));
+    } else if (bindNasIp) {
+      targetNasIps.push(bindNasIp);
+    }
+  }
+
+  if (targetNasIps.length > 0) {
+    const uniqueIps = Array.from(new Set(targetNasIps));
+    await tx.radNasAllow.createMany({
+      data: uniqueIps.map((ip) => ({
         username: u,
-        attribute: "NAS-IP-Address",
-        op: ":=",
-        value: bindIp,
-      },
-    });
-  } else {
-    await tx.radCheck.deleteMany({
-      where: { username: u, attribute: "NAS-IP-Address" },
+        nasIpAddress: ip,
+      })),
+      skipDuplicates: true,
     });
   }
+
+  // Bersihkan legacy NAS-IP-Address dari radcheck jika ada
+  await tx.radCheck.deleteMany({
+    where: { username: u, attribute: "NAS-IP-Address" },
+  });
 
   // radreply: Framed-IP-Address (static IP) — hapus bila kosong
   if (customer.staticIp) {

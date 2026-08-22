@@ -14,7 +14,10 @@ export interface Customer {
   profileId: string; // relasi ke BandwidthProfile (Mikrotik-Rate-Limit)
   staticIp?: string; // radreply: Framed-IP-Address
   nasId?: string; // NAS default/terakhir dipakai
-  bindOnNas?: boolean; // hanya boleh login lewat router nasId (radcheck NAS-IP-Address)
+  bindOnNas?: boolean; // hanya boleh login lewat router tertentu (radnasallow)
+  sessionMode?: "single" | "multi"; // mode sesi PPPoE
+  maxSimultaneous?: number; // maksimal sesi simultan jika multi (Simultaneous-Use)
+  allowedNasIps?: string[]; // whitelist IP router NAS
   createdAt: string;
   updatedAt: string;
   isOnline?: boolean;

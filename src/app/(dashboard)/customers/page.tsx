@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { CustomerStatusBadge } from "@/components/common/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -390,12 +391,30 @@ export default function CustomersPage() {
                         className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
                       >
                         <td className="py-3.5 px-4 font-mono font-semibold text-slate-900 dark:text-slate-100">
-                          <Link
-                            href={`/customers/${customer.id}`}
-                            className="hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
-                          >
-                            {customer.username}
-                          </Link>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Link
+                              href={`/customers/${customer.id}`}
+                              className="hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
+                            >
+                              {customer.username}
+                            </Link>
+                            {customer.sessionMode === "multi" && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] px-1 py-0 text-violet-600 bg-violet-50 dark:bg-violet-950/40 dark:text-violet-300"
+                              >
+                                Multi ({customer.maxSimultaneous || 2})
+                              </Badge>
+                            )}
+                            {customer.bindOnNas && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1 py-0 text-indigo-600 border-indigo-200 dark:border-indigo-800"
+                              >
+                                Bind NAS
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
                           <div className="font-medium">
