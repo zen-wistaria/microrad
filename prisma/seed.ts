@@ -21,7 +21,7 @@ import { initialRoles } from "../src/lib/mock/roles.mock";
 import { initialRouters } from "../src/lib/mock/routers.mock";
 import { initialCompanyProfile } from "../src/lib/mock/settings.mock";
 
-const databaseUrl = process.env.DATABASE_URL ?? "";
+const databaseUrl = `postgresql://${process.env.POSTGRES_USER}:${process.env.POSTGRES_PASSWORD}@${process.env.POSTGRES_HOST}:${process.env.POSTGRES_PORT}/${process.env.POSTGRES_DB}`;
 const adapter = new PrismaPg({ connectionString: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
