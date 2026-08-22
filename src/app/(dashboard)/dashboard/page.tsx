@@ -477,7 +477,7 @@ export default function DashboardPage() {
                         <td className="py-3 px-4">
                           <CustomerStatusBadge
                             status={cust.status}
-                            isOnline={false}
+                            isOnline={Boolean(cust.isOnline)}
                           />
                         </td>
                         <td className="py-3 px-4 text-right">
