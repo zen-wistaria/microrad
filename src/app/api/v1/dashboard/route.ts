@@ -10,7 +10,7 @@ import {
 /** Dashboard stats — kontrak: totalCustomers, status, online, traffic hari ini, trend 7 hari */
 export const GET = asyncApi(async () => {
   await requireSession();
-  await ensureSyncRuns();
+  ensureSyncRuns();
 
   const [
     totalCustomers,

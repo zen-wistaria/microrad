@@ -77,18 +77,16 @@ export function startMikrotikSync(): void {
   );
 }
 
-/** Sinkronkan SEMUA router yang syncEnabled = true. */
+/** Sinkronkan SEMUA router yang syncEnabled = true secara paralel. */
 export async function syncAllRouters(): Promise<SyncSummary[]> {
   const routers = await prisma.nasRouter.findMany({
     where: { syncEnabled: true },
     orderBy: { name: "asc" },
   });
 
-  const results: SyncSummary[] = [];
-  for (const r of routers) {
-    results.push(await syncSingleRouter(r));
-  }
-  return results;
+  if (routers.length === 0) return [];
+  // Eksekusi ping seluruh router secara paralel (bukan sekuensial) agar instan
+  return Promise.all(routers.map((r) => syncSingleRouter(r)));
 }
 
 /** Heartbeat satu router (mengecek status via ping). */
@@ -137,12 +135,12 @@ export async function syncSingleRouter(router: {
 
 /**
  * Pastikan siklus heartbeat berjalan jika belum sempat dieksekusi (throttle ~10s).
- * Dipanggil secara pasif dari endpoint router / dashboard.
+ * Dijalankan di background (non-blocking) agar TIDAK memperlambat respon HTTP API.
  */
 let lastSyncRun = 0;
 const SYNC_THROTTLE_MS = 10_000;
 
-export async function ensureSyncRuns(): Promise<void> {
+export function ensureSyncRuns(): void {
   if (process.env.MIKROTIK_SYNC_ENABLED === "false") return;
 
   // Jika background timer belum pernah jalan, jalankan sekarang
@@ -154,9 +152,9 @@ export async function ensureSyncRuns(): Promise<void> {
   const now = Date.now();
   if (now - lastSyncRun < SYNC_THROTTLE_MS) return;
   lastSyncRun = now;
-  try {
-    await syncAllRouters();
-  } catch (e) {
+
+  // Fire-and-forget di background tanpa menahan HTTP response
+  syncAllRouters().catch((e) => {
     console.error("[mikrotik-sync] ensureSyncRuns error:", e);
-  }
+  });
 }

@@ -14,7 +14,7 @@ export interface PingResult {
  */
 export function pingIcmp(
   host: string,
-  timeoutMs = 2000,
+  timeoutMs = 1200,
 ): Promise<{ alive: boolean; latencyMs: number }> {
   return new Promise((resolve) => {
     const isWin = os.platform() === "win32";
@@ -24,7 +24,7 @@ export function pingIcmp(
       : `ping -c 1 -W ${timeoutSec} ${host}`;
 
     const start = Date.now();
-    exec(cmd, { timeout: timeoutMs + 1000 }, (err, stdout) => {
+    exec(cmd, { timeout: timeoutMs + 500 }, (err, stdout) => {
       const duration = Date.now() - start;
       if (err && !stdout) {
         return resolve({ alive: false, latencyMs: duration });
@@ -72,7 +72,7 @@ export function pingIcmp(
 export function pingTcp(
   host: string,
   port = 8728,
-  timeoutMs = 2000,
+  timeoutMs = 1200,
 ): Promise<{ alive: boolean; latencyMs: number }> {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -114,7 +114,7 @@ export function pingTcp(
 export async function pingRouterHost(
   host: string,
   port = 8728,
-  timeoutMs = 2000,
+  timeoutMs = 1200,
 ): Promise<PingResult> {
   // 1. Coba ICMP ping standar
   const icmp = await pingIcmp(host, timeoutMs);

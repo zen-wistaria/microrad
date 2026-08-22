@@ -6,7 +6,7 @@ import { syncRouterNas } from "@/lib/radsync";
 
 export const GET = asyncApi(async () => {
   await requirePermission("router.read");
-  await ensureSyncRuns();
+  ensureSyncRuns();
   const routers = await prisma.nasRouter.findMany({
     orderBy: { name: "asc" },
   });
