@@ -16,14 +16,25 @@ export interface CleanupResult {
   releasedPoolIpsCount: number;
 }
 
+let lastCleanupRun = 0;
+const CLEANUP_THROTTLE_MS = 15_000; // Eksekusi update DB maksimal 1x per 15 detik
+
 /**
  * Tutup seluruh sesi zombie di radacct dan lepaskan IP pool kadaluarsa.
  * @param thresholdMinutes Batas waktu tidak ada interim-update (default: 3 menit)
+ * @param force Jika true, paksa eksekusi dan abaikan throttle
  */
 export async function cleanupZombieSessions(
   thresholdMinutes = 3,
+  force = false,
 ): Promise<CleanupResult> {
-  const thresholdDate = new Date(Date.now() - thresholdMinutes * 60 * 1000);
+  const now = Date.now();
+  if (!force && now - lastCleanupRun < CLEANUP_THROTTLE_MS) {
+    return { closedSessionsCount: 0, releasedPoolIpsCount: 0 };
+  }
+  lastCleanupRun = now;
+
+  const thresholdDate = new Date(now - thresholdMinutes * 60 * 1000);
 
   try {
     // 1. Update sesi zombie di radacct menjadi terminated

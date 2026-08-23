@@ -562,6 +562,9 @@ model RadAcct {
 
   @@index([acctStartTime, username], map: "radacct_start_user_idx")
   @@index([username, acctStartTime], map: "radacct_username_start_idx")
+  @@index([acctStopTime, username], map: "radacct_stop_user_idx")
+  @@index([nasIpAddress, acctStopTime], map: "radacct_nas_stop_idx")
+  @@index([acctStopTime, acctUpdateTime], map: "radacct_stop_update_idx")
   @@map("radacct")
 }
 

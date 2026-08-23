@@ -57,6 +57,19 @@ export const auth = betterAuth({
   databaseHooks: {
     session: {
       create: {
+        before: async (session) => {
+          const user = await prisma.appUser.findUnique({
+            where: { id: session.userId },
+            select: { id: true, status: true },
+          });
+          if (user?.status === "disabled") {
+            const { APIError } = await import("better-auth");
+            throw new APIError("FORBIDDEN", {
+              message:
+                "Akun pengguna Anda telah dinonaktifkan (Disabled). Silakan hubungi administrator.",
+            });
+          }
+        },
         after: async (session) => {
           // Catat login sukses user sistem → GlobalLog ("Aplikasi")
           try {

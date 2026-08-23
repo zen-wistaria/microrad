@@ -126,6 +126,16 @@ export async function requirePortalSession() {
     headers: await headers(),
   });
   if (!session) throw new ApiError(401, "Tidak terautentikasi");
+  const portalUser = await prisma.portalUser.findUnique({
+    where: { id: session.user.id },
+    select: { customer: { select: { status: true } } },
+  });
+  if (portalUser?.customer?.status === "disabled") {
+    throw new ApiError(
+      403,
+      "Akun pelanggan Anda telah dinonaktifkan (Disabled). Akses portal ditutup.",
+    );
+  }
   return session;
 }
 
@@ -137,9 +147,15 @@ export async function requirePermission(permission: Permission) {
   const { user } = await requireSession();
   const dbUser = await prisma.appUser.findUnique({
     where: { id: user.id },
-    select: { roleId: true, role: true },
+    select: { roleId: true, role: true, status: true },
   });
-  const roleId = dbUser?.roleId ?? "";
+  if (!dbUser || dbUser.status === "disabled") {
+    throw new ApiError(
+      403,
+      "Akun Anda telah dinonaktifkan. Silakan hubungi administrator.",
+    );
+  }
+  const roleId = dbUser.roleId ?? "";
   const role = roleId
     ? await prisma.role.findUnique({ where: { id: roleId } })
     : null;
