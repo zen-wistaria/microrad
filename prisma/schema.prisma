@@ -178,11 +178,11 @@ model Customer {
   phone            String?
   address          String?
   status           String    @default("active") // active | suspended | disabled
-  profileId        String? // FK -> PppProfile.id
-  profileGroupId   String? // FK -> ProfileGroup.id
+  profileId        String? // FK -> InternetProfile.id (Paket Internet)
+  profileGroupId   String? // FK -> ProfileGroup.id (Wilayah / Failover Group)
   staticIp         String?
   nasId            String?
-  bindOnNas        Boolean   @default(false) // hanya boleh login lewat router tertentu
+  bindOnNas        Boolean   @default(false) // hanya boleh login lewat router di wilayahnya
   sessionMode      String    @default("single") // single | multi
   maxSimultaneous  Int       @default(1) // batas simultan jika multi
   allowedNasIps    String[]  @default([]) // whitelist IP router NAS
@@ -190,7 +190,7 @@ model Customer {
   updatedAt        DateTime  @updatedAt
   lastSeenAt       DateTime?
 
-  profile           PppProfile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  profile           InternetProfile?   @relation(fields: [profileId], references: [id], onDelete: SetNull)
   profileGroup      ProfileGroup?      @relation(fields: [profileGroupId], references: [id], onDelete: SetNull)
   router            NasRouter?         @relation(fields: [nasId], references: [id], onDelete: SetNull)
   invoices          Invoice[]
@@ -228,44 +228,58 @@ model Bandwidth {
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
-  pppProfiles                PppProfile[]
+  internetProfiles           InternetProfile[]
 
   @@map("bandwidth")
 }
 
-model ProfileGroup {
-  id           String   @id // grp-<timestamp>
-  name         String
-  nasId        String   // FK -> NasRouter.id
-  type         String   @default("PPP") // Saat ini "PPP"
-  ipModule     String   @default("sql") // "sql" (SQL IP Module) | "mikrotik_pool" (Mikrotik IP Pool)
-  localAddress String   // IP Gateway Local PPP (misal "10.10.10.1")
-  rangeIpStart String   // Awal rentang IP pool (misal "10.10.10.2")
-  rangeIpEnd   String   // Akhir rentang IP pool (misal "10.10.10.254")
-  dnsServers   String   @default("8.8.8.8,8.8.4.4") // DNS Server
-  parentQueue  String?  // Parent queue name di RouterOS (opsional)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model PppProfile {
+  id             String        @id // ppp-<timestamp>
+  name           String        // Nama profile di RouterOS (e.g. "profile-node-a1")
+  nasId          String        // FK -> NasRouter.id
+  type           String        @default("PPP") // Saat ini "PPP"
+  ipModule       String        @default("sql") // "sql" (SQL IP Module) | "mikrotik_pool" (Mikrotik IP Pool)
+  localAddress   String        // IP Gateway Local PPP (misal "10.10.10.1")
+  rangeIpStart   String        // Awal rentang IP pool (misal "10.10.10.2")
+  rangeIpEnd     String        // Akhir rentang IP pool (misal "10.10.10.254")
+  dnsServers     String        @default("8.8.8.8,8.8.4.4") // DNS Server
+  parentQueue    String?       // Parent queue name di RouterOS (opsional)
+  profileGroupId String?       // FK -> ProfileGroup.id
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  nasRouter    NasRouter    @relation(fields: [nasId], references: [id], onDelete: Restrict)
+  nasRouter      NasRouter     @relation(fields: [nasId], references: [id], onDelete: Restrict)
+  profileGroup   ProfileGroup? @relation(fields: [profileGroupId], references: [id], onDelete: SetNull)
+
+  @@map("ppp_profile")
+}
+
+model ProfileGroup {
+  id           String       @id // grp-<timestamp>
+  name         String       // Nama Wilayah / Area (e.g. "Wilayah Kota A")
+  description  String?      // Catatan area / keterangan
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  pppProfiles  PppProfile[]
   customers    Customer[]
 
   @@map("profile_group")
 }
 
-model PppProfile {
-  id             String   @id // ppp-<timestamp>
-  name           String
-  price          Int      @default(0) // IDR / bulan
+model InternetProfile {
+  id             String     @id // net-<timestamp>
+  name           String     // Nama Paket (e.g. "Paket 2 Mbps", "Home 10M")
+  price          Int        @default(0) // IDR / bulan
   bandwidthId    String
-  priority       Int      @default(8) // 1 - 8 (default 8)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  priority       Int        @default(8) // 1 - 8 (default 8)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  bandwidth      Bandwidth    @relation(fields: [bandwidthId], references: [id], onDelete: Restrict)
+  bandwidth      Bandwidth  @relation(fields: [bandwidthId], references: [id], onDelete: Restrict)
   customers      Customer[]
 
-  @@map("ppp_profile")
+  @@map("internet_profile")
 }
 
 model NasRouter {
@@ -289,7 +303,7 @@ model NasRouter {
   updatedAt     DateTime  @updatedAt
 
   customers     Customer[]
-  profileGroups ProfileGroup[]
+  pppProfiles   PppProfile[]
 
   @@map("nas_router")
 }

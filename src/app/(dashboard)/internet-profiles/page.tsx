@@ -2,12 +2,12 @@
 
 import {
   Edit,
-  Network,
+  Package,
   Plus,
-  Radio,
   RefreshCw,
   Trash2,
   Users,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -24,29 +24,32 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  useDeleteProfileGroupMutation,
-  useProfileGroupsQuery,
+  useDeleteInternetProfileMutation,
+  useInternetProfilesQuery,
 } from "@/lib/api/hooks";
-import type { ProfileGroup } from "@/lib/types";
-import { getErrorMessage } from "@/lib/utils";
+import { formatBandwidthRateLimit } from "@/lib/radius-format";
+import type { InternetProfile } from "@/lib/types";
+import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
-export default function ProfileGroupsPage() {
+export default function InternetProfilesPage() {
   const {
-    data: groupsRes,
+    data: profilesRes,
     isLoading,
     refetch,
     isFetching,
-  } = useProfileGroupsQuery();
-  const deleteMutation = useDeleteProfileGroupMutation();
+  } = useInternetProfilesQuery();
+  const deleteMutation = useDeleteInternetProfileMutation();
 
-  const groups = groupsRes?.data || [];
-  const [deleteTarget, setDeleteTarget] = useState<ProfileGroup | null>(null);
+  const profiles = profilesRes?.data || [];
+  const [deleteTarget, setDeleteTarget] = useState<InternetProfile | null>(
+    null,
+  );
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
       await deleteMutation.mutateAsync(deleteTarget.id);
-      toast.success(`Profile Group '${deleteTarget.name}' berhasil dihapus`);
+      toast.success(`Paket Internet '${deleteTarget.name}' berhasil dihapus`);
       setDeleteTarget(null);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err));
@@ -58,11 +61,11 @@ export default function ProfileGroupsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            Profile Group (Wilayah / Failover Group)
+            Paket Internet
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Pengelompokan wilayah geografis dan zona multi-router failover untuk
-            pelanggan.
+            Produk paket langganan internet, alokasi bandwidth, tarif bulanan,
+            dan prioritas antrean.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -78,9 +81,9 @@ export default function ProfileGroupsPage() {
             Muat Ulang
           </Button>
           <Button size="sm" asChild>
-            <Link href="/profile-groups/new">
+            <Link href="/internet-profiles/new">
               <Plus className="h-4 w-4 mr-1.5" />
-              Tambah Profile Group
+              Tambah Paket
             </Link>
           </Button>
         </div>
@@ -89,12 +92,11 @@ export default function ProfileGroupsPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Network className="h-4 w-4 text-emerald-600" />
-            Daftar Wilayah & Zona Failover
+            <Package className="h-4 w-4 text-blue-600" />
+            Daftar Paket Internet
           </CardTitle>
           <CardDescription>
-            Grup wilayah yang menaungi beberapa node router untuk failover
-            otomatis.
+            Paket yang aktif dan dapat dipilih saat mendaftarkan pelanggan baru.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -107,65 +109,71 @@ export default function ProfileGroupsPage() {
                 />
               ))}
             </div>
-          ) : groups.length === 0 ? (
+          ) : profiles.length === 0 ? (
             <EmptyState
-              icon={Network}
-              title="Belum ada Profile Group"
-              description="Buat pengelompokan wilayah pertama untuk mengorganisir router NAS dan pelanggan Anda."
-              actionLabel="Tambah Profile Group"
-              actionHref="/profile-groups/new"
+              icon={Package}
+              title="Belum ada Paket Internet"
+              description="Buat paket langganan pertama Anda untuk mulai mendaftarkan pelanggan."
+              actionLabel="Tambah Paket Sekarang"
+              actionHref="/internet-profiles/new"
             />
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-900/50 text-xs font-semibold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="px-4 py-3">Nama Wilayah</th>
-                    <th className="px-4 py-3">Router Node yang Tergabung</th>
-                    <th className="px-4 py-3">Keterangan</th>
+                    <th className="px-4 py-3">Nama Paket</th>
+                    <th className="px-4 py-3">Kecepatan (Bandwidth)</th>
+                    <th className="px-4 py-3">Tarif Bulanan</th>
+                    <th className="px-4 py-3">Priority</th>
                     <th className="px-4 py-3">Pelanggan</th>
+                    <th className="px-4 py-3">RADIUS Atribut</th>
                     <th className="px-4 py-3 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {groups.map((group) => {
-                    const profiles = group.pppProfiles || [];
+                  {profiles.map((p) => {
+                    const bw = p.bandwidth;
+                    const rateLimit = bw
+                      ? formatBandwidthRateLimit(bw, p.priority)
+                      : "-";
 
                     return (
                       <tr
-                        key={group.id}
+                        key={p.id}
                         className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors"
                       >
                         <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
-                          {group.name}
+                          {p.name}
                         </td>
                         <td className="px-4 py-3">
-                          {profiles.length === 0 ? (
-                            <span className="text-slate-400 text-xs italic">
-                              Belum ada router tergabung
-                            </span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5 max-w-md">
-                              {profiles.map((p) => (
-                                <Badge
-                                  key={p.id}
-                                  variant="secondary"
-                                  className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 flex items-center gap-1"
-                                >
-                                  <Radio className="h-3 w-3 text-blue-500" />
-                                  <span>{p.name}</span>
-                                  {p.nasRouter && (
-                                    <span className="text-[10px] text-slate-400">
-                                      ({p.nasRouter.name})
-                                    </span>
-                                  )}
-                                </Badge>
-                              ))}
+                          {bw ? (
+                            <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
+                              <Zap className="h-3.5 w-3.5 text-amber-500" />
+                              <span>
+                                ↓{bw.maxDownload} {bw.maxDownloadUnit} / ↑
+                                {bw.maxUpload} {bw.maxUploadUnit}
+                              </span>
                             </div>
+                          ) : (
+                            <span className="text-slate-400 italic">
+                              Tidak ada bandwidth
+                            </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate">
-                          {group.description || "-"}
+                        <td className="px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">
+                          {formatRupiah(p.price)}
+                          <span className="text-[11px] font-normal text-slate-400">
+                            /bln
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-xs"
+                          >
+                            P{p.priority || 8}
+                          </Badge>
                         </td>
                         <td className="px-4 py-3">
                           <Badge
@@ -173,8 +181,16 @@ export default function ProfileGroupsPage() {
                             className="flex items-center gap-1 w-fit"
                           >
                             <Users className="h-3 w-3 text-slate-500" />
-                            <span>{group.customerCount ?? 0}</span>
+                            <span>{p.customerCount ?? 0}</span>
                           </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className="font-mono text-xs text-slate-600 dark:text-slate-400 max-w-[200px] truncate block"
+                            title={rateLimit}
+                          >
+                            {rateLimit}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -184,7 +200,7 @@ export default function ProfileGroupsPage() {
                               className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/50"
                               asChild
                             >
-                              <Link href={`/profile-groups/${group.id}/edit`}>
+                              <Link href={`/internet-profiles/${p.id}/edit`}>
                                 <Edit className="h-4 w-4" />
                               </Link>
                             </Button>
@@ -192,7 +208,7 @@ export default function ProfileGroupsPage() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50"
-                              onClick={() => setDeleteTarget(group)}
+                              onClick={() => setDeleteTarget(p)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -211,9 +227,9 @@ export default function ProfileGroupsPage() {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Hapus Profile Group?"
-        description={`Apakah Anda yakin ingin menghapus Profile Group '${deleteTarget?.name}'? Tindakan ini tidak dapat dibatalkan.`}
-        confirmLabel="Hapus Group"
+        title="Hapus Paket Internet?"
+        description={`Apakah Anda yakin ingin menghapus paket '${deleteTarget?.name}'? Tindakan ini tidak dapat dibatalkan.`}
+        confirmLabel="Hapus Paket"
         variant="destructive"
         onConfirm={handleDelete}
       />

@@ -7,7 +7,7 @@ type Params = Promise<{ id: string }>;
 export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   await requirePermission("profile.read");
   const { id } = await ctx.params;
-  const profile = await prisma.pppProfile.findUnique({
+  const profile = await prisma.internetProfile.findUnique({
     where: { id },
     include: {
       bandwidth: true,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { syncPppProfileRadiusBulk } from "@/lib/radsync";
+import { validatePppProfileIps } from "../route";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -14,9 +14,11 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
   const profile = await prisma.pppProfile.findUnique({
     where: { id },
     include: {
-      bandwidth: true,
-      _count: {
-        select: { customers: true },
+      nasRouter: {
+        select: { id: true, name: true, ipAddress: true },
+      },
+      profileGroup: {
+        select: { id: true, name: true },
       },
     },
   });
@@ -33,7 +35,6 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
       ...profile,
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString(),
-      customerCount: profile._count.customers,
     },
   });
 });
@@ -46,43 +47,56 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
   const name = body.name?.trim();
   if (!name) throw new Error("Nama PPP Profile wajib diisi.");
 
-  const price = Number(body.price ?? 0);
-  if (Number.isNaN(price) || price < 0) {
-    throw new Error("Harga paket minimal Rp 0.");
-  }
+  const nasId = body.nasId?.trim();
+  if (!nasId) throw new Error("Wajib memilih Router NAS.");
 
-  const bandwidthId = body.bandwidthId?.trim();
-  if (!bandwidthId) throw new Error("Wajib memilih Konfigurasi Bandwidth.");
+  const router = await prisma.nasRouter.findUnique({ where: { id: nasId } });
+  if (!router) throw new Error("Router NAS yang dipilih tidak ditemukan.");
 
-  const bw = await prisma.bandwidth.findUnique({ where: { id: bandwidthId } });
-  if (!bw) throw new Error("Konfigurasi Bandwidth tidak ditemukan.");
+  const type = body.type || "PPP";
+  const ipModule = body.ipModule || "sql";
+  const localAddress = body.localAddress?.trim();
+  const rangeIpStart = body.rangeIpStart?.trim();
+  const rangeIpEnd = body.rangeIpEnd?.trim();
+  const dnsServers = body.dnsServers?.trim() || "8.8.8.8,8.8.4.4";
+  const parentQueue = body.parentQueue?.trim() || null;
+  const profileGroupId = body.profileGroupId?.trim() || null;
 
-  const priority = Number(body.priority || 8);
-  if (Number.isNaN(priority) || priority < 1 || priority > 8) {
-    throw new Error("Priority harus berada di antara 1 dan 8.");
-  }
+  if (!localAddress) throw new Error("Local Address (Gateway) wajib diisi.");
+  if (!rangeIpStart) throw new Error("Range IP Start wajib diisi.");
+  if (!rangeIpEnd) throw new Error("Range IP End wajib diisi.");
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const res = await tx.pppProfile.update({
-      where: { id },
-      data: {
-        name,
-        price,
-        bandwidthId,
-        priority,
-      },
-      include: {
-        bandwidth: true,
-        _count: {
-          select: { customers: true },
-        },
-      },
+  validatePppProfileIps(localAddress, rangeIpStart, rangeIpEnd);
+
+  if (profileGroupId) {
+    const group = await prisma.profileGroup.findUnique({
+      where: { id: profileGroupId },
     });
+    if (!group) throw new Error("Profile Group tidak ditemukan.");
+  }
 
-    // Bulk sync RADIUS ke seluruh pelanggan yang memakai PPP Profile ini
-    await syncPppProfileRadiusBulk(tx, id);
-
-    return res;
+  const updated = await prisma.pppProfile.update({
+    where: { id },
+    data: {
+      name,
+      nasId,
+      type,
+      ipModule,
+      localAddress,
+      rangeIpStart,
+      rangeIpEnd,
+      dnsServers,
+      parentQueue,
+      profileGroupId,
+    },
+    include: {
+      nasRouter: {
+        select: { id: true, name: true, ipAddress: true },
+      },
+      profileGroup: {
+        select: { id: true, name: true },
+      },
+    },
   });
 
   return NextResponse.json({
@@ -90,7 +104,6 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
       ...updated,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
-      customerCount: updated._count.customers,
     },
   });
 });
@@ -98,15 +111,6 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
 export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
   await requirePermission("profile.delete");
   const { id } = await params;
-
-  const count = await prisma.customer.count({
-    where: { profileId: id },
-  });
-  if (count > 0) {
-    throw new Error(
-      `PPP Profile tidak dapat dihapus karena sedang digunakan oleh ${count} pelanggan.`,
-    );
-  }
 
   await prisma.pppProfile.delete({ where: { id } });
 

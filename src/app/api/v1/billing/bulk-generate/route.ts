@@ -32,7 +32,7 @@ export const POST = asyncApi(async (req: Request) => {
   );
   const existingIds = new Set(existingInvoices.map((i) => i.customerId));
 
-  const profiles = await prisma.pppProfile.findMany();
+  const profiles = await prisma.internetProfile.findMany();
   const profileMap = new Map(profiles.map((p) => [p.id, p]));
 
   const newlyCreated = [];

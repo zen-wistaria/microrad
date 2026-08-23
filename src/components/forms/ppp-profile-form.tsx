@@ -1,10 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2, Package, Sliders, Zap } from "lucide-react";
+import { ArrowLeft, Loader2, Network, Radio } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -26,20 +25,96 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  useBandwidthsQuery,
   useCreatePppProfileMutation,
+  useProfileGroupsQuery,
+  useRoutersQuery,
   useUpdatePppProfileMutation,
 } from "@/lib/api/hooks";
-import { formatBandwidthRateLimit } from "@/lib/radius-format";
-import type { PppProfile } from "@/lib/types";
-import { formatRupiah, getErrorMessage } from "@/lib/utils";
+import type {
+  IpModuleType,
+  NasRouter,
+  PppProfile,
+  ProfileGroup,
+} from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
-const pppProfileSchema = z.object({
-  name: z.string().min(3, "Nama PPP Profile minimal 3 karakter"),
-  price: z.number().min(0, "Harga paket minimal Rp 0"),
-  bandwidthId: z.string().min(1, "Wajib memilih Konfigurasi Bandwidth"),
-  priority: z.number().int().min(1).max(8),
-});
+const ipv4Regex =
+  /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+
+function ipToNumber(ip: string): number {
+  const parts = ip.trim().split(".").map(Number);
+  if (
+    parts.length !== 4 ||
+    parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)
+  ) {
+    return 0;
+  }
+  return (
+    ((parts[0] << 24) >>> 0) +
+    ((parts[1] << 16) >>> 0) +
+    ((parts[2] << 8) >>> 0) +
+    (parts[3] >>> 0)
+  );
+}
+
+const pppProfileSchema = z
+  .object({
+    name: z.string().min(3, "Nama PPP Profile minimal 3 karakter"),
+    nasId: z.string().min(1, "Wajib memilih Router NAS"),
+    type: z.enum(["PPP"]),
+    ipModule: z.enum(["sql", "mikrotik_pool"]),
+    localAddress: z
+      .string()
+      .regex(
+        ipv4Regex,
+        "Format Local Address (IPv4) tidak valid (contoh: 10.10.10.1)",
+      ),
+    rangeIpStart: z
+      .string()
+      .regex(
+        ipv4Regex,
+        "Format Range IP Start (IPv4) tidak valid (contoh: 10.10.10.2)",
+      ),
+    rangeIpEnd: z
+      .string()
+      .regex(
+        ipv4Regex,
+        "Format Range IP End (IPv4) tidak valid (contoh: 10.10.10.254)",
+      ),
+    dnsServers: z
+      .string()
+      .min(7, "Format DNS minimal 1 IP valid (misal: 8.8.8.8,8.8.4.4)"),
+    parentQueue: z.string().optional().nullable(),
+    profileGroupId: z.string().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    const localNum = ipToNumber(data.localAddress);
+    const startNum = ipToNumber(data.rangeIpStart);
+    const endNum = ipToNumber(data.rangeIpEnd);
+
+    if (startNum > 0 && endNum > 0 && startNum > endNum) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rangeIpStart"],
+        message:
+          "Range IP Start harus lebih kecil atau sama dengan Range IP End",
+      });
+    }
+
+    if (
+      localNum > 0 &&
+      startNum > 0 &&
+      endNum > 0 &&
+      localNum >= startNum &&
+      localNum <= endNum
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["localAddress"],
+        message: `Local Address Gateway (${data.localAddress}) tidak boleh berada di antara Range IP (${data.rangeIpStart} - ${data.rangeIpEnd})`,
+      });
+    }
+  });
 
 type PppProfileFormValues = z.infer<typeof pppProfileSchema>;
 
@@ -48,281 +123,332 @@ interface PppProfileFormProps {
   isEditing?: boolean;
 }
 
-const PRIORITY_OPTIONS = [
-  { value: 1, label: "Priority 1 - Tertinggi (VIP / Urgent)" },
-  { value: 2, label: "Priority 2 - Sangat Tinggi" },
-  { value: 3, label: "Priority 3 - Tinggi" },
-  { value: 4, label: "Priority 4 - Di Atas Normal" },
-  { value: 5, label: "Priority 5 - Normal" },
-  { value: 6, label: "Priority 6 - Di Bawah Normal" },
-  { value: 7, label: "Priority 7 - Rendah" },
-  { value: 8, label: "Priority 8 - Terendah (Default)" },
-];
-
 export function PppProfileForm({
   initialData,
-  isEditing = false,
+  isEditing,
 }: PppProfileFormProps) {
   const router = useRouter();
-  const { data: bwsRes } = useBandwidthsQuery();
-  const bandwidths = bwsRes?.data || [];
-
   const createMutation = useCreatePppProfileMutation();
   const updateMutation = useUpdatePppProfileMutation();
 
-  const submitting = createMutation.isPending || updateMutation.isPending;
+  const { data: routersRes, isLoading: loadingRouters } = useRoutersQuery();
+  const { data: groupsRes, isLoading: loadingGroups } = useProfileGroupsQuery();
+  const routers: NasRouter[] = routersRes || [];
+  const groups: ProfileGroup[] = groupsRes?.data || [];
 
   const {
     register,
     handleSubmit,
     setValue,
     watch,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<PppProfileFormValues>({
     resolver: zodResolver(pppProfileSchema),
     defaultValues: {
       name: initialData?.name || "",
-      price: initialData?.price ?? 100000,
-      bandwidthId: initialData?.bandwidthId || "",
-      priority: initialData?.priority || 8,
+      nasId: initialData?.nasId || "",
+      type: "PPP",
+      ipModule: initialData?.ipModule || "sql",
+      localAddress: initialData?.localAddress || "10.10.10.1",
+      rangeIpStart: initialData?.rangeIpStart || "10.10.10.2",
+      rangeIpEnd: initialData?.rangeIpEnd || "10.10.10.254",
+      dnsServers: initialData?.dnsServers || "8.8.8.8,8.8.4.4",
+      parentQueue: initialData?.parentQueue || "",
+      profileGroupId: initialData?.profileGroupId || "",
     },
   });
 
-  const watchedValues = watch();
-
-  const selectedBandwidth = useMemo(
-    () => bandwidths.find((b) => b.id === watchedValues.bandwidthId),
-    [bandwidths, watchedValues.bandwidthId],
-  );
-
-  const rateLimitPreview = useMemo(() => {
-    if (!selectedBandwidth) return "-";
-    return formatBandwidthRateLimit(selectedBandwidth, watchedValues.priority);
-  }, [selectedBandwidth, watchedValues.priority]);
+  const selectedNasId = watch("nasId");
+  const selectedIpModule = watch("ipModule");
+  const selectedGroupId = watch("profileGroupId");
 
   const onSubmit = async (values: PppProfileFormValues) => {
     try {
+      const payload = {
+        ...values,
+        parentQueue: values.parentQueue?.trim() || null,
+        profileGroupId: values.profileGroupId?.trim() || null,
+      };
+
       if (isEditing && initialData) {
         await updateMutation.mutateAsync({
           id: initialData.id,
-          data: values,
+          data: payload,
         });
-        toast.success("PPP Profile berhasil diperbarui");
+        toast.success("PPP Profile berhasil diperbarui.");
       } else {
-        await createMutation.mutateAsync(values);
-        toast.success("PPP Profile berhasil dibuat");
+        await createMutation.mutateAsync(payload);
+        toast.success("PPP Profile baru berhasil ditambahkan.");
       }
       router.push("/ppp-profiles");
-    } catch (err: unknown) {
+    } catch (err) {
       toast.error(getErrorMessage(err));
     }
   };
 
+  const isPending =
+    isSubmitting || createMutation.isPending || updateMutation.isPending;
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-3xl">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button asChild variant="outline" size="icon" className="h-9 w-9">
+          <Button variant="ghost" size="icon" asChild>
             <Link href="/ppp-profiles">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              {isEditing ? "Edit PPP Profile" : "Tambah PPP Profile Baru"}
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              {isEditing ? "Edit PPP Profile" : "Tambah PPP Profile"}
             </h1>
             <p className="text-xs text-slate-500">
-              Paket layanan PPPoE global yang menentukan Bandwidth, Harga
-              Tagihan, dan Priority.
+              {isEditing
+                ? "Perbarui konfigurasi gateway & pool node Router MikroTik"
+                : "Konfigurasikan gateway PPP, IP pool, dan DNS untuk node Router MikroTik"}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/ppp-profiles">Batal</Link>
-          </Button>
-          <Button type="submit" size="sm" disabled={submitting}>
-            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEditing ? "Simpan Perubahan" : "Buat PPP Profile"}
-          </Button>
-        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          {/* Card 1: Informasi Paket & Harga */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Package className="h-4 w-4 text-blue-600" />
-                <CardTitle className="text-base">
-                  Informasi Paket Layanan
-                </CardTitle>
-              </div>
-              <CardDescription>
-                Nama paket dan tarif bulanan langganan untuk invoice billing.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="name">Nama PPP Profile</Label>
-                <Input
-                  id="name"
-                  placeholder="Contoh: Paket 2 Mbps / Paket Home 10 Mbps / Gamer Ultra 50M"
-                  {...register("name")}
-                  className="mt-1"
-                />
-                {errors.name && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {errors.name.message}
-                  </p>
-                )}
-              </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Radio className="h-4 w-4 text-blue-600" />
+            Informasi PPP Profile Node
+          </CardTitle>
+          <CardDescription>
+            Tentukan nama profile di MikroTik dan router NAS target.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Nama Profile di MikroTik *</Label>
+            <Input
+              id="name"
+              placeholder="Contoh: pppoe-node-a1, default-encryption"
+              {...register("name")}
+            />
+            {errors.name && (
+              <p className="text-xs text-rose-500">{errors.name.message}</p>
+            )}
+          </div>
 
-              <div>
-                <Label htmlFor="price">Harga Paket (IDR / Bulan)</Label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-semibold">
-                    Rp
-                  </span>
-                  <Input
-                    id="price"
-                    type="number"
-                    min={0}
-                    step={1000}
-                    className="pl-9 font-semibold"
-                    {...register("price", { valueAsNumber: true })}
-                  />
-                </div>
-                {errors.price && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {errors.price.message}
-                  </p>
-                )}
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Tarif bulanan langganan untuk pembuatan invoice billing
-                  otomatis.
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="nasId">Router NAS Target *</Label>
+              <Link
+                href="/routers"
+                className="text-xs text-blue-600 hover:underline"
+              >
+                + Kelola Router
+              </Link>
+            </div>
+            <Select
+              value={selectedNasId}
+              onValueChange={(val) =>
+                setValue("nasId", val, { shouldValidate: true })
+              }
+              disabled={loadingRouters}
+            >
+              <SelectTrigger id="nasId">
+                <SelectValue placeholder="-- Pilih Router NAS --" />
+              </SelectTrigger>
+              <SelectContent>
+                {routers.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name} ({r.ipAddress})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.nasId && (
+              <p className="text-xs text-rose-500">{errors.nasId.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="profileGroupId">
+                Profile Group / Wilayah (Opsional)
+              </Label>
+              <Link
+                href="/profile-groups"
+                className="text-xs text-blue-600 hover:underline"
+              >
+                + Kelola Wilayah
+              </Link>
+            </div>
+            <Select
+              value={selectedGroupId || "none"}
+              onValueChange={(val) =>
+                setValue("profileGroupId", val === "none" ? null : val, {
+                  shouldValidate: true,
+                })
+              }
+              disabled={loadingGroups}
+            >
+              <SelectTrigger id="profileGroupId">
+                <SelectValue placeholder="-- Belum dimasukkan ke Wilayah --" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  -- Tanpa Group / Mandiri --
+                </SelectItem>
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-slate-400">
+              Mengelompokkan node ini ke dalam zona failover wilayah tertentu.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Network className="h-4 w-4 text-emerald-600" />
+            Alokasi IP & Jaringan PPP
+          </CardTitle>
+          <CardDescription>
+            Konfigurasi Local Gateway, Rentang Pool Client, DNS Server, dan
+            Parent Queue.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="type">Tipe Layanan</Label>
+              <Select
+                value="PPP"
+                onValueChange={(val) =>
+                  setValue("type", val as "PPP", { shouldValidate: true })
+                }
+              >
+                <SelectTrigger id="type">
+                  <SelectValue placeholder="Pilih Tipe" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PPP">PPP (PPPoE / L2TP / SSTP)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="ipModule">IP Module Allocation *</Label>
+              <Select
+                value={selectedIpModule}
+                onValueChange={(val) =>
+                  setValue("ipModule", val as IpModuleType, {
+                    shouldValidate: true,
+                  })
+                }
+              >
+                <SelectTrigger id="ipModule">
+                  <SelectValue placeholder="Pilih IP Module" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sql">
+                    SQL IP Module (FreeRADIUS IP Pool)
+                  </SelectItem>
+                  <SelectItem value="mikrotik_pool">
+                    MikroTik IP Pool (Local Router Pool)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="localAddress">Local Address (PPP Gateway) *</Label>
+            <Input
+              id="localAddress"
+              placeholder="10.10.10.1"
+              {...register("localAddress")}
+            />
+            <p className="text-[11px] text-slate-400">
+              IP Gateway lokal interface PPP di sisi RouterOS.
+            </p>
+            {errors.localAddress && (
+              <p className="text-xs text-rose-500">
+                {errors.localAddress.message}
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="rangeIpStart">Range IP Pool (Awal) *</Label>
+              <Input
+                id="rangeIpStart"
+                placeholder="10.10.10.2"
+                {...register("rangeIpStart")}
+              />
+              {errors.rangeIpStart && (
+                <p className="text-xs text-rose-500">
+                  {errors.rangeIpStart.message}
                 </p>
-              </div>
-            </CardContent>
-          </Card>
+              )}
+            </div>
 
-          {/* Card 2: Relasi Bandwidth & Priority */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Sliders className="h-4 w-4 text-violet-600" />
-                <CardTitle className="text-base">
-                  Konfigurasi Kecepatan & QoS
-                </CardTitle>
-              </div>
-              <CardDescription>
-                Pilih konfigurasi bandwidth MIR/CIR & antrian priority
-                FreeRADIUS.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="bandwidthId">Konfigurasi Bandwidth</Label>
-                <Select
-                  value={watchedValues.bandwidthId}
-                  onValueChange={(v) =>
-                    setValue("bandwidthId", v, { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger id="bandwidthId" className="mt-1">
-                    <SelectValue placeholder="Pilih Konfigurasi Bandwidth..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bandwidths.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name} (↓{b.maxDownload} {b.maxDownloadUnit} / ↑
-                        {b.maxUpload} {b.maxUploadUnit})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.bandwidthId && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {errors.bandwidthId.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="priority">Queue Priority (1 - 8)</Label>
-                <Select
-                  value={String(watchedValues.priority || 8)}
-                  onValueChange={(v) =>
-                    setValue("priority", Number(v), { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger id="priority" className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <SelectItem key={p.value} value={String(p.value)}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Prioritas antrian bandwidth RouterOS. Nilai 1 memiliki
-                  prioritas tertinggi saat congestion.
+            <div className="space-y-1.5">
+              <Label htmlFor="rangeIpEnd">Range IP Pool (Akhir) *</Label>
+              <Input
+                id="rangeIpEnd"
+                placeholder="10.10.10.254"
+                {...register("rangeIpEnd")}
+              />
+              {errors.rangeIpEnd && (
+                <p className="text-xs text-rose-500">
+                  {errors.rangeIpEnd.message}
                 </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              )}
+            </div>
+          </div>
 
-        {/* Sidebar Summary */}
-        <div>
-          <Card className="sticky top-6 border-blue-100 bg-blue-50/40 dark:border-blue-900/30 dark:bg-blue-950/20">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-blue-600" />
-                <CardTitle className="text-base">
-                  Ringkasan PPP Profile
-                </CardTitle>
-              </div>
-              <CardDescription>
-                Snapshot data yang akan diterapkan ke pelanggan.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-xs">
-              <div className="space-y-2 text-slate-600 dark:text-slate-400">
-                <div className="flex justify-between border-b border-blue-200/50 pb-2 dark:border-blue-800/50">
-                  <span>Harga Paket:</span>
-                  <span className="font-semibold text-blue-700 dark:text-blue-300">
-                    {formatRupiah(watchedValues.price || 0)} / bln
-                  </span>
-                </div>
-                <div className="flex justify-between border-b border-blue-200/50 pb-2 dark:border-blue-800/50">
-                  <span>Kecepatan:</span>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {selectedBandwidth
-                      ? `↓${selectedBandwidth.maxDownload} ${selectedBandwidth.maxDownloadUnit} / ↑${selectedBandwidth.maxUpload} ${selectedBandwidth.maxUploadUnit}`
-                      : "-"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1 border-b border-blue-200/50 pb-2 dark:border-blue-800/50">
-                  <span>Rate-Limit MikroTik:</span>
-                  <span className="rounded bg-white p-2 font-mono text-[11px] text-blue-950 shadow-2xs dark:bg-slate-900 dark:text-blue-200 break-all">
-                    {rateLimitPreview}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Priority Queue:</span>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    Priority {watchedValues.priority || 8}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dnsServers">DNS Server (Pisahkan Koma) *</Label>
+            <Input
+              id="dnsServers"
+              placeholder="8.8.8.8,8.8.4.4"
+              {...register("dnsServers")}
+            />
+            {errors.dnsServers && (
+              <p className="text-xs text-rose-500">
+                {errors.dnsServers.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="parentQueue">
+              Parent Queue di RouterOS (Opsional)
+            </Label>
+            <Input
+              id="parentQueue"
+              placeholder="Contoh: TOTAL-CLIENT, PARENT-PPPOE"
+              {...register("parentQueue")}
+            />
+            <p className="text-[11px] text-slate-400">
+              Menghubungkan dynamic queue PPPoE ke antrean induk (Simple Queue).
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-end gap-3">
+        <Button variant="outline" type="button" asChild>
+          <Link href="/ppp-profiles">Batal</Link>
+        </Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+          {isEditing ? "Simpan Perubahan" : "Buat PPP Profile"}
+        </Button>
       </div>
     </form>
   );

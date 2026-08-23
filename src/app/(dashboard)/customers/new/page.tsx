@@ -3,11 +3,11 @@
 import { CustomerForm } from "@/components/forms/customer-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePppProfilesQuery } from "@/lib/api/hooks";
+import { useInternetProfilesQuery } from "@/lib/api/hooks";
 
 export default function NewCustomerPage() {
   const { data: profilesRes, isLoading: profilesLoading } =
-    usePppProfilesQuery();
+    useInternetProfilesQuery();
 
   const profiles = profilesRes?.data || [];
   const loading = profilesLoading && profiles.length === 0;

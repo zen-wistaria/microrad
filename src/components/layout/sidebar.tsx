@@ -74,8 +74,8 @@ const mainNavItems: NavItem[] = [
 
 const serviceNavItems: NavItem[] = [
   {
-    title: "PPP Profile",
-    href: "/ppp-profiles",
+    title: "Paket Internet",
+    href: "/internet-profiles",
     icon: Package,
     permission: "profile.read",
   },
@@ -89,6 +89,12 @@ const serviceNavItems: NavItem[] = [
     title: "Profile Group",
     href: "/profile-groups",
     icon: Network,
+    permission: "profile.read",
+  },
+  {
+    title: "PPP Profile",
+    href: "/ppp-profiles",
+    icon: Radio,
     permission: "profile.read",
   },
 ];

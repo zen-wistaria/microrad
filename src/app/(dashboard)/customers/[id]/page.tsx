@@ -68,8 +68,8 @@ import {
   useCustomerSessionsQuery,
   useCustomerUsageHistoryQuery,
   useDisconnectCustomerMutation,
+  useInternetProfileQuery,
   useInvoicesQuery,
-  usePppProfileQuery,
   useProfileGroupQuery,
   useRouterNasQuery,
   useUpdateCustomerMutation,
@@ -158,13 +158,13 @@ export default function CustomerDetailPage({
     isFetching: customerFetching,
   } = useCustomerQuery(customerId);
 
-  const { data: pppProfRes } = usePppProfileQuery(customer?.profileId || "");
-  const profile = pppProfRes?.data || customer?.profile;
+  const { data: netProfRes } = useInternetProfileQuery(
+    customer?.profileId || "",
+  );
+  const profile = netProfRes?.data || customer?.profile;
   const { data: grpRes } = useProfileGroupQuery(customer?.profileGroupId || "");
   const profileGroup = grpRes?.data || customer?.profileGroup;
-  const { data: routerNas } = useRouterNasQuery(
-    profileGroup?.nasId || customer?.nasId || "",
-  );
+  const { data: routerNas } = useRouterNasQuery(customer?.nasId || "");
   const { data: activeSession } = useCustomerActiveSessionQuery(customerId);
   const { data: sessionHistory = [] } = useCustomerSessionsQuery(
     customerId,
@@ -611,10 +611,11 @@ export default function CustomerDetailPage({
                 {profileGroup && (
                   <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
                     <span className="text-slate-500">
-                      Lokasi / Profile Group:
+                      Wilayah (Profile Group):
                     </span>
                     <span className="font-medium text-slate-900 dark:text-slate-100">
-                      {profileGroup.name} (Gateway: {profileGroup.localAddress})
+                      {profileGroup.name} (
+                      {profileGroup.pppProfiles?.length || 0} Router Node)
                     </span>
                   </div>
                 )}
@@ -659,21 +660,15 @@ export default function CustomerDetailPage({
                         variant="outline"
                         className="text-indigo-600 border-indigo-200 text-[11px]"
                       >
-                        🔒 Terkunci ke{" "}
-                        {profileGroup?.nasRouter?.name ||
-                          routerNas?.name ||
-                          "Router Node"}
+                        🔒 Terkunci ke {profileGroup?.name || "Wilayah"} (
+                        {profileGroup?.pppProfiles?.length || 1} Node)
                       </Badge>
                     ) : (
                       <Badge
                         variant="secondary"
                         className="text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 text-[11px]"
                       >
-                        🔓 Bebas / Failover (
-                        {profileGroup?.nasRouter?.name ||
-                          routerNas?.name ||
-                          "Semua Router"}
-                        )
+                        🔓 Bebas / Global Failover
                       </Badge>
                     )}
                   </div>

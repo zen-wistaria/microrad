@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export const GET = asyncApi(async () => {
   await requirePermission("profile.read");
-  const profiles = await prisma.pppProfile.findMany({
+  const profiles = await prisma.internetProfile.findMany({
     orderBy: { name: "asc" },
     include: {
       bandwidth: true,

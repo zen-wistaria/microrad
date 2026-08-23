@@ -55,7 +55,11 @@ export const GET = asyncApi(async (req: Request) => {
         },
         profileGroup: {
           include: {
-            nasRouter: true,
+            pppProfiles: {
+              include: {
+                nasRouter: true,
+              },
+            },
           },
         },
         router: true,
@@ -192,9 +196,9 @@ export const POST = asyncApi(async (req: Request) => {
   const customer = await prisma.$transaction(async (tx) => {
     const customerId = username;
 
-    // Ambil PPP Profile & Profile Group
-    const pppProf = body.profileId
-      ? await tx.pppProfile.findUnique({
+    // Ambil Internet Profile & Profile Group
+    const internetProf = body.profileId
+      ? await tx.internetProfile.findUnique({
           where: { id: body.profileId },
           include: { bandwidth: true },
         })
@@ -203,12 +207,22 @@ export const POST = asyncApi(async (req: Request) => {
     const profileGroup = body.profileGroupId
       ? await tx.profileGroup.findUnique({
           where: { id: body.profileGroupId },
-          include: { nasRouter: true },
+          include: {
+            pppProfiles: {
+              include: { nasRouter: true },
+            },
+          },
         })
       : null;
 
-    const nasId = profileGroup?.nasId ?? body.nasId ?? undefined;
-    const nasIp = profileGroup?.nasRouter?.ipAddress;
+    const groupNasIps = (profileGroup?.pppProfiles ?? [])
+      .map((p) => p.nasRouter?.ipAddress)
+      .filter((ip): ip is string => Boolean(ip));
+
+    const nasId =
+      profileGroup?.pppProfiles[0]?.nasId ?? body.nasId ?? undefined;
+    const nasIp = groupNasIps[0];
+    const allowedNasIps = body.bindOnNas ? groupNasIps : [];
 
     const created = await tx.customer.create({
       data: {
@@ -227,7 +241,7 @@ export const POST = asyncApi(async (req: Request) => {
         bindOnNas: body.bindOnNas ?? false,
         sessionMode: body.sessionMode || "single",
         maxSimultaneous: Number(body.maxSimultaneous) || 1,
-        allowedNasIps: body.bindOnNas && nasIp ? [nasIp] : [],
+        allowedNasIps,
       },
     });
 
@@ -263,11 +277,11 @@ export const POST = asyncApi(async (req: Request) => {
     await syncCustomerRadius(
       tx,
       created,
-      pppProf
+      internetProf
         ? {
-            bandwidth: pppProf.bandwidth,
-            priority: pppProf.priority,
-            dnsServers: profileGroup?.dnsServers,
+            bandwidth: internetProf.bandwidth,
+            priority: internetProf.priority,
+            dnsServers: profileGroup?.pppProfiles[0]?.dnsServers,
           }
         : null,
       password,

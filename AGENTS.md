@@ -76,43 +76,49 @@ Sistem menggunakan **dua instance Better-Auth** yang terisolasi untuk membedakan
 
 Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggunakan driver adapter `@prisma/adapter-pg`.
 
-### A. Tabel Domain Aplikasi
+### A. Tabel Domain Aplikasi (Model 4-Layer Modular ISP)
 
-- **`Customer` (`customer`)**:
-  - `id` (String PK, format `cust-<timestamp>`)
-  - `username` (String Unique — login PPPoE / `radcheck.username`, case-insensitive di layer API, auto-generated unik format `user_<6-digit>`, jika diganti otomatis trigger `moveCustomerRadius` ke tabel RADIUS)
-  - `password` (String? — password PPPoE dial-in, auto-generated 8 karakter)
-  - `fullName`, `email`, `phone`, `address` (Metadata kontak pelanggan; `email` digunakan untuk pembuatan akun `PortalUser`)
-  - `status` (`"active"` | `"suspended"` | `"disabled"`)
-  - `profileId` (FK $\rightarrow$ `PppProfile.id` — Paket Layanan: Kecepatan & Tarif Bulanan)
-  - `profileGroupId` (FK $\rightarrow$ `ProfileGroup.id` — Lokasi Node: Router NAS, Gateway & IP Pool)
-  - `staticIp` (String? — IP statis pelanggan / `Framed-IP-Address`)
-  - `nasId` (FK $\rightarrow$ `NasRouter.id`? — otomatis diturunkan dari `profileGroup.nasId`)
-  - `bindOnNas` (Boolean, default `false` — kunci dial login hanya melalui router NAS milik `profileGroup`)
-  - `createdAt`, `updatedAt`, `lastSeenAt` (DateTime)
-  - `portalUser` (Relasi 1-to-1 ke `PortalUser` untuk login Customer Self-Care)
+1. **`Bandwidth` (`bandwidth_config`)**:
+   - `id` (String PK, format `bw-<timestamp>`), `name` (String)
+   - Parameter Dasar (CIR / MIR): `minDownload`, `minDownloadUnit` (`Kbps` | `Mbps`), `minUpload`, `minUploadUnit` (`Kbps` | `Mbps`), `maxDownload` (Int), `maxDownloadUnit` (`Kbps` | `Mbps`), `maxUpload` (Int), `maxUploadUnit` (`Kbps` | `Mbps`)
+   - Parameter QoS MikroTik Burst (All-or-Nothing Rule): `burstLimitDownload`, `burstLimitDownloadUnit`, `burstLimitUpload`, `burstLimitUploadUnit`, `burstThresholdDownload`, `burstThresholdDownloadUnit`, `burstThresholdUpload`, `burstThresholdUploadUnit`, `burstTime` (detik 1-600)
+   - `pppProfileCount` (Derived di API dari jumlah `InternetProfile` terkait)
 
-- **`Bandwidth` (`bandwidth_config`)**:
-  - `id` (String PK, format `bw-<timestamp>`), `name` (String)
-  - Parameter Dasar (CIR / MIR): `minDownload`, `minDownloadUnit` (`Kbps` | `Mbps`), `minUpload`, `minUploadUnit` (`Kbps` | `Mbps`), `maxDownload` (Int), `maxDownloadUnit` (`Kbps` | `Mbps`), `maxUpload` (Int), `maxUploadUnit` (`Kbps` | `Mbps`)
-  - Parameter QoS MikroTik Burst (All-or-Nothing Rule): `burstLimitDownload`, `burstLimitDownloadUnit`, `burstLimitUpload`, `burstLimitUploadUnit`, `burstThresholdDownload`, `burstThresholdDownloadUnit`, `burstThresholdUpload`, `burstThresholdUploadUnit`, `burstTime` (detik 1-600)
-  - `pppProfileCount` (Derived di API dari jumlah `PppProfile` terkait)
+2. **`PppProfile` (`ppp_profile`) — Konfigurasi Node Router MikroTik**:
+   - `id` (String PK, format `ppp-<timestamp>`), `name` (String)
+   - `nasId` (FK $\rightarrow$ `NasRouter.id` — Router MikroTik target node)
+   - `type` (`"PPP"`), `ipModule` (`"sql"` | `"mikrotik_pool"`)
+   - `localAddress` (String IPv4 Gateway PPP MikroTik — divalidasi tidak boleh berada di antara `rangeIpStart` s.d `rangeIpEnd`)
+   - `rangeIpStart` (String IPv4), `rangeIpEnd` (String IPv4)
+   - `dnsServers` (String — default `"8.8.8.8,8.8.4.4"`)
+   - `parentQueue` (String?)
+   - `profileGroupId` (FK $\rightarrow$ `ProfileGroup.id`? — Wilayah/Failover Group tempat node ini tergabung)
 
-- **`ProfileGroup` (`profile_group`)**:
-  - `id` (String PK, format `grp-<timestamp>`), `name` (String)
-  - `nasId` (FK $\rightarrow$ `NasRouter.id`)
-  - `type` (`"PPP"`), `ipModule` (`"sql"` | `"mikrotik_pool"`)
-  - `localAddress` (String IPv4 Gateway PPP — divalidasi tidak boleh berada di antara `rangeIpStart` s.d `rangeIpEnd`)
-  - `rangeIpStart` (String IPv4), `rangeIpEnd` (String IPv4)
-  - `dnsServers` (String — default `"8.8.8.8,8.8.4.4"`)
-  - `parentQueue` (String?)
-  - `customerCount` (Derived di API dari jumlah `Customer` terkait)
+3. **`ProfileGroup` (`profile_group`) — Pengelompokan Wilayah / Zona Failover**:
+   - `id` (String PK, format `grp-<timestamp>`), `name` (String)
+   - `description` (String?)
+   - `pppProfiles` (Relasi 1-to-many ke `PppProfile` node yang berada dalam satu wilayah geografis)
+   - `customerCount` (Derived di API dari jumlah `Customer` terkait)
 
-- **`PppProfile` (`ppp_profile`)**:
-  - `id` (String PK, format `ppp-<timestamp>`), `name` (String), `price` (Int IDR/bulan)
-  - `bandwidthId` (FK $\rightarrow$ `Bandwidth.id`)
-  - `priority` (Int 1–8, default 8)
-  - `customerCount` (Derived di API dari jumlah `Customer` terkait)
+4. **`InternetProfile` (`internet_profile`) — Produk Paket Layanan & Tarif**:
+   - `id` (String PK, format `prof-<timestamp>`), `name` (String), `price` (Int IDR/bulan)
+   - `bandwidthId` (FK $\rightarrow$ `Bandwidth.id`)
+   - `priority` (Int 1–8, default 8)
+   - `customerCount` (Derived di API dari jumlah `Customer` terkait)
+
+5. **`Customer` (`customer`)**:
+   - `id` (String PK, format `cust-<timestamp>`)
+   - `username` (String Unique — login PPPoE / `radcheck.username`, case-insensitive di layer API, auto-generated unik format `user_<6-digit>`, jika diganti otomatis trigger `moveCustomerRadius` ke tabel RADIUS)
+   - `password` (String? — password PPPoE dial-in, auto-generated 8 karakter)
+   - `fullName`, `email`, `phone`, `address` (Metadata kontak pelanggan; `email` digunakan untuk pembuatan akun `PortalUser`)
+   - `status` (`"active"` | `"suspended"` | `"disabled"`)
+   - `profileId` (FK $\rightarrow$ `InternetProfile.id` — Paket Layanan: Kecepatan & Tarif Bulanan)
+   - `profileGroupId` (FK $\rightarrow$ `ProfileGroup.id` — Wilayah Layanan: Kumpulan Node Router Failover)
+   - `staticIp` (String? — IP statis pelanggan / `Framed-IP-Address`)
+   - `nasId` (FK $\rightarrow$ `NasRouter.id`?)
+   - `bindOnNas` (Boolean, default `false` — kunci dial login hanya ke router-router yang terdaftar pada `profileGroup` pelanggan)
+   - `createdAt`, `updatedAt`, `lastSeenAt` (DateTime)
+   - `portalUser` (Relasi 1-to-1 ke `PortalUser` untuk login Customer Self-Care)
 
 - **`NasRouter` (`nas_router`)**:
   - `id` (String PK, format `nas-<timestamp>`), `name` (String), `ipAddress` (String Unique — `nasname`), `location` (String?), `type` (`"mikrotik"`)
@@ -154,7 +160,7 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 - **`RadCheck` (`radcheck`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
   - Record: `Cleartext-Password` (password pelanggan), `Auth-Type := Reject` (pelanggan suspended/disabled), `Simultaneous-Use := 1` (Single Session) / `Simultaneous-Use := N` (Multi Session).
 - **`RadNasAllow` (`radnasallow`)**: `id` (Serial PK), `username`, `nasipaddress`
-  - Whitelist router NAS per user: dibaca oleh policy unlang FreeRADIUS `check_nas_binding` saat `bindOnNas = true`.
+  - Whitelist router NAS per user: dibaca oleh policy unlang FreeRADIUS `check_nas_binding` saat `bindOnNas = true`. Jika wilayah memiliki 3 router NAS, FreeRADIUS akan memiliki 3 baris di tabel `radnasallow` untuk user tersebut (Zero-Touch Multi-Router Failover).
 - **`RadReply` (`radreply`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
   - Record: `Framed-IP-Address` (IP statis), `Mikrotik-Rate-Limit` (QoS string format MikroTik), `MS-Primary-DNS-Server`, `MS-Secondary-DNS-Server`.
 - **`RadAcct` (`radacct`)**: Dikelola langsung oleh FreeRADIUS saat menerima Accounting packet. Kolom: `radacctid`, `acctsessionid`, `acctuniqueid`, `username`, `nasipaddress`, `framedipaddress`, `acctstarttime`, `acctupdatetime`, `acctstoptime`, `acctsessiontime`, `acctinputoctets`, `acctoutputoctets`, `acctterminatecause`, dll.
@@ -170,9 +176,9 @@ Semua operasi mutasi data yang mempengaruhi otentikasi/otorisasi RADIUS dijalank
 - **Pelanggan Aktif**: Menulis `radcheck` (`Cleartext-Password`), menghapus `Auth-Type := Reject`.
 - **Pelanggan Suspended / Disabled**: Menulis `radcheck` (`Auth-Type := Reject`), password lama tetap disimpan agar ketika diaktifkan kembali tidak perlu reset password.
 - **Session Control (`Simultaneous-Use`)**: Menulis `radcheck` `Simultaneous-Use` := `1` (Single Session) atau `maxSimultaneous` (Multi Session).
-- **NAS Whitelist Binding (`radnasallow`)**: Saat `bindOnNas = true`, menulis baris router IP yang diizinkan ke tabel `radnasallow`. FreeRADIUS mengevaluasi policy `check_nas_binding` untuk menolak router yang tidak di-whitelist. Jika `bindOnNas = false`, baris di `radnasallow` dihapus sehingga bebas login dari router NAS mana pun.
+- **NAS Whitelist Binding & Failover (`radnasallow`)**: Saat `bindOnNas = true`, menulis baris seluruh router IP yang tergabung dalam `profileGroup` pelanggan ke tabel `radnasallow`. FreeRADIUS mengevaluasi policy `check_nas_binding` untuk memastikan dial-in hanya dari router yang diizinkan di wilayah tersebut. Jika salah satu router padam, dial PPPoE otomatis beralih ke router lain di wilayah yang sama tanpa intervensi admin. Jika `bindOnNas = false`, baris di `radnasallow` dihapus sehingga bebas login dari router mana pun.
 - **Profil Bandwidth & DNS**: Menulis `radreply` `Mikrotik-Rate-Limit` dan `MS-Primary-DNS-Server` / `MS-Secondary-DNS-Server`.
-- **Bulk PPP Profile Sync**: Saat konfigurasi bandwidth atau PPP Profile diedit, `syncPppProfileRadiusBulk` memperbarui atribut `Mikrotik-Rate-Limit` di `radreply` untuk semua pelanggan yang menggunakan paket tersebut.
+- **Bulk Internet Profile Sync**: Saat konfigurasi bandwidth atau Internet Profile diedit, `syncInternetProfileRadiusBulk` memperbarui atribut `Mikrotik-Rate-Limit` di `radreply` untuk semua pelanggan yang menggunakan paket tersebut.
 - **Router NAS**: Menulis/memperbarui baris pada tabel `nas` untuk dibaca oleh FreeRADIUS (`read_clients = yes`).
 
 ### B. Format MikroTik QoS Rate-Limit (`src/lib/radius-format.ts`)
@@ -199,9 +205,10 @@ Menggunakan implementasi protokol binari API RouterOS mandiri melalui koneksi ra
 | **Autentikasi** | `/login` | `/portal/login` | Login user sistem / login self-care portal |
 | **Dashboard** | `/dashboard` | `/portal` | Ringkasan statistik operasional / status langganan |
 | **Pelanggan** | `/customers`, `/customers/new`, `/customers/[id]`, `/customers/[id]/edit` | — | Manajemen data teknis & PPPoE pelanggan |
-| **Paket & Layanan: PPP Profile** | `/ppp-profiles`, `/ppp-profiles/new`, `/ppp-profiles/[id]/edit` | — | Paket layanan PPPoE & harga bulanan |
+| **Paket & Layanan: Paket Internet** | `/internet-profiles`, `/internet-profiles/new`, `/internet-profiles/[id]/edit` | — | Produk paket internet, harga bulanan, bandwidth & priority |
+| **Paket & Layanan: PPP Profile** | `/ppp-profiles`, `/ppp-profiles/new`, `/ppp-profiles/[id]/edit` | — | Node gateway MikroTik, pool IP & parent queue |
 | **Paket & Layanan: Bandwidth** | `/bandwidths`, `/bandwidths/new`, `/bandwidths/[id]/edit` | — | Konfigurasi kecepatan (MIR/CIR) & Burst QoS |
-| **Paket & Layanan: Profile Group** | `/profile-groups`, `/profile-groups/new`, `/profile-groups/[id]/edit` | — | Group router NAS, IP pool & gateway |
+| **Paket & Layanan: Profile Group** | `/profile-groups`, `/profile-groups/new`, `/profile-groups/[id]/edit` | — | Pengelompokan wilayah & zona failover multi-router |
 | **Router NAS** | `/routers`, `/routers/new`, `/routers/[id]/edit` | — | Konfigurasi MikroTik & status sync |
 | **Sesi PPPoE** | `/sessions` | `/portal/usage`, `/portal/logs` | Monitoring sesi live & riwayat pemakaian |
 | **Billing** | `/billing`, `/billing/[id]` | `/portal/billing`, `/portal/payments` | Invoicing, tagihan, cetak nota, & histori bayar |
@@ -245,17 +252,29 @@ PUT    /api/v1/customers/:id                 -> Update pelanggan (+ atomic radsy
 DELETE /api/v1/customers/:id                 -> Hapus pelanggan (+ radsync cleanup + terminate sesi)
 POST   /api/v1/customers/:id/disconnect      -> Putus koneksi PPPoE aktif pelanggan
 
-GET    /api/v1/bandwidths                    -> List konfigurasi bandwidth (+ pppProfileCount)
+GET    /api/v1/internet-profiles             -> List Paket Internet (+ customerCount)
+POST   /api/v1/internet-profiles             -> Tambah Paket Internet (Bandwidth + Harga + Priority)
+GET    /api/v1/internet-profiles/:id         -> Detail Paket Internet
+PUT    /api/v1/internet-profiles/:id         -> Update Paket Internet (+ bulk radsync ke pelanggan)
+DELETE /api/v1/internet-profiles/:id         -> Hapus Paket Internet (ditolak jika masih dipakai pelanggan)
+
+GET    /api/v1/ppp-profiles                  -> List PPP Profile Node Router
+POST   /api/v1/ppp-profiles                  -> Tambah PPP Profile Node (Gateway IP + Pool IP + Router NAS)
+GET    /api/v1/ppp-profiles/:id              -> Detail PPP Profile Node
+PUT    /api/v1/ppp-profiles/:id              -> Update PPP Profile Node
+DELETE /api/v1/ppp-profiles/:id              -> Hapus PPP Profile Node (ditolak jika masih tergabung dalam grup aktif)
+
+GET    /api/v1/bandwidths                    -> List konfigurasi bandwidth (+ internetProfileCount)
 POST   /api/v1/bandwidths                    -> Tambah bandwidth baru (CIR/MIR + all-or-nothing Burst QoS)
 GET    /api/v1/bandwidths/:id                -> Detail bandwidth
-PUT    /api/v1/bandwidths/:id                -> Update bandwidth (+ bulk radsync ke seluruh PPP Profile terkait)
-DELETE /api/v1/bandwidths/:id                -> Hapus bandwidth (ditolak jika masih digunakan PPP Profile)
+PUT    /api/v1/bandwidths/:id                -> Update bandwidth (+ bulk radsync ke seluruh Paket Internet terkait)
+DELETE /api/v1/bandwidths/:id                -> Hapus bandwidth (ditolak jika masih digunakan Paket Internet)
 
-GET    /api/v1/profile-groups                -> List profile groups (+ pppProfileCount)
-POST   /api/v1/profile-groups                -> Tambah profile group (validasi IP range vs Local Gateway)
+GET    /api/v1/profile-groups                -> List profile groups / wilayah (+ list pppProfiles node)
+POST   /api/v1/profile-groups                -> Tambah profile group wilayah (+ multi-node router linking)
 GET    /api/v1/profile-groups/:id            -> Detail profile group
 PUT    /api/v1/profile-groups/:id            -> Update profile group
-DELETE /api/v1/profile-groups/:id            -> Hapus profile group (ditolak jika masih digunakan PPP Profile)
+DELETE /api/v1/profile-groups/:id            -> Hapus profile group (ditolak jika masih ada pelanggan terdaftar)
 
 GET    /api/v1/ppp-profiles                  -> List PPP profiles (+ customerCount)
 POST   /api/v1/ppp-profiles                  -> Tambah PPP profile baru

@@ -50,11 +50,11 @@ import {
   useCustomersQuery,
   useDeleteCustomerMutation,
   useDisconnectCustomerMutation,
-  usePppProfilesQuery,
+  useInternetProfilesQuery,
   useUpdateCustomerMutation,
 } from "@/lib/api/hooks";
 import { hasPermission } from "@/lib/rbac";
-import type { Customer, CustomerStatus, PppProfile } from "@/lib/types";
+import type { Customer, CustomerStatus, InternetProfile } from "@/lib/types";
 import { useAuth } from "@/lib/use-auth";
 import { useDebounce } from "@/lib/use-debounce";
 import { formatRelativeTime, getErrorMessage } from "@/lib/utils";
@@ -102,8 +102,8 @@ export default function CustomersPage() {
     limit: safeLimit,
   });
 
-  const { data: pppProfilesRes } = usePppProfilesQuery();
-  const profiles = pppProfilesRes?.data || [];
+  const { data: netProfilesRes } = useInternetProfilesQuery();
+  const profiles = netProfilesRes?.data || [];
 
   const deleteCustomerMutation = useDeleteCustomerMutation();
   const disconnectCustomerMutation = useDisconnectCustomerMutation();
@@ -134,7 +134,7 @@ export default function CustomersPage() {
   }, [search]);
 
   const profileMap = useMemo(() => {
-    const map = new Map<string, PppProfile>();
+    const map = new Map<string, InternetProfile>();
     for (const p of profiles) {
       map.set(p.id, p);
     }

@@ -243,11 +243,13 @@ export default function PortalInfoPage() {
             {customer.profileGroup && (
               <div className="sm:col-span-2 lg:col-span-4">
                 <p className="text-[11px] text-slate-500">
-                  Profile Group (Gateway)
+                  Wilayah Layanan (Profile Group)
                 </p>
                 <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                  {customer.profileGroup.name} (Gateway:{" "}
-                  {customer.profileGroup.localAddress})
+                  {customer.profileGroup.name}
+                  {customer.profileGroup.description
+                    ? ` — ${customer.profileGroup.description}`
+                    : ""}
                 </p>
               </div>
             )}

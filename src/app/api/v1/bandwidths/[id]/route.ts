@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { syncPppProfileRadiusBulk } from "@/lib/radsync";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -15,7 +14,7 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
     where: { id },
     include: {
       _count: {
-        select: { pppProfiles: true },
+        select: { internetProfiles: true },
       },
     },
   });
@@ -32,7 +31,7 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
       ...bandwidth,
       createdAt: bandwidth.createdAt.toISOString(),
       updatedAt: bandwidth.updatedAt.toISOString(),
-      pppProfileCount: bandwidth._count.pppProfiles,
+      pppProfileCount: bandwidth._count.internetProfiles,
     },
   });
 });
@@ -125,13 +124,14 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
         burstTime,
       },
       include: {
-        pppProfiles: { select: { id: true } },
+        internetProfiles: { select: { id: true } },
       },
     });
 
-    // Bulk sync RADIUS ke seluruh PPP Profile yang memakai bandwidth ini
-    for (const p of res.pppProfiles) {
-      await syncPppProfileRadiusBulk(tx, p.id);
+    // Bulk sync RADIUS ke seluruh Paket Internet yang memakai bandwidth ini
+    const { syncInternetProfileRadiusBulk } = await import("@/lib/radsync");
+    for (const p of res.internetProfiles) {
+      await syncInternetProfileRadiusBulk(tx, p.id);
     }
 
     return res;
@@ -142,7 +142,7 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
       ...updated,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
-      pppProfileCount: updated.pppProfiles.length,
+      pppProfileCount: updated.internetProfiles.length,
     },
   });
 });
@@ -151,12 +151,12 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
   await requirePermission("profile.delete");
   const { id } = await params;
 
-  const count = await prisma.pppProfile.count({
+  const count = await prisma.internetProfile.count({
     where: { bandwidthId: id },
   });
   if (count > 0) {
     throw new Error(
-      `Konfigurasi bandwidth tidak dapat dihapus karena sedang digunakan oleh ${count} PPP Profile.`,
+      `Konfigurasi bandwidth tidak dapat dihapus karena sedang digunakan oleh ${count} Paket Internet.`,
     );
   }
 

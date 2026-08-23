@@ -9,7 +9,7 @@ export const GET = asyncApi(async () => {
     orderBy: { name: "asc" },
     include: {
       _count: {
-        select: { pppProfiles: true },
+        select: { internetProfiles: true },
       },
     },
   });
@@ -18,7 +18,7 @@ export const GET = asyncApi(async () => {
     ...b,
     createdAt: b.createdAt.toISOString(),
     updatedAt: b.updatedAt.toISOString(),
-    pppProfileCount: b._count.pppProfiles,
+    pppProfileCount: b._count.internetProfiles,
   }));
 
   return NextResponse.json({ data });

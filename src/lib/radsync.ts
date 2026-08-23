@@ -325,29 +325,26 @@ async function syncCustomerRadiusRows(
 }
 
 /**
- * Perbarui Mikrotik-Rate-Limit semua pelanggan suatu profil PPP
+ * Perbarui Mikrotik-Rate-Limit semua pelanggan suatu profil Internet
  */
-export async function syncPppProfileRadiusBulk(
+export async function syncInternetProfileRadiusBulk(
   tx: Prisma.TransactionClient,
-  pppProfileId: string,
+  profileId: string,
 ) {
-  const pppProfile = await tx.pppProfile.findUnique({
-    where: { id: pppProfileId },
+  const profile = await tx.internetProfile.findUnique({
+    where: { id: profileId },
     include: { bandwidth: true },
   });
-  if (!pppProfile || !pppProfile.bandwidth) return;
+  if (!profile || !profile.bandwidth) return;
 
   const customers = await tx.customer.findMany({
-    where: { profileId: pppProfileId },
+    where: { profileId },
     select: { username: true },
   });
   if (customers.length === 0) return;
 
   const usernames = customers.map((c) => c.username);
-  const rate = formatBandwidthRateLimit(
-    pppProfile.bandwidth,
-    pppProfile.priority,
-  );
+  const rate = formatBandwidthRateLimit(profile.bandwidth, profile.priority);
 
   await tx.radReply.updateMany({
     where: {
@@ -357,6 +354,8 @@ export async function syncPppProfileRadiusBulk(
     data: { value: rate },
   });
 }
+
+export const syncPppProfileRadiusBulk = syncInternetProfileRadiusBulk;
 
 /** Upsert baris `nas` (RADIUS client) dari data router aplikasi. */
 export async function syncRouterNas(

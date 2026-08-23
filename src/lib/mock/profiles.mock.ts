@@ -1,6 +1,6 @@
-import type { PppProfile } from "../types";
+import type { InternetProfile } from "../types";
 
-export const initialProfiles: PppProfile[] = [
+export const initialProfiles: InternetProfile[] = [
   {
     id: "prof-1",
     name: "Paket Hemat 5 Mbps",

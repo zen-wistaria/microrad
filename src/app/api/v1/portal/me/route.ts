@@ -42,7 +42,7 @@ export const GET = asyncApi(async () => {
 
   const [profile, invoices, payments, sessions, loginLogs] = await Promise.all([
     customer.profileId
-      ? prisma.pppProfile.findUnique({
+      ? prisma.internetProfile.findUnique({
           where: { id: customer.profileId },
           include: { bandwidth: true },
         })

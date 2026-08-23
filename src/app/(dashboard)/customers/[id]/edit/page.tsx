@@ -4,7 +4,7 @@ import { use } from "react";
 import { CustomerForm } from "@/components/forms/customer-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCustomerQuery, usePppProfilesQuery } from "@/lib/api/hooks";
+import { useCustomerQuery, useInternetProfilesQuery } from "@/lib/api/hooks";
 
 interface EditCustomerPageProps {
   params: Promise<{ id: string }>;
@@ -17,7 +17,7 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
   const { data: customer, isLoading: customerLoading } =
     useCustomerQuery(customerId);
   const { data: profilesRes, isLoading: profilesLoading } =
-    usePppProfilesQuery();
+    useInternetProfilesQuery();
 
   const profiles = profilesRes?.data || [];
 

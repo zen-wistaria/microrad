@@ -2,6 +2,7 @@ export * from "./use-bandwidths";
 export * from "./use-billing";
 export * from "./use-customers";
 export * from "./use-dashboard";
+export * from "./use-internet-profiles";
 export * from "./use-logs";
 export * from "./use-portal";
 export * from "./use-ppp-profiles";

@@ -81,6 +81,7 @@ async function main() {
   await prisma.appVerification.deleteMany();
   await prisma.appUser.deleteMany();
   await prisma.customer.deleteMany();
+  await prisma.internetProfile.deleteMany();
   await prisma.pppProfile.deleteMany();
   await prisma.profileGroup.deleteMany();
   await prisma.bandwidth.deleteMany();
@@ -175,25 +176,71 @@ async function main() {
   }
   console.log(`✓ ${initialBws.length} konfigurasi bandwidth`);
 
-  // ── 4. Profile Group ──
-  const grp1 = await prisma.profileGroup.create({
+  // ── 4. Profile Group (Wilayah / Failover Group) ──
+  await prisma.profileGroup.create({
     data: {
       id: "grp-1",
-      name: "Group-MikroTik-Node1",
+      name: "Wilayah Kota A",
+      description: "Zona Failover Router MikroTik Kota A",
+    },
+  });
+  await prisma.profileGroup.create({
+    data: {
+      id: "grp-2",
+      name: "Wilayah Kota B",
+      description: "Zona Failover Router MikroTik Kota B",
+    },
+  });
+  console.log("✓ 2 Profile Group Wilayah (Kota A & Kota B)");
+
+  // ── 5. PPP Profile Node (Konfigurasi Gateway & IP Pool MikroTik) ──
+  await prisma.pppProfile.create({
+    data: {
+      id: "ppp-node-a1",
+      name: "profile-node-a1",
       nasId: "nas-1",
       type: "PPP",
       ipModule: "sql",
-      localAddress: "10.10.10.1",
-      rangeIpStart: "10.10.10.2",
-      rangeIpEnd: "10.10.10.254",
+      localAddress: "10.10.1.1",
+      rangeIpStart: "10.10.1.2",
+      rangeIpEnd: "10.10.1.254",
       dnsServers: "8.8.8.8,8.8.4.4",
+      profileGroupId: "grp-1",
     },
   });
-  console.log(`✓ 1 Profile Group (${grp1.name})`);
+  await prisma.pppProfile.create({
+    data: {
+      id: "ppp-node-a2",
+      name: "profile-node-a2",
+      nasId: "nas-2",
+      type: "PPP",
+      ipModule: "sql",
+      localAddress: "10.10.2.1",
+      rangeIpStart: "10.10.2.2",
+      rangeIpEnd: "10.10.2.254",
+      dnsServers: "8.8.8.8,8.8.4.4",
+      profileGroupId: "grp-1",
+    },
+  });
+  await prisma.pppProfile.create({
+    data: {
+      id: "ppp-node-b1",
+      name: "profile-node-b1",
+      nasId: "nas-3",
+      type: "PPP",
+      ipModule: "sql",
+      localAddress: "10.20.1.1",
+      rangeIpStart: "10.20.1.2",
+      rangeIpEnd: "10.20.1.254",
+      dnsServers: "8.8.8.8,8.8.4.4",
+      profileGroupId: "grp-2",
+    },
+  });
+  console.log("✓ 3 PPP Profile Node MikroTik");
 
-  // ── 5. PPP Profiles ──
+  // ── 6. Internet Profiles (Produk Paket Layanan & Harga) ──
   for (const p of initialProfiles) {
-    await prisma.pppProfile.create({
+    await prisma.internetProfile.create({
       data: {
         id: p.id,
         name: p.name,
@@ -203,9 +250,9 @@ async function main() {
       },
     });
   }
-  console.log(`✓ ${initialProfiles.length} PPP Profile`);
+  console.log(`✓ ${initialProfiles.length} Paket Internet`);
 
-  // ── 6. Customers (tanggal dire-resolve) ──
+  // ── 7. Customers (tanggal dire-resolve) ──
   for (const c of initialCustomers) {
     await prisma.customer.create({
       data: {
@@ -230,10 +277,10 @@ async function main() {
   console.log(`✓ ${initialCustomers.length} pelanggan`);
 
   // radsync: radcheck (Cleartext-Password) + radreply (Framed-IP-Address, Mikrotik-Rate-Limit)
-  const pppProfiles = await prisma.pppProfile.findMany({
+  const internetProfiles = await prisma.internetProfile.findMany({
     include: { bandwidth: true },
   });
-  const profileMap = new Map(pppProfiles.map((p) => [p.id, p]));
+  const profileMap = new Map(internetProfiles.map((p) => [p.id, p]));
   let radCount = 0;
   for (const c of await prisma.customer.findMany()) {
     const mock = initialCustomers.find((m) => m.id === c.id);

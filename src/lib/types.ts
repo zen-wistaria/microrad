@@ -32,7 +32,7 @@ export interface Bandwidth {
   pppProfileCount?: number; // derived
 }
 
-export interface ProfileGroup {
+export interface PppProfile {
   id: string;
   name: string;
   nasId: string;
@@ -48,12 +48,27 @@ export interface ProfileGroup {
   rangeIpEnd: string; // e.g. 10.10.10.254
   dnsServers: string; // default "8.8.8.8,8.8.4.4"
   parentQueue?: string | null;
+  profileGroupId?: string | null;
+  profileGroup?: {
+    id: string;
+    name: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProfileGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  pppProfiles?: PppProfile[];
+  pppProfileCount?: number; // derived
   customerCount?: number; // derived
 }
 
-export interface PppProfile {
+export interface InternetProfile {
   id: string;
   name: string;
   price: number; // IDR / bulan
@@ -66,7 +81,7 @@ export interface PppProfile {
 }
 
 // Backward compatibility alias for parts expecting BandwidthProfile
-export type BandwidthProfile = PppProfile;
+export type BandwidthProfile = InternetProfile;
 
 export interface Customer {
   id: string;
@@ -77,18 +92,18 @@ export interface Customer {
   phone?: string;
   address?: string;
   status: CustomerStatus;
-  profileId: string; // relasi ke PppProfile (Paket Layanan)
-  profile?: PppProfile | null;
-  profileGroupId?: string; // relasi ke ProfileGroup (Area / Node / Gateway)
+  profileId: string; // relasi ke InternetProfile (Paket Internet)
+  profile?: InternetProfile | null;
+  profileGroupId?: string; // relasi ke ProfileGroup (Wilayah / Failover Group)
   profileGroup?: ProfileGroup | null;
   staticIp?: string; // radreply: Framed-IP-Address
-  nasId?: string; // NAS router ID
+  nasId?: string; // NAS router ID (terakhir/default)
   nasRouter?: {
     id: string;
     name: string;
     ipAddress: string;
   } | null;
-  bindOnNas?: boolean; // hanya boleh login lewat router tertentu (radnasallow)
+  bindOnNas?: boolean; // hanya boleh login lewat router di wilayahnya (radnasallow)
   sessionMode?: "single" | "multi"; // mode sesi PPPoE
   maxSimultaneous?: number; // maksimal sesi simultan jika multi (Simultaneous-Use)
   allowedNasIps?: string[]; // whitelist IP router NAS

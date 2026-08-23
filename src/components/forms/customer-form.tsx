@@ -49,7 +49,7 @@ import { generatePppoePassword } from "@/lib/generators";
 import type {
   Customer,
   CustomerStatus,
-  PppProfile,
+  InternetProfile,
   ProfileGroup,
 } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
@@ -69,48 +69,35 @@ const customerSchema = z.object({
     .string()
     .optional()
     .refine(
-      (val) =>
-        !val ||
-        val.trim() === "" ||
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim()),
-      {
-        message: "Format email tidak valid",
-      },
+      (val) => !val || z.string().email().safeParse(val).success,
+      "Format email tidak valid",
     ),
-  portalPassword: z
-    .string()
-    .optional()
-    .refine((val) => !val || val.length >= 6, {
-      message: "Password portal minimal 6 karakter jika diisi",
-    }),
+  portalPassword: z.string().optional(),
   fullName: z.string().optional(),
   phone: z.string().optional(),
   address: z.string().optional(),
-  profileId: z.string().min(1, "Wajib memilih paket PPP Profile"),
-  profileGroupId: z.string().min(1, "Wajib memilih Profile Group / Area"),
+  profileId: z.string().min(1, "Wajib memilih Paket Internet"),
+  profileGroupId: z.string().min(1, "Wajib memilih Profile Group (Wilayah)"),
   staticIp: z
     .string()
     .optional()
-    .refine((val) => !val || val === "" || ipv4Regex.test(val), {
-      message: "Format IP Address tidak valid (contoh: 10.10.10.15)",
-    }),
+    .refine(
+      (val) => !val || ipv4Regex.test(val.trim()),
+      "Format IP Statis (IPv4) tidak valid",
+    ),
   nasId: z.string().optional(),
-  bindOnNas: z.boolean().optional(),
-  sessionMode: z.enum(["single", "multi"]).optional(),
-  maxSimultaneous: z
-    .number()
-    .min(1, "Minimal 1 sesi")
-    .max(10, "Maksimal 10 sesi simultan")
-    .optional(),
-  allowedNasIps: z.array(z.string()).optional(),
+  bindOnNas: z.boolean(),
+  sessionMode: z.enum(["single", "multi"]),
+  maxSimultaneous: z.number().int().min(1).max(10),
+  allowedNasIps: z.array(z.string()),
   status: z.enum(["active", "suspended", "disabled"]),
 });
 
-type CustomerFormValues = z.infer<typeof customerSchema>;
+export type CustomerFormValues = z.infer<typeof customerSchema>;
 
 interface CustomerFormProps {
   initialData?: Customer;
-  profiles: PppProfile[];
+  profiles: InternetProfile[];
   profileGroups?: ProfileGroup[];
   isEditing?: boolean;
 }
@@ -171,7 +158,7 @@ export function CustomerForm({
 
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
   const selectedGroup = groups.find((g) => g.id === selectedGroupId);
-  const targetRouter = selectedGroup?.nasRouter;
+  const groupNodes = selectedGroup?.pppProfiles || [];
 
   const handleRandomizePppoePassword = () => {
     setValue("password", generatePppoePassword(8), { shouldValidate: true });
@@ -189,6 +176,11 @@ export function CustomerForm({
       const cleanPortalPassword = data.portalPassword?.trim() || undefined;
 
       if (isEditing && initialData) {
+        const groupNasIps = (selectedGroup?.pppProfiles || [])
+          .map((p) => p.nasRouter?.ipAddress)
+          .filter((ip): ip is string => Boolean(ip));
+        const groupFirstNasId = selectedGroup?.pppProfiles?.[0]?.nasId;
+
         await updateCustomerMutation.mutateAsync({
           id: initialData.id,
           updates: {
@@ -203,12 +195,11 @@ export function CustomerForm({
             profileId: data.profileId,
             profileGroupId: data.profileGroupId,
             staticIp: data.staticIp?.trim() || undefined,
-            nasId: selectedGroup?.nasId || data.nasId || undefined,
+            nasId: groupFirstNasId || data.nasId || undefined,
             bindOnNas: data.bindOnNas,
             sessionMode: data.sessionMode,
             maxSimultaneous: Number(data.maxSimultaneous) || 1,
-            allowedNasIps:
-              data.bindOnNas && targetRouter ? [targetRouter.ipAddress] : [],
+            allowedNasIps: data.bindOnNas ? groupNasIps : [],
             status: data.status as CustomerStatus,
           },
         });
@@ -217,6 +208,11 @@ export function CustomerForm({
         );
         router.push(`/customers/${initialData.id}`);
       } else {
+        const groupNasIps = (selectedGroup?.pppProfiles || [])
+          .map((p) => p.nasRouter?.ipAddress)
+          .filter((ip): ip is string => Boolean(ip));
+        const groupFirstNasId = selectedGroup?.pppProfiles?.[0]?.nasId;
+
         const created = await createCustomerMutation.mutateAsync({
           email: cleanEmail,
           portalPassword: cleanPortalPassword,
@@ -226,12 +222,11 @@ export function CustomerForm({
           profileId: data.profileId,
           profileGroupId: data.profileGroupId,
           staticIp: data.staticIp?.trim() || undefined,
-          nasId: selectedGroup?.nasId || data.nasId || undefined,
+          nasId: groupFirstNasId || data.nasId || undefined,
           bindOnNas: data.bindOnNas,
           sessionMode: data.sessionMode,
           maxSimultaneous: Number(data.maxSimultaneous) || 1,
-          allowedNasIps:
-            data.bindOnNas && targetRouter ? [targetRouter.ipAddress] : [],
+          allowedNasIps: data.bindOnNas ? groupNasIps : [],
           status: data.status as CustomerStatus,
         });
         toast.success(
@@ -381,11 +376,10 @@ export function CustomerForm({
               </div>
             )}
 
-            {/* Profil Paket Layanan (PPP Profile) */}
+            {/* Paket Internet */}
             <div className="space-y-2">
               <Label htmlFor="profileId">
-                Paket Layanan (PPP Profile){" "}
-                <span className="text-rose-500">*</span>
+                Paket Internet <span className="text-rose-500">*</span>
               </Label>
               <Select
                 value={selectedProfileId}
@@ -394,7 +388,7 @@ export function CustomerForm({
                 }
               >
                 <SelectTrigger id="profileId">
-                  <SelectValue placeholder="Pilih Paket Layanan (PPP Profile)" />
+                  <SelectValue placeholder="Pilih Paket Internet" />
                 </SelectTrigger>
                 <SelectContent>
                   {profiles.map((p) => {
@@ -427,11 +421,10 @@ export function CustomerForm({
               )}
             </div>
 
-            {/* Profile Group / Lokasi Node */}
+            {/* Profile Group (Wilayah / Failover Group) */}
             <div className="space-y-2">
               <Label htmlFor="profileGroupId">
-                Lokasi Node / Profile Group{" "}
-                <span className="text-rose-500">*</span>
+                Wilayah (Profile Group) <span className="text-rose-500">*</span>
               </Label>
               <Select
                 value={selectedGroupId}
@@ -440,13 +433,12 @@ export function CustomerForm({
                 }
               >
                 <SelectTrigger id="profileGroupId">
-                  <SelectValue placeholder="Pilih Lokasi Node / Profile Group" />
+                  <SelectValue placeholder="Pilih Wilayah (Profile Group)" />
                 </SelectTrigger>
                 <SelectContent>
                   {groups.map((g) => (
                     <SelectItem key={g.id} value={g.id}>
-                      {g.name} — {g.nasRouter?.name || "Router NAS"} (Gateway:{" "}
-                      {g.localAddress})
+                      {g.name} ({g.pppProfiles?.length || 0} Router Node)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -648,27 +640,27 @@ export function CustomerForm({
               <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3.5 dark:border-slate-800 dark:bg-slate-900/40 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Router NAS Utama ({selectedGroup?.name || "Node"})
+                    Router Node di {selectedGroup?.name || "Wilayah"}
                   </span>
-                  {targetRouter && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-mono text-indigo-600"
-                    >
-                      NAS Router
-                    </Badge>
-                  )}
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] font-mono text-indigo-600"
+                  >
+                    {groupNodes.length} Node Router
+                  </Badge>
                 </div>
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                   <RouterIcon className="h-4 w-4 text-indigo-600" />
-                  {targetRouter
-                    ? `${targetRouter.name} (${targetRouter.ipAddress})`
+                  {groupNodes.length > 0
+                    ? groupNodes
+                        .map((p) => p.nasRouter?.name || p.name)
+                        .join(", ")
                     : "Pilih Profile Group di atas"}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {selectedGroup
-                    ? `Gateway IP: ${selectedGroup.localAddress} | IP Pool: ${selectedGroup.rangeIpStart} - ${selectedGroup.rangeIpEnd}`
-                    : "Pilih Lokasi Node / Profile Group di atas."}
+                  {groupNodes.length > 0
+                    ? `Zona Failover Otomatis: Pelanggan dapat tersambung ke ${groupNodes.length} router di wilayah ini.`
+                    : "Pilih Wilayah (Profile Group) di atas."}
                 </p>
               </div>
             </div>
@@ -688,20 +680,20 @@ export function CustomerForm({
                 />
                 <div className="space-y-0.5">
                   <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    Kunci Login ke Router NAS Node Ini (NAS Binding)
+                    Kunci Login ke Wilayah Ini Saja (NAS Binding)
                     {bindOnNas && (
                       <Badge
                         variant="outline"
                         className="text-indigo-600 border-indigo-300 text-[10px]"
                       >
-                        Terkunci ke {targetRouter?.name || "Router Node"}
+                        Terkunci ke {selectedGroup?.name || "Wilayah"}
                       </Badge>
                     )}
                   </span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                     {bindOnNas
-                      ? `🔒 Pelanggan HANYA diizinkan dial PPPoE melalui router ${targetRouter?.name || "node"} (${targetRouter?.ipAddress || ""}). Percobaan login dari router lain akan ditolak oleh FreeRADIUS.`
-                      : "🔓 Mode Bebas / Failover (Default): Pelanggan dapat dial melalui router mana pun jika router utama mengalami gangguan/mati."}
+                      ? `🔒 Zero-Touch Failover: Pelanggan HANYA diizinkan dial PPPoE melalui router yang terdaftar di ${selectedGroup?.name || "wilayah ini"} (${groupNodes.map((p) => p.nasRouter?.name || p.name).join(", ") || "semua node"}). Jika 1 router mati, pelanggan otomatis dial ke router lain dalam wilayah yang sama.`
+                      : "🔓 Mode Bebas / Global Failover (Default): Pelanggan dapat dial melalui router NAS mana pun di seluruh jaringan ISP."}
                   </span>
                 </div>
               </label>

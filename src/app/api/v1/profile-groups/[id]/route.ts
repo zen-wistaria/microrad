@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
-import { validateProfileGroupIps } from "../route";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -14,11 +13,18 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
   const group = await prisma.profileGroup.findUnique({
     where: { id },
     include: {
-      nasRouter: {
-        select: { id: true, name: true, ipAddress: true },
+      pppProfiles: {
+        include: {
+          nasRouter: {
+            select: { id: true, name: true, ipAddress: true },
+          },
+        },
       },
       _count: {
-        select: { customers: true },
+        select: {
+          pppProfiles: true,
+          customers: true,
+        },
       },
     },
   });
@@ -32,10 +38,18 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
 
   return NextResponse.json({
     data: {
-      ...group,
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      pppProfiles: group.pppProfiles.map((p) => ({
+        ...p,
+        createdAt: p.createdAt.toISOString(),
+        updatedAt: p.updatedAt.toISOString(),
+      })),
+      pppProfileCount: group._count.pppProfiles,
+      customerCount: group._count.customers,
       createdAt: group.createdAt.toISOString(),
       updatedAt: group.updatedAt.toISOString(),
-      customerCount: group._count.customers,
     },
   });
 });
@@ -46,57 +60,74 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
   const body = await req.json();
 
   const name = body.name?.trim();
-  if (!name) throw new Error("Nama Profile Group wajib diisi.");
+  if (!name) throw new Error("Nama Profile Group (Wilayah) wajib diisi.");
 
-  const nasId = body.nasId?.trim();
-  if (!nasId) throw new Error("Wajib memilih Router NAS.");
+  const description = body.description?.trim() || null;
+  const pppProfileIds: string[] | undefined = Array.isArray(body.pppProfileIds)
+    ? body.pppProfileIds
+    : undefined;
 
-  const router = await prisma.nasRouter.findUnique({ where: { id: nasId } });
-  if (!router) throw new Error("Router NAS yang dipilih tidak ditemukan.");
-
-  const type = body.type || "PPP";
-  const ipModule = body.ipModule || "sql";
-  const localAddress = body.localAddress?.trim();
-  const rangeIpStart = body.rangeIpStart?.trim();
-  const rangeIpEnd = body.rangeIpEnd?.trim();
-  const dnsServers = body.dnsServers?.trim() || "8.8.8.8,8.8.4.4";
-  const parentQueue = body.parentQueue?.trim() || null;
-
-  if (!localAddress) throw new Error("Local Address (Gateway) wajib diisi.");
-  if (!rangeIpStart) throw new Error("Range IP Start wajib diisi.");
-  if (!rangeIpEnd) throw new Error("Range IP End wajib diisi.");
-
-  validateProfileGroupIps(localAddress, rangeIpStart, rangeIpEnd);
-
-  const updated = await prisma.profileGroup.update({
-    where: { id },
-    data: {
-      name,
-      nasId,
-      type,
-      ipModule,
-      localAddress,
-      rangeIpStart,
-      rangeIpEnd,
-      dnsServers,
-      parentQueue,
-    },
-    include: {
-      nasRouter: {
-        select: { id: true, name: true, ipAddress: true },
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.profileGroup.update({
+      where: { id },
+      data: {
+        name,
+        description,
       },
-      _count: {
-        select: { customers: true },
+    });
+
+    if (pppProfileIds !== undefined) {
+      // Unlink profiles that are no longer in the list
+      await tx.pppProfile.updateMany({
+        where: {
+          profileGroupId: id,
+          id: { notIn: pppProfileIds },
+        },
+        data: { profileGroupId: null },
+      });
+
+      // Link newly selected profiles
+      if (pppProfileIds.length > 0) {
+        await tx.pppProfile.updateMany({
+          where: { id: { in: pppProfileIds } },
+          data: { profileGroupId: id },
+        });
+      }
+    }
+
+    return tx.profileGroup.findUnique({
+      where: { id },
+      include: {
+        pppProfiles: {
+          include: {
+            nasRouter: {
+              select: { id: true, name: true, ipAddress: true },
+            },
+          },
+        },
+        _count: {
+          select: { pppProfiles: true, customers: true },
+        },
       },
-    },
+    });
   });
+
+  if (!updated) throw new Error("Gagal mengupdate Profile Group.");
 
   return NextResponse.json({
     data: {
-      ...updated,
+      id: updated.id,
+      name: updated.name,
+      description: updated.description,
+      pppProfiles: updated.pppProfiles.map((p) => ({
+        ...p,
+        createdAt: p.createdAt.toISOString(),
+        updatedAt: p.updatedAt.toISOString(),
+      })),
+      pppProfileCount: updated._count.pppProfiles,
+      customerCount: updated._count.customers,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
-      customerCount: updated._count.customers,
     },
   });
 });
@@ -110,11 +141,18 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
   });
   if (count > 0) {
     throw new Error(
-      `Profile Group tidak dapat dihapus karena sedang digunakan oleh ${count} pelanggan.`,
+      `Profile Group tidak dapat dihapus karena masih digunakan oleh ${count} pelanggan.`,
     );
   }
 
-  await prisma.profileGroup.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    // Unlink any PPP profiles attached
+    await tx.pppProfile.updateMany({
+      where: { profileGroupId: id },
+      data: { profileGroupId: null },
+    });
+    await tx.profileGroup.delete({ where: { id } });
+  });
 
   return NextResponse.json({ data: { id, deleted: true } });
 });

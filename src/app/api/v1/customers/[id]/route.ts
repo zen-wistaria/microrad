@@ -24,7 +24,11 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
       },
       profileGroup: {
         include: {
-          nasRouter: true,
+          pppProfiles: {
+            include: {
+              nasRouter: true,
+            },
+          },
         },
       },
       router: true,
@@ -147,8 +151,8 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
   const customer = await prisma.$transaction(async (tx) => {
     const targetProfileId =
       "profileId" in body ? body.profileId : existing.profileId;
-    const pppProf = targetProfileId
-      ? await tx.pppProfile.findUnique({
+    const internetProf = targetProfileId
+      ? await tx.internetProfile.findUnique({
           where: { id: targetProfileId },
           include: { bandwidth: true },
         })
@@ -159,14 +163,24 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     const profileGroup = targetGroupId
       ? await tx.profileGroup.findUnique({
           where: { id: targetGroupId },
-          include: { nasRouter: true },
+          include: {
+            pppProfiles: {
+              include: { nasRouter: true },
+            },
+          },
         })
       : null;
 
-    const nasId = profileGroup?.nasId ?? body.nasId ?? existing.nasId;
-    const nasIp = profileGroup?.nasRouter?.ipAddress;
+    const groupNasIps = (profileGroup?.pppProfiles ?? [])
+      .map((p) => p.nasRouter?.ipAddress)
+      .filter((ip): ip is string => Boolean(ip));
+
+    const nasId =
+      profileGroup?.pppProfiles[0]?.nasId ?? body.nasId ?? existing.nasId;
+    const nasIp = groupNasIps[0];
     const bindOnNas =
       body.bindOnNas !== undefined ? body.bindOnNas : existing.bindOnNas;
+    const allowedNasIps = bindOnNas ? groupNasIps : [];
 
     const updated = await tx.customer.update({
       where: { id },
@@ -202,7 +216,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
         ...(body.maxSimultaneous !== undefined
           ? { maxSimultaneous: Number(body.maxSimultaneous) || 1 }
           : {}),
-        allowedNasIps: bindOnNas && nasIp ? [nasIp] : [],
+        allowedNasIps,
         ...(body.password !== undefined
           ? { password: body.password || undefined }
           : {}),
@@ -283,11 +297,11 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     await syncCustomerRadius(
       tx,
       updated,
-      pppProf
+      internetProf
         ? {
-            bandwidth: pppProf.bandwidth,
-            priority: pppProf.priority,
-            dnsServers: profileGroup?.dnsServers,
+            bandwidth: internetProf.bandwidth,
+            priority: internetProf.priority,
+            dnsServers: profileGroup?.pppProfiles[0]?.dnsServers,
           }
         : null,
       body.password ?? undefined,
@@ -318,7 +332,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     "profileId" in body && body.profileId !== existing.profileId;
   const newProfile =
     profileChanged && customer.profileId
-      ? await prisma.pppProfile.findUnique({
+      ? await prisma.internetProfile.findUnique({
           where: { id: customer.profileId },
           include: { bandwidth: true },
         })
@@ -356,8 +370,8 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       );
       try {
         await kickSessionByUsername(customer.username, customer.nasId);
-      } catch (kickErr) {
-        console.warn(`[coa] fallback kick also failed:`, kickErr);
+      } catch {
+        // best-effort
       }
     }
   }
