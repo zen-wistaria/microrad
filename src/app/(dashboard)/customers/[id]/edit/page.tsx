@@ -4,11 +4,7 @@ import { use } from "react";
 import { CustomerForm } from "@/components/forms/customer-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useCustomerQuery,
-  usePppProfilesQuery,
-  useRoutersQuery,
-} from "@/lib/api/hooks";
+import { useCustomerQuery, usePppProfilesQuery } from "@/lib/api/hooks";
 
 interface EditCustomerPageProps {
   params: Promise<{ id: string }>;
@@ -22,12 +18,10 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
     useCustomerQuery(customerId);
   const { data: profilesRes, isLoading: profilesLoading } =
     usePppProfilesQuery();
-  const { data: routers = [], isLoading: routersLoading } = useRoutersQuery();
 
   const profiles = profilesRes?.data || [];
 
-  const loading =
-    (customerLoading || profilesLoading || routersLoading) && !customer;
+  const loading = (customerLoading || profilesLoading) && !customer;
 
   return (
     <div className="space-y-6">
@@ -50,12 +44,7 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
           </CardContent>
         </Card>
       ) : (
-        <CustomerForm
-          initialData={customer}
-          profiles={profiles}
-          routers={routers}
-          isEditing={true}
-        />
+        <CustomerForm initialData={customer} profiles={profiles} isEditing />
       )}
     </div>
   );

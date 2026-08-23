@@ -86,8 +86,8 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
   - `status` (`"active"` | `"suspended"` | `"disabled"`)
   - `profileId` (FK $\rightarrow$ `PppProfile.id`)
   - `staticIp` (String? — IP statis pelanggan / `Framed-IP-Address`)
-  - `nasId` (FK $\rightarrow$ `NasRouter.id`?)
-  - `bindOnNas` (Boolean, default `false` — kunci login hanya melalui router `nasId`)
+  - `nasId` (FK $\rightarrow$ `NasRouter.id`? — otomatis diturunkan dari `PppProfile.profileGroup.nasId`)
+  - `bindOnNas` (Boolean, default `false` — kunci dial login hanya melalui router NAS milik paket `PppProfile`)
   - `createdAt`, `updatedAt`, `lastSeenAt` (DateTime)
   - `portalUser` (Relasi 1-to-1 ke `PortalUser` untuk login Customer Self-Care)
 

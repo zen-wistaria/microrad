@@ -3,15 +3,14 @@
 import { CustomerForm } from "@/components/forms/customer-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePppProfilesQuery, useRoutersQuery } from "@/lib/api/hooks";
+import { usePppProfilesQuery } from "@/lib/api/hooks";
 
 export default function NewCustomerPage() {
   const { data: profilesRes, isLoading: profilesLoading } =
     usePppProfilesQuery();
-  const { data: routers = [], isLoading: routersLoading } = useRoutersQuery();
 
   const profiles = profilesRes?.data || [];
-  const loading = (profilesLoading || routersLoading) && profiles.length === 0;
+  const loading = profilesLoading && profiles.length === 0;
 
   return (
     <div className="space-y-6">
@@ -34,7 +33,7 @@ export default function NewCustomerPage() {
           </CardContent>
         </Card>
       ) : (
-        <CustomerForm profiles={profiles} routers={routers} />
+        <CustomerForm profiles={profiles} />
       )}
     </div>
   );

@@ -648,36 +648,28 @@ export default function CustomerDetailPage({
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">Router NAS Diizinkan:</span>
+                  <span className="text-slate-500">Router NAS (Binding):</span>
                   <div className="text-right">
                     {customer.bindOnNas ? (
-                      customer.allowedNasIps &&
-                      customer.allowedNasIps.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 justify-end max-w-[240px]">
-                          {customer.allowedNasIps.map((ip) => (
-                            <Badge
-                              key={ip}
-                              variant="outline"
-                              className="font-mono text-[10px] text-indigo-600 border-indigo-200 dark:border-indigo-800"
-                            >
-                              {ip}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-indigo-600 border-indigo-200"
-                        >
-                          {routerNas ? routerNas.name : "Terkunci"}
-                        </Badge>
-                      )
+                      <Badge
+                        variant="outline"
+                        className="text-indigo-600 border-indigo-200 text-[11px]"
+                      >
+                        🔒 Terkunci ke{" "}
+                        {profile?.profileGroup?.nasRouter?.name ||
+                          routerNas?.name ||
+                          "Router Paket"}
+                      </Badge>
                     ) : (
                       <Badge
                         variant="secondary"
-                        className="text-slate-600 dark:text-slate-400"
+                        className="text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 text-[11px]"
                       >
-                        Semua Router NAS
+                        🔓 Bebas / Failover (
+                        {profile?.profileGroup?.nasRouter?.name ||
+                          routerNas?.name ||
+                          "Semua Router"}
+                        )
                       </Badge>
                     )}
                   </div>

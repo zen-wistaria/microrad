@@ -110,14 +110,14 @@ type CustomerFormValues = z.infer<typeof customerSchema>;
 interface CustomerFormProps {
   initialData?: Customer;
   profiles: PppProfile[];
-  routers: NasRouter[];
+  routers?: NasRouter[];
   isEditing?: boolean;
 }
 
 export function CustomerForm({
   initialData,
   profiles,
-  routers,
+  routers: _routers,
   isEditing = false,
 }: CustomerFormProps) {
   const router = useRouter();
@@ -129,17 +129,6 @@ export function CustomerForm({
 
   const submitting =
     createCustomerMutation.isPending || updateCustomerMutation.isPending;
-
-  // Fallback awal allowedNasIps: jika ada initialData.allowedNasIps pakai itu, jika tidak coba ambil IP router dari nasId
-  const fallbackNasIp = initialData?.nasId
-    ? routers.find((r) => r.id === initialData.nasId)?.ipAddress
-    : undefined;
-  const initialAllowedIps =
-    initialData?.allowedNasIps && initialData.allowedNasIps.length > 0
-      ? initialData.allowedNasIps
-      : fallbackNasIp
-        ? [fallbackNasIp]
-        : [];
 
   const {
     register,
@@ -159,11 +148,11 @@ export function CustomerForm({
       address: initialData?.address || "",
       profileId: initialData?.profileId || profiles[0]?.id || "",
       staticIp: initialData?.staticIp || "",
-      nasId: initialData?.nasId || routers[0]?.id || "",
+      nasId: initialData?.nasId || "",
       bindOnNas: initialData?.bindOnNas ?? false,
       sessionMode: initialData?.sessionMode || "single",
       maxSimultaneous: initialData?.maxSimultaneous || 1,
-      allowedNasIps: initialAllowedIps,
+      allowedNasIps: initialData?.allowedNasIps || [],
       status: initialData?.status || "active",
     },
   });
@@ -173,7 +162,10 @@ export function CustomerForm({
   const bindOnNas = watch("bindOnNas");
   const sessionMode = watch("sessionMode");
   const maxSimultaneous = watch("maxSimultaneous");
-  const allowedNasIps = watch("allowedNasIps") || [];
+
+  const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
+  const targetGroup = selectedProfile?.profileGroup;
+  const targetRouter = targetGroup?.nasRouter;
 
   const handleRandomizePppoePassword = () => {
     setValue("password", generatePppoePassword(8), { shouldValidate: true });
@@ -183,28 +175,6 @@ export function CustomerForm({
     setValue("portalPassword", generatePppoePassword(8), {
       shouldValidate: true,
     });
-  };
-
-  const handleToggleNasIp = (ip: string) => {
-    const current = allowedNasIps;
-    if (current.includes(ip)) {
-      setValue(
-        "allowedNasIps",
-        current.filter((item) => item !== ip),
-        { shouldValidate: true },
-      );
-    } else {
-      setValue("allowedNasIps", [...current, ip], { shouldValidate: true });
-    }
-  };
-
-  const handleSelectAllRouters = () => {
-    const allIps = routers.map((r) => r.ipAddress).filter(Boolean);
-    setValue("allowedNasIps", allIps, { shouldValidate: true });
-  };
-
-  const handleClearAllRouters = () => {
-    setValue("allowedNasIps", [], { shouldValidate: true });
   };
 
   const onSubmit = async (data: CustomerFormValues) => {
@@ -590,18 +560,18 @@ export function CustomerForm({
           </CardContent>
         </Card>
 
-        {/* Section 3: Network & MikroTik NAS Whitelist */}
+        {/* Section 3: Network & MikroTik NAS Binding */}
         <Card className="md:col-span-2">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
               <Network className="h-5 w-5" />
               <CardTitle className="text-base">
-                Pengaturan Jaringan & Whitelist Router NAS
+                Pengaturan Jaringan & Kunci Router NAS
               </CardTitle>
             </div>
             <CardDescription>
-              Konfigurasi IP Statis (<code>Framed-IP-Address</code>) dan batasan
-              router NAS MikroTik yang diizinkan untuk dial-in.
+              Konfigurasi IP Statis (<code>Framed-IP-Address</code>) dan
+              keamanan pembatasan router NAS (NAS Binding).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -625,33 +595,36 @@ export function CustomerForm({
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="nasId">Default Router NAS Acuan</Label>
-                <Select
-                  value={watch("nasId")}
-                  onValueChange={(val) =>
-                    setValue("nasId", val, { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger id="nasId">
-                    <SelectValue placeholder="Pilih NAS Router Acuan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {routers.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.name} ({r.ipAddress})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-slate-500">
-                  Router utama untuk referensi pemutusan sesi / routing awal.
+              <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3.5 dark:border-slate-800 dark:bg-slate-900/40 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Router NAS Utama (Otomatis)
+                  </span>
+                  {targetRouter && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-mono text-indigo-600"
+                    >
+                      NAS Router
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <RouterIcon className="h-4 w-4 text-indigo-600" />
+                  {targetRouter
+                    ? `${targetRouter.name} (${targetRouter.ipAddress})`
+                    : "Mengikuti Paket PPP Profile"}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {targetGroup
+                    ? `Profile Group: ${targetGroup.name} (Gateway: ${targetGroup.localAddress})`
+                    : "Pilih paket PPP Profile di atas untuk menentukan router NAS."}
                 </p>
               </div>
             </div>
 
-            {/* Bind on NAS & Whitelist */}
-            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800 space-y-3">
+            {/* Bind on NAS Single Toggle */}
+            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800 space-y-2">
               <label className="flex items-start gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"
@@ -665,105 +638,23 @@ export function CustomerForm({
                 />
                 <div className="space-y-0.5">
                   <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    Kunci Login ke Router NAS Tertentu (Bind on NAS Whitelist)
+                    Kunci Login ke Router NAS Paket Ini (NAS Binding)
                     {bindOnNas && (
                       <Badge
                         variant="outline"
-                        className="text-indigo-600 border-indigo-300"
+                        className="text-indigo-600 border-indigo-300 text-[10px]"
                       >
-                        {allowedNasIps.length} Router Diizinkan
+                        Terkunci ke {targetRouter?.name || "Router Paket"}
                       </Badge>
                     )}
                   </span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Jika diaktifkan, pelanggan hanya dapat dial PPPoE melalui
-                    router yang dipilih di bawah ini. Login dari router lain
-                    akan otomatis ditolak dengan pesan{" "}
-                    <i>"Login tidak diizinkan dari router ini"</i>.
+                    {bindOnNas
+                      ? `🔒 Pelanggan HANYA diizinkan dial PPPoE melalui router ${targetRouter?.name || "paket"} (${targetRouter?.ipAddress || ""}). Percobaan login dari router lain akan ditolak oleh FreeRADIUS.`
+                      : "🔓 Mode Bebas / Failover (Default): Pelanggan dapat dial melalui router mana pun jika router utama mengalami gangguan/mati."}
                   </span>
                 </div>
               </label>
-
-              {bindOnNas ? (
-                <div className="pt-2 space-y-3 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                      Pilih Router NAS yang Diizinkan:
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleSelectAllRouters}
-                        className="h-6 text-xs px-2 text-indigo-600 hover:text-indigo-700"
-                      >
-                        Pilih Semua
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleClearAllRouters}
-                        className="h-6 text-xs px-2 text-slate-500 hover:text-slate-700"
-                      >
-                        Batal Semua
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3">
-                    {routers.map((r) => {
-                      const isChecked = allowedNasIps.includes(r.ipAddress);
-                      return (
-                        <label
-                          key={r.id}
-                          className={`flex items-center gap-2.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-all ${
-                            isChecked
-                              ? "border-indigo-600 bg-indigo-50/50 dark:border-indigo-500 dark:bg-indigo-950/30"
-                              : "border-slate-200 hover:border-slate-300 dark:border-slate-800"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => handleToggleNasIp(r.ipAddress)}
-                            className="h-3.5 w-3.5 accent-indigo-600 rounded"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold truncate text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                              <RouterIcon className="h-3.5 w-3.5 text-slate-500" />
-                              {r.name}
-                            </div>
-                            <div className="text-[11px] font-mono text-slate-500 truncate">
-                              {r.ipAddress}
-                            </div>
-                          </div>
-                          <span
-                            className={`h-2 w-2 rounded-full shrink-0 ${
-                              r.status === "online"
-                                ? "bg-emerald-500"
-                                : "bg-slate-300"
-                            }`}
-                          />
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {allowedNasIps.length === 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
-                      * Perhatian: Bind on NAS diaktifkan namun belum ada router
-                      yang dipilih. Pelanggan tidak akan bisa login sampai
-                      router diizinkan.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500 dark:text-slate-400 pt-1 italic">
-                  * Bind on NAS nonaktif: Pelanggan bebas melakukan koneksi
-                  PPPoE dari seluruh router NAS yang terdaftar di sistem.
-                </p>
-              )}
             </div>
           </CardContent>
         </Card>

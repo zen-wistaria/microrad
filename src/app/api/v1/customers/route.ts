@@ -182,6 +182,21 @@ export const POST = asyncApi(async (req: Request) => {
 
   const customer = await prisma.$transaction(async (tx) => {
     const customerId = username;
+
+    // Ambil PPP Profile untuk menentukan nasId dari Profile Group
+    const pppProf = body.profileId
+      ? await tx.pppProfile.findUnique({
+          where: { id: body.profileId },
+          include: {
+            bandwidth: true,
+            profileGroup: { include: { nasRouter: true } },
+          },
+        })
+      : null;
+
+    const nasId = pppProf?.profileGroup?.nasId ?? body.nasId ?? undefined;
+    const nasIp = pppProf?.profileGroup?.nasRouter?.ipAddress;
+
     const created = await tx.customer.create({
       data: {
         id: customerId,
@@ -194,13 +209,11 @@ export const POST = asyncApi(async (req: Request) => {
         status: body.status ?? "active",
         profileId: body.profileId ?? undefined,
         staticIp: body.staticIp?.trim() || undefined,
-        nasId: body.nasId ?? undefined,
+        nasId,
         bindOnNas: body.bindOnNas ?? false,
         sessionMode: body.sessionMode || "single",
         maxSimultaneous: Number(body.maxSimultaneous) || 1,
-        allowedNasIps: Array.isArray(body.allowedNasIps)
-          ? body.allowedNasIps
-          : [],
+        allowedNasIps: body.bindOnNas && nasIp ? [nasIp] : [],
       },
     });
 
@@ -233,20 +246,6 @@ export const POST = asyncApi(async (req: Request) => {
     });
 
     // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
-    const pppProf = created.profileId
-      ? await tx.pppProfile.findUnique({
-          where: { id: created.profileId },
-          include: { bandwidth: true, profileGroup: true },
-        })
-      : null;
-
-    const router = created.nasId
-      ? await tx.nasRouter.findUnique({
-          where: { id: created.nasId },
-          select: { ipAddress: true },
-        })
-      : null;
-
     await syncCustomerRadius(
       tx,
       created,
@@ -258,7 +257,7 @@ export const POST = asyncApi(async (req: Request) => {
           }
         : null,
       password,
-      router?.ipAddress,
+      nasIp,
     );
     return created;
   });

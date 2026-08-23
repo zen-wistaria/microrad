@@ -142,6 +142,23 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     body.username !== undefined && body.username.trim() !== existing.username;
 
   const customer = await prisma.$transaction(async (tx) => {
+    const targetProfileId =
+      "profileId" in body ? body.profileId : existing.profileId;
+    const pppProf = targetProfileId
+      ? await tx.pppProfile.findUnique({
+          where: { id: targetProfileId },
+          include: {
+            bandwidth: true,
+            profileGroup: { include: { nasRouter: true } },
+          },
+        })
+      : null;
+
+    const nasId = pppProf?.profileGroup?.nasId ?? body.nasId ?? existing.nasId;
+    const nasIp = pppProf?.profileGroup?.nasRouter?.ipAddress;
+    const bindOnNas =
+      body.bindOnNas !== undefined ? body.bindOnNas : existing.bindOnNas;
+
     const updated = await tx.customer.update({
       where: { id },
       data: {
@@ -165,21 +182,15 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
         ...(body.staticIp !== undefined
           ? { staticIp: body.staticIp.trim() || undefined }
           : {}),
-        ...("nasId" in body ? { nasId: body.nasId ?? null } : {}),
-        ...(body.bindOnNas !== undefined ? { bindOnNas: body.bindOnNas } : {}),
+        nasId,
+        bindOnNas,
         ...(body.sessionMode !== undefined
           ? { sessionMode: body.sessionMode }
           : {}),
         ...(body.maxSimultaneous !== undefined
           ? { maxSimultaneous: Number(body.maxSimultaneous) || 1 }
           : {}),
-        ...(body.allowedNasIps !== undefined
-          ? {
-              allowedNasIps: Array.isArray(body.allowedNasIps)
-                ? body.allowedNasIps
-                : [],
-            }
-          : {}),
+        allowedNasIps: bindOnNas && nasIp ? [nasIp] : [],
         ...(body.password !== undefined
           ? { password: body.password || undefined }
           : {}),
@@ -258,19 +269,6 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     if (usernameChanged) {
       await moveCustomerRadius(tx, existing.username, updated.username);
     }
-    const pppProf = updated.profileId
-      ? await tx.pppProfile.findUnique({
-          where: { id: updated.profileId },
-          include: { bandwidth: true, profileGroup: true },
-        })
-      : null;
-
-    const router = updated.nasId
-      ? await tx.nasRouter.findUnique({
-          where: { id: updated.nasId },
-          select: { ipAddress: true },
-        })
-      : null;
 
     await syncCustomerRadius(
       tx,
@@ -283,7 +281,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           }
         : null,
       body.password ?? undefined,
-      router?.ipAddress,
+      nasIp,
     );
     return updated;
   });
