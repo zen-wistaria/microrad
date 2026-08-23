@@ -81,6 +81,7 @@ async function main() {
   await prisma.appVerification.deleteMany();
   await prisma.appUser.deleteMany();
   await prisma.customer.deleteMany();
+  await prisma.radIpPool.deleteMany();
   await prisma.internetProfile.deleteMany();
   await prisma.pppProfile.deleteMany();
   await prisma.profileGroup.deleteMany();
@@ -236,7 +237,13 @@ async function main() {
       profileGroupId: "grp-2",
     },
   });
-  console.log("✓ 3 PPP Profile Node MikroTik");
+  const { syncPppProfileIpPool } = await import("@/lib/radsync");
+  await syncPppProfileIpPool(prisma, "ppp-node-a1");
+  await syncPppProfileIpPool(prisma, "ppp-node-a2");
+  await syncPppProfileIpPool(prisma, "ppp-node-b1");
+  console.log(
+    "✓ 3 PPP Profile Node MikroTik + Pool IP Ter-sinkron ke radippool",
+  );
 
   // ── 6. Internet Profiles (Produk Paket Layanan & Harga) ──
   for (const p of initialProfiles) {
@@ -254,6 +261,8 @@ async function main() {
 
   // ── 7. Customers (tanggal dire-resolve) ──
   for (const c of initialCustomers) {
+    const isDynamic =
+      c.username === "anton_wijaya" || c.username === "reza_pratama";
     await prisma.customer.create({
       data: {
         id: c.id,
@@ -266,7 +275,7 @@ async function main() {
         status: c.status,
         profileId: c.profileId,
         profileGroupId: "grp-1",
-        staticIp: c.staticIp,
+        staticIp: isDynamic ? null : c.staticIp,
         nasId: c.nasId,
         createdAt: resolveDate(c.createdAt) ?? new Date(),
         updatedAt: resolveDate(c.updatedAt) ?? new Date(),
@@ -319,6 +328,23 @@ async function main() {
           attribute: "Framed-IP-Address",
           op: ":=",
           value: c.staticIp,
+        },
+      });
+      radCount += 1;
+    } else {
+      await prisma.radReply.upsert({
+        where: {
+          username_attribute: {
+            username: c.username,
+            attribute: "Framed-Pool",
+          },
+        },
+        update: { value: "profile-node-a1", op: ":=" },
+        create: {
+          username: c.username,
+          attribute: "Framed-Pool",
+          op: ":=",
+          value: "profile-node-a1",
         },
       });
       radCount += 1;

@@ -22,12 +22,14 @@ export interface RadiusCustomerInput {
   sessionMode?: "single" | "multi" | string;
   maxSimultaneous?: number;
   allowedNasIps?: string[];
+  poolName?: string | null;
 }
 export interface RadiusProfileInput {
   // Dukungan data baru BandwidthRateInput
   bandwidth?: BandwidthRateInput | null;
   priority?: number | null;
   dnsServers?: string | null;
+  poolName?: string | null;
   // Backward compatibility fields
   rateLimitDown?: number;
   rateLimitUp?: number;
@@ -198,7 +200,8 @@ async function syncCustomerRadiusRows(
     where: { username: u, attribute: "NAS-IP-Address" },
   });
 
-  // radreply: Framed-IP-Address (static IP) — hapus bila kosong
+  // radreply: Framed-IP-Address (static IP) vs Framed-Pool (Dynamic SQL IP Pool)
+  const poolToAssign = customer.poolName || profile?.poolName;
   if (customer.staticIp) {
     await tx.radReply.upsert({
       where: {
@@ -212,10 +215,46 @@ async function syncCustomerRadiusRows(
         value: customer.staticIp,
       },
     });
+    await tx.radReply.deleteMany({
+      where: { username: u, attribute: "Framed-Pool" },
+    });
   } else {
     await tx.radReply.deleteMany({
       where: { username: u, attribute: "Framed-IP-Address" },
     });
+    if (poolToAssign) {
+      await tx.radReply.upsert({
+        where: {
+          username_attribute: { username: u, attribute: "Framed-Pool" },
+        },
+        update: { value: poolToAssign, op: ":=" },
+        create: {
+          username: u,
+          attribute: "Framed-Pool",
+          op: ":=",
+          value: poolToAssign,
+        },
+      });
+      await tx.radReply.upsert({
+        where: {
+          username_attribute: { username: u, attribute: "Mikrotik-Group" },
+        },
+        update: { value: poolToAssign, op: ":=" },
+        create: {
+          username: u,
+          attribute: "Mikrotik-Group",
+          op: ":=",
+          value: poolToAssign,
+        },
+      });
+    } else {
+      await tx.radReply.deleteMany({
+        where: {
+          username: u,
+          attribute: { in: ["Framed-Pool", "Mikrotik-Group"] },
+        },
+      });
+    }
   }
 
   // radreply: Mikrotik-Rate-Limit dari profil
@@ -395,4 +434,234 @@ export async function removeRouterNas(
   ipAddress: string,
 ) {
   await tx.nas.deleteMany({ where: { nasname: ipAddress } });
+}
+
+export function ipToLong(ip: string): number {
+  const parts = ip.trim().split(".").map(Number);
+  if (
+    parts.length !== 4 ||
+    parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)
+  ) {
+    return 0;
+  }
+  return (
+    ((parts[0] << 24) >>> 0) +
+    ((parts[1] << 16) >>> 0) +
+    ((parts[2] << 8) >>> 0) +
+    (parts[3] >>> 0)
+  );
+}
+
+export function longToIp(num: number): string {
+  return [
+    (num >>> 24) & 255,
+    (num >>> 16) & 255,
+    (num >>> 8) & 255,
+    num & 255,
+  ].join(".");
+}
+
+/**
+ * Sinkronisasi daftar IP di tabel `radippool` dari konfigurasi PPP Profile (ipModule = 'sql').
+ * Menambah range IP baru dan membersihkan IP lama / pool lama yang berganti nama.
+ */
+export async function syncPppProfileIpPool(
+  tx: Prisma.TransactionClient,
+  profileId: string,
+  oldName?: string | null,
+) {
+  const profile = await tx.pppProfile.findUnique({
+    where: { id: profileId },
+  });
+  if (!profile) return;
+
+  const poolName = profile.name.trim();
+
+  // Jika nama profile berubah, bersihkan pool dengan nama lama di radippool
+  if (oldName && oldName.trim() !== poolName) {
+    await tx.radIpPool.deleteMany({
+      where: { poolName: oldName.trim() },
+    });
+  }
+
+  if (
+    profile.ipModule !== "sql" ||
+    !profile.rangeIpStart ||
+    !profile.rangeIpEnd
+  ) {
+    // Jika diubah ke mikrotik_pool / non-sql, bersihkan IP pool tersebut
+    await tx.radIpPool.deleteMany({
+      where: { poolName },
+    });
+    return;
+  }
+
+  const startNum = ipToLong(profile.rangeIpStart);
+  const endNum = ipToLong(profile.rangeIpEnd);
+  if (startNum === 0 || endNum === 0 || startNum > endNum) return;
+
+  // Batasi maksimal 1024 IP per pool untuk mencegah beban query ekstrem
+  const safeEndNum = Math.min(endNum, startNum + 1023);
+
+  const targetIps = new Set<string>();
+  for (let i = startNum; i <= safeEndNum; i++) {
+    targetIps.add(longToIp(i));
+  }
+
+  // Ambil IP yang sudah ada di tabel radippool untuk poolName ini
+  const existingRows = await tx.radIpPool.findMany({
+    where: { poolName },
+    select: { id: true, framedIpAddress: true },
+  });
+
+  const existingIpMap = new Map(
+    existingRows.map((r) => [r.framedIpAddress, r]),
+  );
+
+  // Hapus IP lama yang tidak termasuk dalam range baru
+  const toDeleteIds: number[] = [];
+  for (const row of existingRows) {
+    if (!targetIps.has(row.framedIpAddress)) {
+      toDeleteIds.push(row.id);
+    }
+  }
+  if (toDeleteIds.length > 0) {
+    await tx.radIpPool.deleteMany({
+      where: { id: { in: toDeleteIds } },
+    });
+  }
+
+  // Tambahkan IP baru yang belum ada di pool
+  const toInsertData: { poolName: string; framedIpAddress: string }[] = [];
+  for (const ip of targetIps) {
+    if (!existingIpMap.has(ip)) {
+      toInsertData.push({
+        poolName,
+        framedIpAddress: ip,
+      });
+    }
+  }
+
+  if (toInsertData.length > 0) {
+    await tx.radIpPool.createMany({
+      data: toInsertData,
+      skipDuplicates: true,
+    });
+  }
+}
+
+/** Hapus seluruh baris pool saat PPP profile dihapus. */
+export async function cleanupPppProfileIpPool(
+  tx: Prisma.TransactionClient,
+  poolName: string,
+) {
+  await tx.radIpPool.deleteMany({
+    where: { poolName: poolName.trim() },
+  });
+}
+
+/**
+ * Sinkronisasi massal seluruh pelanggan dinamis di suatu Profile Group saat
+ * PPP Profile (Node Router / Pool Name / DNS) dibuat, diupdate, atau dihapus.
+ */
+export async function syncProfileGroupRadiusBulk(
+  tx: Prisma.TransactionClient,
+  profileGroupId: string,
+) {
+  const group = await tx.profileGroup.findUnique({
+    where: { id: profileGroupId },
+    include: { pppProfiles: true },
+  });
+  if (!group) return;
+
+  const sqlNode =
+    group.pppProfiles.find((p) => p.ipModule === "sql") ?? group.pppProfiles[0];
+  const poolName = sqlNode?.name?.trim() || null;
+
+  // Ambil seluruh pelanggan di group ini yang menggunakan IP dinamis (non-statis)
+  const customers = await tx.customer.findMany({
+    where: { profileGroupId, staticIp: null },
+    select: { username: true },
+  });
+
+  if (customers.length === 0) return;
+
+  const usernames = customers.map((c) => c.username);
+
+  if (poolName) {
+    for (const u of usernames) {
+      await tx.radReply.upsert({
+        where: {
+          username_attribute: { username: u, attribute: "Framed-Pool" },
+        },
+        update: { value: poolName, op: ":=" },
+        create: {
+          username: u,
+          attribute: "Framed-Pool",
+          op: ":=",
+          value: poolName,
+        },
+      });
+      await tx.radReply.upsert({
+        where: {
+          username_attribute: { username: u, attribute: "Mikrotik-Group" },
+        },
+        update: { value: poolName, op: ":=" },
+        create: {
+          username: u,
+          attribute: "Mikrotik-Group",
+          op: ":=",
+          value: poolName,
+        },
+      });
+
+      if (sqlNode?.dnsServers) {
+        const dnsParts = sqlNode.dnsServers
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (dnsParts[0]) {
+          await tx.radReply.upsert({
+            where: {
+              username_attribute: {
+                username: u,
+                attribute: "MS-Primary-DNS-Server",
+              },
+            },
+            update: { value: dnsParts[0], op: ":=" },
+            create: {
+              username: u,
+              attribute: "MS-Primary-DNS-Server",
+              op: ":=",
+              value: dnsParts[0],
+            },
+          });
+        }
+        if (dnsParts[1]) {
+          await tx.radReply.upsert({
+            where: {
+              username_attribute: {
+                username: u,
+                attribute: "MS-Secondary-DNS-Server",
+              },
+            },
+            update: { value: dnsParts[1], op: ":=" },
+            create: {
+              username: u,
+              attribute: "MS-Secondary-DNS-Server",
+              op: ":=",
+              value: dnsParts[1],
+            },
+          });
+        }
+      }
+    }
+  } else {
+    await tx.radReply.deleteMany({
+      where: {
+        username: { in: usernames },
+        attribute: { in: ["Framed-Pool", "Mikrotik-Group"] },
+      },
+    });
+  }
 }

@@ -99,28 +99,50 @@ export const POST = asyncApi(async (req: Request) => {
     if (!group) throw new Error("Profile Group tidak ditemukan.");
   }
 
-  const created = await prisma.pppProfile.create({
-    data: {
-      id: `ppp-${Date.now()}`,
-      name,
-      nasId,
-      type,
-      ipModule,
-      localAddress,
-      rangeIpStart,
-      rangeIpEnd,
-      dnsServers,
-      parentQueue,
-      profileGroupId,
-    },
-    include: {
-      nasRouter: {
-        select: { id: true, name: true, ipAddress: true },
+  const { syncPppProfileIpPool, syncProfileGroupRadiusBulk } = await import(
+    "@/lib/radsync"
+  );
+
+  const created = await prisma.$transaction(async (tx) => {
+    const ppp = await tx.pppProfile.create({
+      data: {
+        id: `ppp-${Date.now()}`,
+        name,
+        nasId,
+        type,
+        ipModule,
+        localAddress,
+        rangeIpStart,
+        rangeIpEnd,
+        dnsServers,
+        parentQueue,
+        profileGroupId,
       },
-      profileGroup: {
-        select: { id: true, name: true },
+      include: {
+        nasRouter: {
+          select: { id: true, name: true, ipAddress: true },
+        },
+        profileGroup: {
+          select: { id: true, name: true },
+        },
       },
-    },
+    });
+
+    await syncPppProfileIpPool(tx, ppp.id);
+    if (ppp.profileGroupId) {
+      await syncProfileGroupRadiusBulk(tx, ppp.profileGroupId);
+    }
+    return ppp;
+  });
+
+  // Otomatis sinkronisasi pembuatan profile ke router MikroTik via API
+  const { syncPppProfileToRouter } = await import("@/lib/mikrotik-ppp-profile");
+  await syncPppProfileToRouter({
+    nasId: created.nasId,
+    name: created.name,
+    localAddress: created.localAddress,
+    dnsServers: created.dnsServers,
+    parentQueue: created.parentQueue,
   });
 
   return NextResponse.json(

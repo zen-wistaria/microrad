@@ -162,7 +162,8 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 - **`RadNasAllow` (`radnasallow`)**: `id` (Serial PK), `username`, `nasipaddress`
   - Whitelist router NAS per user: dibaca oleh policy unlang FreeRADIUS `check_nas_binding` saat `bindOnNas = true`. Jika wilayah memiliki 3 router NAS, FreeRADIUS akan memiliki 3 baris di tabel `radnasallow` untuk user tersebut (Zero-Touch Multi-Router Failover).
 - **`RadReply` (`radreply`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
-  - Record: `Framed-IP-Address` (IP statis), `Mikrotik-Rate-Limit` (QoS string format MikroTik), `MS-Primary-DNS-Server`, `MS-Secondary-DNS-Server`.
+  - Record: `Framed-IP-Address` (IP statis/dinamis yang dialokasikan), `Framed-Pool` (nama pool IP dinamis SQL), `Mikrotik-Group` (nama PPP Profile target pada MikroTik untuk binding Local Address Gateway), `Mikrotik-Rate-Limit` (QoS string format MikroTik), `MS-Primary-DNS-Server`, `MS-Secondary-DNS-Server`.
+- **`RadIpPool` (`radippool`)**: Pool IP dinamis SQL terpusat yang dikelola modul `sqlippool` FreeRADIUS. Kolom: `id, pool_name, framedipaddress, nasipaddress, calledstationid, callingstationid, expiry_time, username, pool_key`.
 - **`RadAcct` (`radacct`)**: Dikelola langsung oleh FreeRADIUS saat menerima Accounting packet. Kolom: `radacctid`, `acctsessionid`, `acctuniqueid`, `username`, `nasipaddress`, `framedipaddress`, `acctstarttime`, `acctupdatetime`, `acctstoptime`, `acctsessiontime`, `acctinputoctets`, `acctoutputoctets`, `acctterminatecause`, dll.
 - **`RadPostAuth` (`radpostauth`)**: Riwayat respon auth (`Access-Accept`/`Access-Reject`).
 - **`Nas` (`nas`)**: Daftar router NAS (`nasname` = IP MikroTik, `secret` = shared secret).
@@ -177,7 +178,8 @@ Semua operasi mutasi data yang mempengaruhi otentikasi/otorisasi RADIUS dijalank
 - **Pelanggan Suspended / Disabled**: Menulis `radcheck` (`Auth-Type := Reject`), password lama tetap disimpan agar ketika diaktifkan kembali tidak perlu reset password.
 - **Session Control (`Simultaneous-Use`)**: Menulis `radcheck` `Simultaneous-Use` := `1` (Single Session) atau `maxSimultaneous` (Multi Session).
 - **NAS Whitelist Binding & Failover (`radnasallow`)**: Saat `bindOnNas = true`, menulis baris seluruh router IP yang tergabung dalam `profileGroup` pelanggan ke tabel `radnasallow`. FreeRADIUS mengevaluasi policy `check_nas_binding` untuk memastikan dial-in hanya dari router yang diizinkan di wilayah tersebut. Jika salah satu router padam, dial PPPoE otomatis beralih ke router lain di wilayah yang sama tanpa intervensi admin. Jika `bindOnNas = false`, baris di `radnasallow` dihapus sehingga bebas login dari router mana pun.
-- **Profil Bandwidth & DNS**: Menulis `radreply` `Mikrotik-Rate-Limit` dan `MS-Primary-DNS-Server` / `MS-Secondary-DNS-Server`.
+- **SQL IP Pool Sync (`radippool`)**: Saat `PppProfile` dengan `ipModule = "sql"` dibuat/diupdate, `syncPppProfileIpPool` otomatis menghitung rentang IPv4 (`rangeIpStart` s.d `rangeIpEnd`) dan menulis baris IP ke tabel `radippool`. Saat dial PPPoE, `sqlippool` mengalokasikan IP dan menyematkan `Framed-IP-Address` dinamis, serta melepaskannya kembali saat `Accounting-Stop`.
+- **Profil Bandwidth & DNS**: Menulis `radreply` `Mikrotik-Rate-Limit`, `MS-Primary-DNS-Server` / `MS-Secondary-DNS-Server`, dan `Framed-Pool`.
 - **Bulk Internet Profile Sync**: Saat konfigurasi bandwidth atau Internet Profile diedit, `syncInternetProfileRadiusBulk` memperbarui atribut `Mikrotik-Rate-Limit` di `radreply` untuk semua pelanggan yang menggunakan paket tersebut.
 - **Router NAS**: Menulis/memperbarui baris pada tabel `nas` untuk dibaca oleh FreeRADIUS (`read_clients = yes`).
 
@@ -186,8 +188,10 @@ Atribut `Mikrotik-Rate-Limit` disusun dengan format baku RouterOS:
 $$\text{RateLimit} = \text{rx/tx [burst-limit] [burst-threshold] [burst-time] [priority] [limit-at (CIR)]}$$
 Contoh: `10M/10M 15M/15M 8M/8M 10/10 8 5M/5M` (Download/Upload).
 
-### C. Client API MikroTik Native (`src/lib/mikrotik-client.ts`)
-Menggunakan implementasi protokol binari API RouterOS mandiri melalui koneksi raw TCP Socket (port 8728), mendukung RouterOS v6 dan v7 (termasuk penanganan respon `!empty` dan MD5 challenge/plaintext login).
+### C. Client API MikroTik Native & Auto-Sync Profile (`src/lib/mikrotik-client.ts` & `src/lib/mikrotik-ppp-profile.ts`)
+- Menggunakan implementasi protokol binari API RouterOS mandiri melalui koneksi raw TCP Socket (port 8728), mendukung RouterOS v6 dan v7 (termasuk penanganan respon `!empty` dan MD5 challenge/plaintext login).
+- **Auto-Sync PPP Profile (Idempotent)**: Setiap operasi tambah, edit (update/rename), dan hapus PPP Profile di aplikasi secara otomatis disinkronkan ke router MikroTik target (`/ppp/profile/add`, `/ppp/profile/set`, `/ppp/profile/remove`). Parameter yang dipasang meliputi: `name`, `local-address`, `remote-address="none"`, `dns-server`, dan `parent-queue`.
+- **Dynamic Profile Binding via RADIUS**: FreeRADIUS mengirimkan atribut `Mikrotik-Group` yang otomatis mencocokkan sesi PPPoE login ke PPP Profile di router MikroTik.
 
 ### D. Live Sesi & History Accounting (`src/lib/radacct-sessions.ts` & `src/lib/usage-real.ts`)
 - Sesi aktif dibaca dari `radacct` (`acctStopTime IS NULL`).

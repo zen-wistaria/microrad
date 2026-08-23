@@ -33,7 +33,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-microrad}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-microrad}
       POSTGRES_DB: ${POSTGRES_DB:-microrad}
-      RADIUS_DEBUG: "0"
+      RADIUS_DEBUG: "1"
     ports:
       - "1812:1812/udp"
       - "1813:1813/udp"

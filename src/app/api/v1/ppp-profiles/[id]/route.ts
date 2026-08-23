@@ -75,29 +75,76 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
     if (!group) throw new Error("Profile Group tidak ditemukan.");
   }
 
-  const updated = await prisma.pppProfile.update({
+  const { syncPppProfileIpPool, syncProfileGroupRadiusBulk } = await import(
+    "@/lib/radsync"
+  );
+  const { syncPppProfileToRouter, removePppProfileFromRouter } = await import(
+    "@/lib/mikrotik-ppp-profile"
+  );
+
+  const existingProfile = await prisma.pppProfile.findUnique({
     where: { id },
-    data: {
-      name,
-      nasId,
-      type,
-      ipModule,
-      localAddress,
-      rangeIpStart,
-      rangeIpEnd,
-      dnsServers,
-      parentQueue,
-      profileGroupId,
-    },
-    include: {
-      nasRouter: {
-        select: { id: true, name: true, ipAddress: true },
-      },
-      profileGroup: {
-        select: { id: true, name: true },
-      },
-    },
   });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const ppp = await tx.pppProfile.update({
+      where: { id },
+      data: {
+        name,
+        nasId,
+        type,
+        ipModule,
+        localAddress,
+        rangeIpStart,
+        rangeIpEnd,
+        dnsServers,
+        parentQueue,
+        profileGroupId,
+      },
+      include: {
+        nasRouter: {
+          select: { id: true, name: true, ipAddress: true },
+        },
+        profileGroup: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    await syncPppProfileIpPool(tx, id, existingProfile?.name);
+    if (ppp.profileGroupId) {
+      await syncProfileGroupRadiusBulk(tx, ppp.profileGroupId);
+    }
+    if (
+      existingProfile?.profileGroupId &&
+      existingProfile.profileGroupId !== ppp.profileGroupId
+    ) {
+      await syncProfileGroupRadiusBulk(tx, existingProfile.profileGroupId);
+    }
+    return ppp;
+  });
+
+  // Otomatis sinkronisasi pembaruan profile ke router MikroTik via API
+  await syncPppProfileToRouter({
+    nasId: updated.nasId,
+    name: updated.name,
+    localAddress: updated.localAddress,
+    dnsServers: updated.dnsServers,
+    parentQueue: updated.parentQueue,
+    oldName: existingProfile?.name,
+  });
+
+  // Jika router target dipindah, bersihkan profile lama di router sebelumnya
+  if (
+    existingProfile?.nasId &&
+    existingProfile.nasId !== updated.nasId &&
+    existingProfile.name
+  ) {
+    await removePppProfileFromRouter(
+      existingProfile.nasId,
+      existingProfile.name,
+    );
+  }
 
   return NextResponse.json({
     data: {
@@ -112,7 +159,35 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
   await requirePermission("profile.delete");
   const { id } = await params;
 
-  await prisma.pppProfile.delete({ where: { id } });
+  const { cleanupPppProfileIpPool, syncProfileGroupRadiusBulk } = await import(
+    "@/lib/radsync"
+  );
+  const { removePppProfileFromRouter } = await import(
+    "@/lib/mikrotik-ppp-profile"
+  );
+
+  const existingProfile = await prisma.pppProfile.findUnique({
+    where: { id },
+    select: { nasId: true, name: true, profileGroupId: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.pppProfile.delete({ where: { id } });
+    if (existingProfile?.name) {
+      await cleanupPppProfileIpPool(tx, existingProfile.name);
+    }
+    if (existingProfile?.profileGroupId) {
+      await syncProfileGroupRadiusBulk(tx, existingProfile.profileGroupId);
+    }
+  });
+
+  // Otomatis hapus profile dari router MikroTik via API
+  if (existingProfile?.nasId && existingProfile.name) {
+    await removePppProfileFromRouter(
+      existingProfile.nasId,
+      existingProfile.name,
+    );
+  }
 
   return NextResponse.json({ data: { id, deleted: true } });
 });

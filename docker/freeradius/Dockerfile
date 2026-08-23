@@ -12,6 +12,7 @@ RUN apk add --no-cache freeradius freeradius-postgresql freeradius-utils bash
 #  - policy.d/nasbind   -> unlang policy check_nas_binding & check_multi_session_diff_nas
 #  - entrypoint.sh      -> tunggu postgres, templating, radiusd -f
 COPY mods-enabled/sql /etc/raddb/mods-enabled/sql
+COPY mods-enabled/sqlippool /etc/raddb/mods-enabled/sqlippool
 COPY clients.conf /etc/raddb/clients.conf
 COPY policy-nasbind.conf /etc/raddb/policy.d/nasbind
 
@@ -19,11 +20,15 @@ COPY policy-nasbind.conf /etc/raddb/policy.d/nasbind
 COPY listen-coa.conf /etc/raddb/listen-coa.conf
 RUN cat /etc/raddb/listen-coa.conf >> /etc/raddb/radiusd.conf
 
-# Aktifkan modul sql & policy check_nas_binding di authorize section
-RUN sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas/ }' /etc/raddb/sites-enabled/default \
- && sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas/ }' /etc/raddb/sites-enabled/inner-tunnel \
+# Aktifkan modul sql, policy check_nas_binding, set_ippool_name, dan sqlippool di default & inner-tunnel
+RUN sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas\n\tset_ippool_name/ }' /etc/raddb/sites-enabled/default \
+ && sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas\n\tset_ippool_name/ }' /etc/raddb/sites-enabled/inner-tunnel \
  && sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/default \
- && sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/inner-tunnel
+ && sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/inner-tunnel \
+ && sed -i -E 's/^[[:space:]]*#[[:space:]]*-?sqlippool[[:space:]]*$/\tsqlippool\n\tcleanup_ippool_reply/' /etc/raddb/sites-enabled/default \
+ && sed -i -E 's/^[[:space:]]*#[[:space:]]*-?sqlippool[[:space:]]*$/\tsqlippool\n\tcleanup_ippool_reply/' /etc/raddb/sites-enabled/inner-tunnel \
+ && sed -i -E 's/^\s*-sqlippool\s*$/\tsqlippool/' /etc/raddb/sites-enabled/default \
+ && sed -i -E 's/^\s*-sqlippool\s*$/\tsqlippool/' /etc/raddb/sites-enabled/inner-tunnel
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

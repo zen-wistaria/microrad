@@ -1,0 +1,119 @@
+# -*- text -*-
+##
+## sqlippool.conf -- FreeRADIUS PostgreSQL IP Pool allocation module
+## MicroRAD PPPoE Manager
+##
+
+sqlippool {
+	# Module instance of the SQL driver
+	sql_module_instance = "sql"
+
+	# Nama tabel database IP Pool
+	ippool_table = "radippool"
+
+	# Pool key untuk tracking stickyness klien PPPoE (MAC Address / Caller ID)
+	pool_key = "%{Calling-Station-Id}"
+
+	# Default lease duration in seconds (1 jam)
+	lease_duration = 3600
+
+	# Atribut penentu pool name di list control
+	pool_name = "Pool-Name"
+
+	# Attribute to return to NAS in Access-Accept
+	attribute_name = "Framed-IP-Address"
+
+	skip_locked = "SKIP LOCKED"
+
+	allocate_begin = ""
+	allocate_commit = ""
+
+	# Alokasikan kembali IP yang sebelumnya pernah dipakai oleh Calling-Station-Id yang sama
+	allocate_existing = "\
+		WITH cte AS ( \
+			SELECT framedipaddress FROM ${ippool_table} \
+			WHERE pool_name = '%{control:${pool_name}}' \
+			AND nasipaddress = '%{NAS-IP-Address}' AND pool_key = '${pool_key}' \
+			ORDER BY expiry_time DESC NULLS LAST \
+			LIMIT 1 \
+			FOR UPDATE ${skip_locked} \
+		) \
+		UPDATE ${ippool_table} \
+		SET \
+			nasipaddress = '%{NAS-IP-Address}', \
+			pool_key = '${pool_key}', \
+			callingstationid = '%{Calling-Station-Id}', \
+			username = '%{SQL-User-Name}', \
+			expiry_time = 'now'::timestamp(0) + '${lease_duration} second'::interval \
+		FROM cte WHERE cte.framedipaddress = ${ippool_table}.framedipaddress \
+		RETURNING cte.framedipaddress"
+
+	# Cari IP bebas (baik yang expiry_time IS NULL / IP baru, maupun yang sudah expired)
+	allocate_find = "\
+		WITH cte AS ( \
+			SELECT framedipaddress FROM ${ippool_table} \
+			WHERE pool_name = '%{control:${pool_name}}' \
+			AND (expiry_time < 'now'::timestamp(0) OR expiry_time IS NULL) \
+			ORDER BY (expiry_time IS NULL) DESC, expiry_time ASC \
+			LIMIT 1 \
+			FOR UPDATE ${skip_locked} \
+		) \
+		UPDATE ${ippool_table} \
+		SET \
+			nasipaddress = '%{NAS-IP-Address}', \
+			pool_key = '${pool_key}', \
+			callingstationid = '%{Calling-Station-Id}', \
+			username = '%{SQL-User-Name}', \
+			expiry_time = 'now'::timestamp(0) + '${lease_duration} second'::interval \
+		FROM cte WHERE cte.framedipaddress = ${ippool_table}.framedipaddress \
+		RETURNING cte.framedipaddress"
+
+	# Cek ketersediaan pool
+	pool_check = "\
+		SELECT id \
+		FROM ${ippool_table} \
+		WHERE pool_name='%{control:${pool_name}}' \
+		LIMIT 1"
+
+	# Perpanjang sewa saat Accounting-Start
+	start_update = "\
+		UPDATE ${ippool_table} \
+		SET \
+			expiry_time = 'now'::timestamp(0) + '${lease_duration} second'::interval \
+		WHERE nasipaddress = '%{NAS-IP-Address}' \
+		AND pool_key = '${pool_key}'"
+
+	# Bebaskan IP saat Accounting-Stop
+	stop_clear = "\
+		UPDATE ${ippool_table} \
+		SET \
+			expiry_time = 'now'::timestamp(0) - '1 second'::interval \
+		WHERE nasipaddress = '%{%{Nas-IP-Address}:-%{Nas-IPv6-Address}}' \
+		AND pool_key = '${pool_key}' \
+		AND username = '%{SQL-User-Name}' \
+		AND callingstationid = '%{Calling-Station-Id}' \
+		AND framedipaddress = '%{${attribute_name}}'"
+
+	# Perpanjang sewa saat Accounting-Interim-Update
+	alive_update = "\
+		UPDATE ${ippool_table} \
+		SET \
+			expiry_time = 'now'::timestamp(0) + '${lease_duration} seconds'::interval \
+		WHERE nasipaddress = '%{%{Nas-IP-Address}:-%{Nas-IPv6-Address}}' \
+		AND pool_key = '${pool_key}' \
+		AND framedipaddress = '%{${attribute_name}}' \
+		AND username = '%{SQL-User-Name}' \
+		AND callingstationid = '%{Calling-Station-Id}'"
+
+	on_clear = "\
+		UPDATE ${ippool_table} \
+		SET \
+			expiry_time = 'now'::timestamp(0) - '1 second'::interval \
+		WHERE nasipaddress = '%{%{Nas-IP-Address}:-%{Nas-IPv6-Address}}'"
+
+	off_clear = "\
+		UPDATE ${ippool_table} \
+		SET \
+			expiry_time = 'now'::timestamp(0) - '1 second'::interval \
+		WHERE nasipaddress = '%{%{Nas-IP-Address}:-%{Nas-IPv6-Address}}'"
+}

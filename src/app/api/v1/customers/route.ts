@@ -274,14 +274,20 @@ export const POST = asyncApi(async (req: Request) => {
     });
 
     // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
+    const sqlNode =
+      profileGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
+      profileGroup?.pppProfiles[0];
+    const poolName = sqlNode?.ipModule === "sql" ? sqlNode.name : null;
+
     await syncCustomerRadius(
       tx,
-      created,
+      { ...created, poolName },
       internetProf
         ? {
             bandwidth: internetProf.bandwidth,
             priority: internetProf.priority,
-            dnsServers: profileGroup?.pppProfiles[0]?.dnsServers,
+            dnsServers: sqlNode?.dnsServers,
+            poolName,
           }
         : null,
       password,

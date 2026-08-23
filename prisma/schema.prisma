@@ -596,3 +596,21 @@ model Nas {
 
   @@map("nas")
 }
+
+// rlm_sqlippool — Pool IP Dinamis SQL terpusat FreeRADIUS
+model RadIpPool {
+  id               Int       @id @default(autoincrement()) @map("id")
+  poolName         String    @map("pool_name") @db.VarChar(30)
+  framedIpAddress  String    @map("framedipaddress") @db.Inet
+  nasIpAddress     String    @default("") @map("nasipaddress") @db.VarChar(15)
+  calledStationId  String    @default("") @map("calledstationid") @db.VarChar(30)
+  callingStationId String    @default("") @map("callingstationid") @db.VarChar(30)
+  expiryTime       DateTime? @map("expiry_time") @db.Timestamptz(6)
+  username         String    @default("") @map("username") @db.VarChar(64)
+  poolKey          String    @default("") @map("pool_key") @db.VarChar(30)
+
+  @@index([poolName, expiryTime], map: "radippool_poolname_expire_idx")
+  @@index([framedIpAddress], map: "radippool_framedipaddress_idx")
+  @@index([nasIpAddress, poolKey], map: "radippool_nasip_poolkey_idx")
+  @@map("radippool")
+}
