@@ -92,3 +92,15 @@ export async function disconnectSession(
     body: JSON.stringify({ cause }),
   });
 }
+
+export async function bulkDisconnectSessions(
+  sessionIds: string[],
+): Promise<{ success: boolean; message: string; count: number }> {
+  return apiFetch<{ success: boolean; message: string; count: number }>(
+    "/sessions/bulk-disconnect",
+    {
+      method: "POST",
+      body: JSON.stringify({ sessionIds }),
+    },
+  );
+}

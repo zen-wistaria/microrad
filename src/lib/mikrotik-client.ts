@@ -111,17 +111,28 @@ export function connectRouterOS(
   const timeoutMs = timeoutMsOverride ?? TIMEOUT_MS();
 
   return new Promise((resolve, reject) => {
-    const socket = net.connect({ host, port });
     let settled = false;
     let buffer = Buffer.alloc(0);
     let loggedIn = false;
     let tagCounter = 0;
-    let failTimer: NodeJS.Timeout;
+    let failTimer: NodeJS.Timeout | undefined;
+
+    const socket = net.connect({ host, port });
+
+    let connectTimer: NodeJS.Timeout | null = setTimeout(() => {
+      fail(new Error("Tidak dapat terhubung ke router (koneksi TCP timeout)."));
+    }, timeoutMs);
 
     const fail = (err: unknown) => {
       if (settled) return;
       settled = true;
-      clearTimeout(failTimer);
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+        connectTimer = null;
+      }
+      if (failTimer) {
+        clearTimeout(failTimer);
+      }
       socket.destroy();
       reject(err instanceof Error ? err : new Error(messageRouterosError(err)));
     };
@@ -130,7 +141,14 @@ export function connectRouterOS(
       fail(new Error("Tidak dapat terhubung ke router (timeout)."));
     };
 
-    socket.setTimeout(timeoutMs, timeout);
+    socket.on("connect", () => {
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+        connectTimer = null;
+      }
+      socket.setTimeout(timeoutMs, timeout);
+    });
+
     socket.on("error", (e) => {
       const code = (e as NodeJS.ErrnoException)?.code;
       fail(

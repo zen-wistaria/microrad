@@ -90,3 +90,23 @@ export async function disconnectCustomer(
     body: JSON.stringify({}),
   });
 }
+
+export type BulkCustomerActionType =
+  | "activate"
+  | "disconnect"
+  | "suspend"
+  | "disable"
+  | "delete";
+
+export async function bulkCustomerAction(
+  action: BulkCustomerActionType,
+  customerIds: string[],
+): Promise<{ success: boolean; message: string; count: number }> {
+  return apiFetch<{ success: boolean; message: string; count: number }>(
+    "/customers/bulk",
+    {
+      method: "POST",
+      body: JSON.stringify({ action, customerIds }),
+    },
+  );
+}

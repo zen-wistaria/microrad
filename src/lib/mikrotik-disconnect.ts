@@ -9,24 +9,58 @@ import { prisma } from "./prisma";
 
 export async function kickSessionByUsername(
   customerUsername: string,
-  routerId: string | null | undefined,
+  routerId?: string | null,
 ): Promise<{ kicked: boolean; message?: string }> {
   if (!customerUsername) {
     return { kicked: false, message: "Username kosong." };
   }
   try {
-    const router = routerId
+    // 1. Cek apakah ada sesi aktif di radacct
+    const activeAcct = await prisma.radAcct.findFirst({
+      where: { username: customerUsername, acctStopTime: null },
+      orderBy: { acctStartTime: "desc" },
+    });
+
+    if (!activeAcct && !routerId) {
+      // User tidak online di radacct dan tidak ada router spesifik
+      return {
+        kicked: false,
+        message: `Tidak ada sesi aktif untuk ${customerUsername}.`,
+      };
+    }
+
+    // 2. Cari router NAS yang sesuai
+    let router = routerId
       ? await prisma.nasRouter.findUnique({ where: { id: routerId } })
-      : await prisma.nasRouter.findFirst({
-          where: { apiUsername: { not: null } },
-        });
+      : null;
+
+    if (!router && activeAcct?.nasIpAddress) {
+      router = await prisma.nasRouter.findFirst({
+        where: { ipAddress: activeAcct.nasIpAddress },
+      });
+    }
+
+    if (!router) {
+      router = await prisma.nasRouter.findFirst({
+        where: { apiUsername: { not: null }, status: "online" },
+      });
+    }
+
     if (!router?.apiUsername) {
       return {
         kicked: false,
         message: "Router tidak memiliki kredensial API.",
       };
     }
-    const mikrotik = await connectRouterOS(router);
+
+    if (router.status === "offline") {
+      return {
+        kicked: false,
+        message: `Router ${router.name} (${router.ipAddress}) sedang offline.`,
+      };
+    }
+
+    const mikrotik = await connectRouterOS(router, 1500);
     try {
       const rows = await mikrotik.write("/ppp/active/print", [
         `?=name=${customerUsername}`,

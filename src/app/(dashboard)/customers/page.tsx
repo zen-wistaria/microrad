@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AlertCircle,
   Ban,
   CheckCircle,
   CheckCircle2,
@@ -26,9 +25,9 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { CustomerStatusBadge } from "@/components/common/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +46,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  useBulkCustomerActionMutation,
   useCustomersQuery,
   useDeleteCustomerMutation,
   useDisconnectCustomerMutation,
@@ -108,17 +108,28 @@ export default function CustomersPage() {
   const deleteCustomerMutation = useDeleteCustomerMutation();
   const disconnectCustomerMutation = useDisconnectCustomerMutation();
   const updateCustomerMutation = useUpdateCustomerMutation();
+  const bulkCustomerActionMutation = useBulkCustomerActionMutation();
 
   const customers = custRes?.data || [];
   const totalCount = custRes?.total || 0;
   const loading = customersLoading && !custRes;
   const totalPages = Math.ceil(totalCount / safeLimit) || 1;
 
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // Dialog State
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<Customer | null>(
     null,
   );
+  const [bulkTarget, setBulkTarget] = useState<{
+    action: "activate" | "disconnect" | "suspend" | "disable" | "delete";
+    title: string;
+    description: string;
+    confirmLabel: string;
+    variant?: "destructive" | "default";
+  } | null>(null);
 
   // Sync debounced search input to nuqs URL state
   useEffect(() => {
@@ -133,6 +144,13 @@ export default function CustomersPage() {
     setSearchInput(search);
   }, [search]);
 
+  // Reset selection saat page / filter berubah
+  useEffect(() => {
+    if (page || limit || statusFilter || profileFilter || search) {
+      setSelectedIds(new Set());
+    }
+  }, [page, limit, statusFilter, profileFilter, search]);
+
   const profileMap = useMemo(() => {
     const map = new Map<string, InternetProfile>();
     for (const p of profiles) {
@@ -140,6 +158,37 @@ export default function CustomersPage() {
     }
     return map;
   }, [profiles]);
+
+  // Selection handlers
+  const allCurrentPageSelected =
+    customers.length > 0 && customers.every((c) => selectedIds.has(c.id));
+  const someCurrentPageSelected =
+    customers.some((c) => selectedIds.has(c.id)) && !allCurrentPageSelected;
+
+  const toggleSelectAll = () => {
+    if (allCurrentPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const c of customers) next.delete(c.id);
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const c of customers) next.add(c.id);
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Actions
   const handleDelete = async () => {
@@ -166,6 +215,22 @@ export default function CustomersPage() {
     }
   };
 
+  const handleBulkAction = async () => {
+    if (!bulkTarget || selectedIds.size === 0) return;
+    const customerIds = Array.from(selectedIds);
+    try {
+      const res = await bulkCustomerActionMutation.mutateAsync({
+        action: bulkTarget.action,
+        customerIds,
+      });
+      toast.success(res.message || "Aksi massal berhasil diproses.");
+      setSelectedIds(new Set());
+      setBulkTarget(null);
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal memproses aksi massal.");
+    }
+  };
+
   const handleUpdateStatus = async (
     customer: Customer,
     newStatus: CustomerStatus,
@@ -175,7 +240,6 @@ export default function CustomersPage() {
         id: customer.id,
         updates: { status: newStatus },
       });
-      // Jika diubah menjadi non-aktif (suspended/disabled) dan memiliki sesi online, putus koneksi
       if (newStatus !== "active") {
         try {
           await disconnectCustomerMutation.mutateAsync(customer.id);
@@ -222,17 +286,87 @@ export default function CustomersPage() {
             <RefreshCw
               className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
             />
-            Refresh
+            <span>Segarkan</span>
           </Button>
           {hasPermission(currentUser, "customer.create") && (
-            <Button asChild size="sm" className="gap-1.5 text-xs shadow-sm">
-              <Link href="/customers/new">
+            <Link href="/customers/new">
+              <Button
+                size="sm"
+                className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs shadow-xs"
+              >
                 <Plus className="h-4 w-4" />
-                Tambah Pelanggan
-              </Link>
-            </Button>
+                <span>Tambah Pelanggan</span>
+              </Button>
+            </Link>
           )}
         </div>
+      </div>
+
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-slate-500 font-medium">
+                Total Pelanggan
+              </p>
+              <h3 className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">
+                {totalCount}
+              </h3>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+              <Users className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                Pelanggan Aktif
+              </p>
+              <h3 className="mt-1 text-2xl font-bold text-emerald-950 dark:text-emerald-100">
+                {customers.filter((c) => c.status === "active").length}
+              </h3>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                Sedang Online (PPPoE)
+              </p>
+              <h3 className="mt-1 text-2xl font-bold text-amber-950 dark:text-amber-100">
+                {customers.filter((c) => c.isOnline).length}
+              </h3>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+              <Zap className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                Suspend / Isolir
+              </p>
+              <h3 className="mt-1 text-2xl font-bold text-rose-950 dark:text-rose-100">
+                {customers.filter((c) => c.status === "suspended").length}
+              </h3>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400">
+              <Ban className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filter and Search Bar */}
@@ -243,14 +377,14 @@ export default function CustomersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Cari username, nama, telepon, atau IP..."
+                placeholder="Cari username PPPoE, nama, telepon, IP..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 text-xs sm:text-sm"
               />
             </div>
 
-            {/* Faceted Filters */}
+            {/* Filter Selects */}
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="w-40">
                 <Select
@@ -265,28 +399,16 @@ export default function CustomersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Semua Status</SelectItem>
-                    <SelectItem value="active">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="text-green-500 h-4 w-4" /> Aktif
-                      </div>
-                    </SelectItem>
+                    <SelectItem value="active">Aktif</SelectItem>
                     <SelectItem value="suspended">
-                      <div className="flex items-center gap-2">
-                        <CircleAlert className="text-yellow-500 h-4 w-4" />{" "}
-                        Suspend
-                      </div>
+                      Suspend (Terisolir)
                     </SelectItem>
-                    <SelectItem value="disabled">
-                      <div className="flex items-center gap-2">
-                        <CircleX className="text-red-500 h-4 w-4" />{" "}
-                        Dinonaktifkan
-                      </div>
-                    </SelectItem>
+                    <SelectItem value="disabled">Non-aktif</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="w-48">
+              <div className="w-44">
                 <Select
                   value={profileFilter}
                   onValueChange={(v) => {
@@ -295,10 +417,10 @@ export default function CustomersPage() {
                   }}
                 >
                   <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder="Semua Paket" />
+                    <SelectValue placeholder="Profil Paket" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Semua Paket Bandwidth</SelectItem>
+                    <SelectItem value="all">Semua Paket</SelectItem>
                     {profiles.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {p.name}
@@ -309,7 +431,6 @@ export default function CustomersPage() {
               </div>
 
               {(search ||
-                searchInput ||
                 statusFilter !== "all" ||
                 profileFilter !== "all") && (
                 <Button
@@ -324,7 +445,7 @@ export default function CustomersPage() {
                   }}
                   className="text-xs text-slate-500 hover:text-slate-900"
                 >
-                  Reset Filter
+                  Reset
                 </Button>
               )}
             </div>
@@ -339,6 +460,14 @@ export default function CustomersPage() {
             <table className="w-full text-left text-xs sm:text-sm">
               <thead className="bg-slate-50/80 text-slate-500 border-b border-slate-200 dark:bg-slate-800/50 dark:border-slate-800">
                 <tr>
+                  <th className="py-3 px-4 w-10 text-center">
+                    <Checkbox
+                      checked={allCurrentPageSelected}
+                      indeterminate={someCurrentPageSelected}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Pilih semua di halaman ini"
+                    />
+                  </th>
                   <th className="py-3 px-4 font-semibold">Username PPPoE</th>
                   <th className="py-3 px-4 font-semibold">Nama Lengkap</th>
                   <th className="py-3 px-4 font-semibold">Profil Paket</th>
@@ -352,31 +481,19 @@ export default function CustomersPage() {
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i}>
-                      <td colSpan={7} className="p-4">
+                      <td colSpan={8} className="p-4">
                         <Skeleton className="h-5 w-full" />
                       </td>
                     </tr>
                   ))
                 ) : customers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12">
+                    <td colSpan={8} className="py-12">
                       <EmptyState
                         icon={Users}
                         title="Tidak ada pelanggan ditemukan"
-                        description={
-                          search ||
-                          statusFilter !== "all" ||
-                          profileFilter !== "all"
-                            ? "Coba ubah kata kunci pencarian atau filter yang dipilih."
-                            : "Belum ada pelanggan yang terdaftar."
-                        }
-                        actionLabel={
-                          search ||
-                          statusFilter !== "all" ||
-                          profileFilter !== "all"
-                            ? undefined
-                            : "Tambah Pelanggan Baru"
-                        }
+                        description="Coba ubah kata kunci pencarian atau filter yang dipilih."
+                        actionLabel="Tambah Pelanggan Baru"
                         actionHref="/customers/new"
                       />
                     </td>
@@ -385,12 +502,24 @@ export default function CustomersPage() {
                   customers.map((customer) => {
                     const isOnline = Boolean(customer.isOnline);
                     const profile = profileMap.get(customer.profileId);
+                    const isSelected = selectedIds.has(customer.id);
 
                     return (
                       <tr
                         key={customer.id}
-                        className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                        className={`transition-colors ${
+                          isSelected
+                            ? "bg-blue-50/60 dark:bg-blue-950/30"
+                            : "hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
+                        }`}
                       >
+                        <td className="py-3.5 px-4 w-10 text-center">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(customer.id)}
+                            aria-label={`Pilih ${customer.username}`}
+                          />
+                        </td>
                         <td className="py-3.5 px-4 font-mono font-semibold text-slate-900 dark:text-slate-100">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <Link
@@ -399,33 +528,12 @@ export default function CustomersPage() {
                             >
                               {customer.username}
                             </Link>
-                            {customer.sessionMode === "multi" && (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] px-1 py-0 text-violet-600 bg-violet-50 dark:bg-violet-950/40 dark:text-violet-300"
-                              >
-                                Multi ({customer.maxSimultaneous || 2})
-                              </Badge>
-                            )}
-                            {customer.bindOnNas && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] px-1 py-0 text-indigo-600 border-indigo-200 dark:border-indigo-800"
-                              >
-                                Bind NAS
-                              </Badge>
-                            )}
                           </div>
                         </td>
                         <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
                           <div className="font-medium">
                             {customer.fullName || "-"}
                           </div>
-                          {customer.phone && (
-                            <div className="text-[11px] text-slate-400 font-mono">
-                              {customer.phone}
-                            </div>
-                          )}
                         </td>
                         <td className="py-3.5 px-4">
                           {profile ? (
@@ -446,7 +554,7 @@ export default function CustomersPage() {
                         <td className="py-3.5 px-4 font-mono text-xs text-slate-600 dark:text-slate-400">
                           {customer.staticIp || (
                             <span className="text-slate-400 italic">
-                              Dynamic Pool
+                              Dynamic
                             </span>
                           )}
                         </td>
@@ -464,64 +572,73 @@ export default function CustomersPage() {
                             <DropdownMenuTrigger asChild>
                               <Button
                                 variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
+                                size="sm"
+                                className="h-8 w-8 p-0"
                               >
+                                <span className="sr-only">Buka menu</span>
                                 <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Menu Aksi</span>
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuContent align="end" className="w-52">
                               <DropdownMenuLabel className="text-xs">
                                 Aksi Pelanggan
                               </DropdownMenuLabel>
-                              <DropdownMenuItem
-                                asChild
-                                className="cursor-pointer text-xs"
-                              >
-                                <Link href={`/customers/${customer.id}`}>
-                                  <Eye className="mr-2 h-4 w-4 text-slate-500" />
-                                  Lihat Detail
-                                </Link>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                asChild
-                                className="cursor-pointer text-xs"
-                              >
+                              <DropdownMenuSeparator />
+
+                              <DropdownMenuItem asChild>
                                 <Link
-                                  href={`/billing?search=${encodeURIComponent(customer.username)}`}
+                                  href={`/customers/${customer.id}`}
+                                  className="flex items-center gap-2 cursor-pointer"
                                 >
-                                  <Receipt className="mr-2 h-4 w-4 text-slate-500" />
-                                  Lihat Tagihan
+                                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                                  <span>Lihat Detail</span>
                                 </Link>
                               </DropdownMenuItem>
+
+                              {hasPermission(
+                                currentUser,
+                                "customer.update",
+                              ) && (
+                                <DropdownMenuItem asChild>
+                                  <Link
+                                    href={`/customers/${customer.id}/edit`}
+                                    className="flex items-center gap-2 cursor-pointer"
+                                  >
+                                    <Edit className="h-3.5 w-3.5 text-slate-500" />
+                                    <span>Edit Data</span>
+                                  </Link>
+                                </DropdownMenuItem>
+                              )}
+
+                              <DropdownMenuItem asChild>
+                                <Link
+                                  href={`/billing?customerId=${customer.id}`}
+                                  className="flex items-center gap-2 cursor-pointer"
+                                >
+                                  <Receipt className="h-3.5 w-3.5 text-slate-500" />
+                                  <span>Lihat Tagihan</span>
+                                </Link>
+                              </DropdownMenuItem>
+
                               {hasPermission(
                                 currentUser,
                                 "customer.update",
                               ) && (
                                 <>
-                                  <DropdownMenuItem
-                                    asChild
-                                    className="cursor-pointer text-xs"
-                                  >
-                                    <Link
-                                      href={`/customers/${customer.id}/edit`}
-                                    >
-                                      <Edit className="mr-2 h-4 w-4 text-slate-500" />
-                                      Edit Akun
-                                    </Link>
-                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuLabel className="text-[11px] text-slate-400 font-normal">
+                                    Ubah Status Layanan
+                                  </DropdownMenuLabel>
 
-                                  {/* Opsi status: Aktifkan, Suspend, Disable */}
                                   {customer.status !== "active" && (
                                     <DropdownMenuItem
                                       onClick={() =>
                                         handleUpdateStatus(customer, "active")
                                       }
-                                      className="cursor-pointer text-xs text-emerald-600 focus:text-emerald-600 dark:text-emerald-400"
+                                      className="text-emerald-600 focus:text-emerald-700 cursor-pointer gap-2"
                                     >
-                                      <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
-                                      Aktifkan Kembali
+                                      <CheckCircle className="h-3.5 w-3.5" />
+                                      <span>Aktifkan Kembali</span>
                                     </DropdownMenuItem>
                                   )}
 
@@ -533,10 +650,10 @@ export default function CustomersPage() {
                                           "suspended",
                                         )
                                       }
-                                      className="cursor-pointer text-xs text-amber-600 focus:text-amber-600 dark:text-amber-400"
+                                      className="text-amber-600 focus:text-amber-700 cursor-pointer gap-2"
                                     >
-                                      <AlertCircle className="mr-2 h-4 w-4 text-amber-500" />
-                                      Suspend (Isolir)
+                                      <CircleAlert className="h-3.5 w-3.5" />
+                                      <span>Suspend (Isolir)</span>
                                     </DropdownMenuItem>
                                   )}
 
@@ -545,31 +662,34 @@ export default function CustomersPage() {
                                       onClick={() =>
                                         handleUpdateStatus(customer, "disabled")
                                       }
-                                      className="cursor-pointer text-xs text-rose-600 focus:text-rose-600 dark:text-rose-400"
+                                      className="text-slate-600 focus:text-slate-700 cursor-pointer gap-2"
                                     >
-                                      <Ban className="mr-2 h-4 w-4 text-rose-500" />
-                                      Nonaktifkan (Disable)
+                                      <CircleX className="h-3.5 w-3.5" />
+                                      <span>Nonaktifkan</span>
                                     </DropdownMenuItem>
                                   )}
-
-                                  <DropdownMenuSeparator />
                                 </>
                               )}
+
                               {isOnline &&
                                 hasPermission(
                                   currentUser,
                                   "session.update",
                                 ) && (
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      setDisconnectTarget(customer)
-                                    }
-                                    className="cursor-pointer text-xs text-amber-600 focus:text-amber-600"
-                                  >
-                                    <PowerOff className="mr-2 h-4 w-4" />
-                                    Putuskan Koneksi
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setDisconnectTarget(customer)
+                                      }
+                                      className="text-rose-600 focus:text-rose-700 cursor-pointer gap-2"
+                                    >
+                                      <PowerOff className="h-3.5 w-3.5" />
+                                      <span>Putus Koneksi PPPoE</span>
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
+
                               {hasPermission(
                                 currentUser,
                                 "customer.delete",
@@ -578,10 +698,10 @@ export default function CustomersPage() {
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     onClick={() => setDeleteTarget(customer)}
-                                    className="cursor-pointer text-xs text-rose-600 focus:text-rose-600"
+                                    className="text-rose-600 focus:text-rose-700 cursor-pointer gap-2"
                                   >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Hapus Pelanggan
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <span>Hapus Pelanggan</span>
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -596,34 +716,20 @@ export default function CustomersPage() {
             </table>
           </div>
 
-          {/* Pagination Footer */}
-          {!loading && totalCount > 0 && (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 p-4">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span>
-                  Menampilkan{" "}
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min((safePage - 1) * safeLimit + 1, totalCount)}
-                  </span>{" "}
-                  -{" "}
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {Math.min(safePage * safeLimit, totalCount)}
-                  </span>{" "}
-                  dari{" "}
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {totalCount}
-                  </span>{" "}
-                  pelanggan
-                </span>
+                <span>Baris per halaman:</span>
                 <Select
                   value={String(safeLimit)}
-                  onValueChange={(v) => {
-                    setLimit(Number(v));
+                  onValueChange={(val) => {
+                    setLimit(Number(val));
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="h-8 w-24 text-xs">
-                    <SelectValue />
+                  <SelectTrigger className="h-8 w-16 text-xs">
+                    <SelectValue placeholder={String(safeLimit)} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="10">10</SelectItem>
@@ -632,7 +738,6 @@ export default function CustomersPage() {
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -661,7 +766,127 @@ export default function CustomersPage() {
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Modal */}
+      {/* Floating Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 px-4 py-2.5 bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/60 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-2 pr-2 border-r border-slate-700">
+            <span className="text-xs font-semibold text-slate-200 whitespace-nowrap">
+              {selectedIds.size} dipilih
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {hasPermission(currentUser, "session.update") && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  setBulkTarget({
+                    action: "disconnect",
+                    title: "Putuskan Koneksi Massal",
+                    description: `Apakah Anda yakin ingin memutuskan koneksi aktif untuk ${selectedIds.size} pelanggan yang dipilih? Perintah Disconnect-Request CoA akan dikirimkan ke router.`,
+                    confirmLabel: "Putuskan Semua",
+                    variant: "destructive",
+                  })
+                }
+                className="h-8 gap-1.5 text-xs text-amber-300 hover:text-amber-200 hover:bg-amber-950/50"
+              >
+                <PowerOff className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Putuskan Koneksi</span>
+              </Button>
+            )}
+
+            {hasPermission(currentUser, "customer.update") && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setBulkTarget({
+                      action: "activate",
+                      title: "Aktifkan Pelanggan Massal",
+                      description: `Apakah Anda yakin ingin mengaktifkan kembali status ${selectedIds.size} pelanggan yang dipilih? Pelanggan dapat kembali melakukan dial-in PPPoE.`,
+                      confirmLabel: "Aktifkan Semua",
+                      variant: "default",
+                    })
+                  }
+                  className="h-8 gap-1.5 text-xs text-emerald-300 hover:text-emerald-200 hover:bg-emerald-950/50"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Aktifkan</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setBulkTarget({
+                      action: "suspend",
+                      title: "Suspend Pelanggan Massal",
+                      description: `Apakah Anda yakin ingin mengubah status ${selectedIds.size} pelanggan yang dipilih menjadi Suspend (Isolir)? Login PPPoE akan ditolak dan koneksi aktif akan diputuskan.`,
+                      confirmLabel: "Suspend Semua",
+                      variant: "destructive",
+                    })
+                  }
+                  className="h-8 gap-1.5 text-xs text-orange-300 hover:text-orange-200 hover:bg-orange-950/50"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Suspend</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setBulkTarget({
+                      action: "disable",
+                      title: "Nonaktifkan Pelanggan Massal",
+                      description: `Apakah Anda yakin ingin menonaktifkan ${selectedIds.size} pelanggan yang dipilih? Pelanggan tidak dapat login PPPoE maupun portal langganan.`,
+                      confirmLabel: "Nonaktifkan Semua",
+                      variant: "destructive",
+                    })
+                  }
+                  className="h-8 gap-1.5 text-xs text-slate-300 hover:text-slate-100 hover:bg-slate-700/50"
+                >
+                  <CircleX className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Nonaktifkan</span>
+                </Button>
+              </>
+            )}
+
+            {hasPermission(currentUser, "customer.delete") && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  setBulkTarget({
+                    action: "delete",
+                    title: "Hapus Pelanggan Massal",
+                    description: `PERINGATAN: Tindakan ini tidak dapat dibatalkan! Apakah Anda yakin ingin menghapus ${selectedIds.size} pelanggan yang dipilih beserta seluruh data RADIUS dan histori sesi terkait?`,
+                    confirmLabel: "Hapus Permanen",
+                    variant: "destructive",
+                  })
+                }
+                className="h-8 gap-1.5 text-xs text-rose-300 hover:text-rose-200 hover:bg-rose-950/50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Hapus</span>
+              </Button>
+            )}
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedIds(new Set())}
+              className="h-8 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-700/30"
+            >
+              Batal
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Single Confirmation Modal */}
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
@@ -671,7 +896,7 @@ export default function CustomersPage() {
         onConfirm={handleDelete}
       />
 
-      {/* Disconnect Confirmation Modal */}
+      {/* Disconnect Single Confirmation Modal */}
       <ConfirmDialog
         open={Boolean(disconnectTarget)}
         onOpenChange={(open) => !open && setDisconnectTarget(null)}
@@ -680,6 +905,17 @@ export default function CustomersPage() {
         confirmLabel="Putuskan Sekarang"
         variant="destructive"
         onConfirm={handleDisconnect}
+      />
+
+      {/* Bulk Action Confirmation Modal */}
+      <ConfirmDialog
+        open={Boolean(bulkTarget)}
+        onOpenChange={(open) => !open && setBulkTarget(null)}
+        title={bulkTarget?.title || "Konfirmasi Aksi Massal"}
+        description={bulkTarget?.description || ""}
+        confirmLabel={bulkTarget?.confirmLabel || "Konfirmasi"}
+        variant={bulkTarget?.variant || "default"}
+        onConfirm={handleBulkAction}
       />
     </div>
   );

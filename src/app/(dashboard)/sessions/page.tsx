@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { LiveDurationCounter } from "@/components/common/live-counter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  useBulkDisconnectSessionsMutation,
   useDisconnectSessionMutation,
   useRoutersQuery,
   useSessionsQuery,
@@ -82,15 +84,20 @@ export default function SessionsPage() {
   });
 
   const disconnectSessionMutation = useDisconnectSessionMutation();
+  const bulkDisconnectSessionsMutation = useBulkDisconnectSessionsMutation();
 
   const sessions = sessRes?.data || [];
   const totalCount = sessRes?.total || 0;
   const loading = sessionsLoading && !sessRes;
   const totalPages = Math.ceil(totalCount / safeLimit) || 1;
 
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // Disconnect Target
   const [disconnectSessionTarget, setDisconnectSessionTarget] =
     useState<Session | null>(null);
+  const [isBulkDisconnectOpen, setIsBulkDisconnectOpen] = useState(false);
 
   // Sync debounced search to URL state
   useEffect(() => {
@@ -103,6 +110,44 @@ export default function SessionsPage() {
   useEffect(() => {
     setSearchInput(search);
   }, [search]);
+
+  // Reset selection saat page / filter berubah
+  useEffect(() => {
+    if (page || limit || routerFilter || search) {
+      setSelectedIds(new Set());
+    }
+  }, [page, limit, routerFilter, search]);
+
+  // Selection helpers
+  const allCurrentPageSelected =
+    sessions.length > 0 && sessions.every((s) => selectedIds.has(s.id));
+  const someCurrentPageSelected =
+    sessions.some((s) => selectedIds.has(s.id)) && !allCurrentPageSelected;
+
+  const toggleSelectAll = () => {
+    if (allCurrentPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const s of sessions) next.delete(s.id);
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const s of sessions) next.add(s.id);
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleDisconnect = async () => {
     if (!disconnectSessionTarget) return;
@@ -119,6 +164,23 @@ export default function SessionsPage() {
     }
   };
 
+  const handleBulkDisconnect = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const res = await bulkDisconnectSessionsMutation.mutateAsync(
+        Array.from(selectedIds),
+      );
+      toast.success(
+        res.message ||
+          `${selectedIds.size} sesi aktif berhasil diputuskan koneksinya.`,
+      );
+      setSelectedIds(new Set());
+      setIsBulkDisconnectOpen(false);
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || "Gagal memutuskan sesi massal.");
+    }
+  };
+
   // Aggregate KPI Stats
   const totalDownloadActive = useMemo(
     () => sessions.reduce((acc, s) => acc + s.outputBytes, 0),
@@ -128,31 +190,18 @@ export default function SessionsPage() {
     () => sessions.reduce((acc, s) => acc + s.inputBytes, 0),
     [sessions],
   );
-  const _uniqueNasCount = useMemo(
-    () => new Set(sessions.map((s) => s.nasIpAddress)).size,
-    [sessions],
-  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-              Sesi Aktif Realtime
-            </h1>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              {sessions.length} Online
-            </span>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
+            Sesi PPPoE Aktif
+          </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Monitoring koneksi PPPoE aktif dari seluruh router MikroTik melalui
-            FreeRADIUS Accounting.
+            Monitoring koneksi pelanggan real-time, durasi online, throughput,
+            dan kontrol pemutusan sesi RADIUS CoA.
           </p>
         </div>
 
@@ -167,13 +216,13 @@ export default function SessionsPage() {
             <RefreshCw
               className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
             />
-            Refresh
+            <span>Segarkan</span>
           </Button>
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
@@ -181,7 +230,7 @@ export default function SessionsPage() {
                 Sesi Pelanggan Aktif
               </p>
               <h3 className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">
-                {sessions.length} Pelanggan
+                {totalCount} Pelanggan
               </h3>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
@@ -281,6 +330,14 @@ export default function SessionsPage() {
             <table className="w-full text-left text-xs sm:text-sm">
               <thead className="bg-slate-50/80 text-slate-500 border-b border-slate-200 dark:bg-slate-800/50 dark:border-slate-800">
                 <tr>
+                  <th className="py-3 px-4 w-10 text-center">
+                    <Checkbox
+                      checked={allCurrentPageSelected}
+                      indeterminate={someCurrentPageSelected}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Pilih semua sesi di halaman ini"
+                    />
+                  </th>
                   <th className="py-3 px-4 font-semibold">Pelanggan</th>
                   <th className="py-3 px-4 font-semibold">Framed IP Address</th>
                   <th className="py-3 px-4 font-semibold">
@@ -298,14 +355,14 @@ export default function SessionsPage() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      <td colSpan={7} className="p-4">
+                      <td colSpan={8} className="p-4">
                         <Skeleton className="h-5 w-full" />
                       </td>
                     </tr>
                   ))
                 ) : sessions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12">
+                    <td colSpan={8} className="py-12">
                       <EmptyState
                         icon={Activity}
                         title="Tidak ada sesi aktif"
@@ -322,12 +379,24 @@ export default function SessionsPage() {
                     const routerObj = routers.find(
                       (r) => r.ipAddress === session.nasIpAddress,
                     );
+                    const isSelected = selectedIds.has(session.id);
 
                     return (
                       <tr
                         key={session.id}
-                        className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                        className={`transition-colors ${
+                          isSelected
+                            ? "bg-blue-50/60 dark:bg-blue-950/30"
+                            : "hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
+                        }`}
                       >
+                        <td className="py-3.5 px-4 w-10 text-center">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(session.id)}
+                            aria-label={`Pilih ${session.customerUsername}`}
+                          />
+                        </td>
                         <td className="py-3.5 px-4 font-mono font-semibold text-slate-900 dark:text-slate-100">
                           {session.customerId ? (
                             <Link
@@ -458,7 +527,39 @@ export default function SessionsPage() {
         </CardContent>
       </Card>
 
-      {/* Disconnect Modal */}
+      {/* Floating Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 px-4 py-2.5 bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/60 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-2 pr-2 border-r border-slate-700">
+            <span className="text-xs font-semibold text-slate-200 whitespace-nowrap">
+              {selectedIds.size} sesi dipilih
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsBulkDisconnectOpen(true)}
+              className="h-8 gap-1.5 text-xs text-amber-300 hover:text-amber-200 hover:bg-amber-950/50"
+            >
+              <PowerOff className="h-3.5 w-3.5" />
+              <span>Putuskan Koneksi ({selectedIds.size})</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedIds(new Set())}
+              className="h-8 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-700/30"
+            >
+              Batal
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Disconnect Single Modal */}
       <ConfirmDialog
         open={Boolean(disconnectSessionTarget)}
         onOpenChange={(open) => !open && setDisconnectSessionTarget(null)}
@@ -467,6 +568,17 @@ export default function SessionsPage() {
         confirmLabel="Putuskan Sesi"
         variant="destructive"
         onConfirm={handleDisconnect}
+      />
+
+      {/* Disconnect Bulk Modal */}
+      <ConfirmDialog
+        open={isBulkDisconnectOpen}
+        onOpenChange={setIsBulkDisconnectOpen}
+        title="Putuskan Sesi PPPoE Massal?"
+        description={`Apakah Anda yakin ingin memutuskan ${selectedIds.size} sesi PPPoE aktif yang dipilih? Paket Disconnect-Request (CoA RFC 5176) akan dikirimkan ke router MikroTik masing-masing.`}
+        confirmLabel="Putuskan Semua Sesi"
+        variant="destructive"
+        onConfirm={handleBulkDisconnect}
       />
     </div>
   );

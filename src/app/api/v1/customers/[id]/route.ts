@@ -401,9 +401,20 @@ export const DELETE = asyncApi(
     const customer = await prisma.customer.findUnique({ where: { id } });
     if (!customer) throw new Error("Pelanggan tidak ditemukan.");
 
-    // Putus koneksi aktif di MikroTik jika sedang online
+    // Putus koneksi aktif jika sedang online di radacct
     try {
-      await kickSessionByUsername(customer.username, customer.nasId);
+      const online = await prisma.radAcct.findFirst({
+        where: { username: customer.username, acctStopTime: null },
+      });
+      if (online) {
+        const { sendDisconnect } = await import("@/lib/radius-coa");
+        const coaResult = await sendDisconnect(customer.username, {
+          acctSessionId: online.acctSessionId ?? undefined,
+        });
+        if (!coaResult.success) {
+          await kickSessionByUsername(customer.username, customer.nasId);
+        }
+      }
     } catch (err) {
       console.warn(
         `[delete-customer] Gagal putus sesi aktif ${customer.username}:`,
@@ -412,24 +423,46 @@ export const DELETE = asyncApi(
     }
 
     await prisma.$transaction(async (tx) => {
-      // 1. Hapus baris RADIUS (radcheck, radreply, radnasallow)
+      // 1. Hapus baris RADIUS (radcheck, radreply, radusergroup, radnasallow)
       await removeCustomerRadius(tx, customer.username);
 
-      // 2. Hapus sesi & akun portal jika ada
-      const portalUser = await tx.portalUser.findUnique({
+      // 2. Lepas alokasi IP pool di radippool jika ada
+      await tx.radIpPool.updateMany({
+        where: { username: customer.username },
+        data: {
+          username: "",
+          callingStationId: "",
+          expiryTime: null,
+        },
+      });
+
+      // 3. Hapus relasi portal user
+      const portalUsers = await tx.portalUser.findMany({
         where: { customerId: customer.id },
       });
-      if (portalUser) {
-        await tx.portalSession.deleteMany({
-          where: { userId: portalUser.id },
-        });
-        await tx.portalAccount.deleteMany({
-          where: { userId: portalUser.id },
-        });
-        await tx.portalUser.delete({ where: { id: portalUser.id } });
+      for (const pUser of portalUsers) {
+        await tx.portalSession.deleteMany({ where: { userId: pUser.id } });
+        await tx.portalAccount.deleteMany({ where: { userId: pUser.id } });
+        await tx.portalUser.delete({ where: { id: pUser.id } });
       }
 
-      // 3. Hapus customer dari database aplikasi
+      // 4. Hapus log portal
+      await tx.portalLoginLog.deleteMany({
+        where: { customerId: customer.id },
+      });
+      await tx.portalSessionLog.deleteMany({
+        where: { customerId: customer.id },
+      });
+
+      // 5. Hapus payment records dan invoices
+      await tx.paymentRecord.deleteMany({
+        where: { customerId: customer.id },
+      });
+      await tx.invoice.deleteMany({
+        where: { customerId: customer.id },
+      });
+
+      // 6. Hapus customer dari database aplikasi
       await tx.customer.delete({ where: { id } });
     });
 

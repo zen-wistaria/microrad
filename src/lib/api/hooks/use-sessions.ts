@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { queryKeys } from "../query-keys";
 import {
+  bulkDisconnectSessions,
   disconnectSession,
   type GetSessionsParams,
   getSessionsPaginated,
@@ -29,6 +30,18 @@ export function useDisconnectSessionMutation() {
       sessionId: string;
       cause?: string;
     }) => disconnectSession(sessionId, cause),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers.all });
+    },
+  });
+}
+
+export function useBulkDisconnectSessionsMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionIds: string[]) => bulkDisconnectSessions(sessionIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });

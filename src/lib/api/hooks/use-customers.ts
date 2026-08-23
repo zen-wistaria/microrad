@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-query";
 import type { Customer } from "@/lib/types";
 import {
+  type BulkCustomerActionType,
+  bulkCustomerAction,
   createCustomer,
   deleteCustomer,
   disconnectCustomer,
@@ -134,6 +136,26 @@ export function useDisconnectCustomerMutation() {
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
+    },
+  });
+}
+
+export function useBulkCustomerActionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      action,
+      customerIds,
+    }: {
+      action: BulkCustomerActionType;
+      customerIds: string[];
+    }) => bulkCustomerAction(action, customerIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
+      queryClient.invalidateQueries({ queryKey: queryKeys.profiles.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.routers.all });
     },
   });
 }
