@@ -46,6 +46,8 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
 
   // Status online dihitung dari radacct langsung (sumber kebenaran
   // FreeRADIUS) — bukan field basi/currentSessionId.
+  const { cleanupZombieSessions } = await import("@/lib/radacct-cleanup");
+  await cleanupZombieSessions(3);
   const onlineAcct = await getOnlineRadacct({ username: customer.username });
   const activeRow = onlineAcct[0] ?? null;
   const lastSeenAt = customer.lastSeenAt

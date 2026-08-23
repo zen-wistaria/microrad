@@ -11,6 +11,8 @@ import {
 export const GET = asyncApi(async () => {
   await requireSession();
   ensureSyncRuns();
+  const { cleanupZombieSessions } = await import("@/lib/radacct-cleanup");
+  await cleanupZombieSessions(3);
 
   const [
     totalCustomers,

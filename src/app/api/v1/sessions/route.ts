@@ -40,6 +40,10 @@ export const GET = asyncApi(async (req: Request) => {
   const safeLimit = Math.min(Math.max(q.limit || 10, 1), 50);
   const safePage = Math.max(q.page || 1, 1);
 
+  // Bersihkan sesi zombie yang tidak aktif (> 3 menit tanpa update)
+  const { cleanupZombieSessions } = await import("@/lib/radacct-cleanup");
+  await cleanupZombieSessions(3);
+
   // SUMBER: radacct langsung — online selalu akurat dari FreeRADIUS.
   // Mode: activeOnly=true → sesi online; else (atau year/month diberikan)
   // → HISTORY sesi (termasuk selesai), filter rentang bulan/tahun.

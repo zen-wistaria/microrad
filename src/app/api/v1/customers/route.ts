@@ -27,6 +27,10 @@ export const GET = asyncApi(async (req: Request) => {
   const safeLimit = Math.min(Math.max(q.limit || 10, 1), 50);
   const safePage = Math.max(q.page || 1, 1);
 
+  // Bersihkan sesi zombie radacct agar flag isOnline akurat
+  const { cleanupZombieSessions } = await import("@/lib/radacct-cleanup");
+  await cleanupZombieSessions(3);
+
   const where: Record<string, unknown> = {};
   if (q.search) {
     where.OR = [

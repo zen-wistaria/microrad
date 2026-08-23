@@ -20,11 +20,13 @@ COPY policy-nasbind.conf /etc/raddb/policy.d/nasbind
 COPY listen-coa.conf /etc/raddb/listen-coa.conf
 RUN cat /etc/raddb/listen-coa.conf >> /etc/raddb/radiusd.conf
 
-# Aktifkan modul sql, policy check_nas_binding, set_ippool_name, dan sqlippool di default & inner-tunnel
-RUN sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas\n\tset_ippool_name/ }' /etc/raddb/sites-enabled/default \
- && sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_multi_session_diff_nas\n\tset_ippool_name/ }' /etc/raddb/sites-enabled/inner-tunnel \
+# Aktifkan modul sql, policy check_nas_binding, check_simultaneous_use, set_ippool_name, dan sqlippool di default & inner-tunnel
+RUN sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_simultaneous_use\n\tset_ippool_name/ }' /etc/raddb/sites-enabled/default \
+ && sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding\n\tcheck_simultaneous_use\n\tset_ippool_name/ }' /etc/raddb/sites-enabled/inner-tunnel \
  && sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/default \
  && sed -i -E 's/^\s*-sql\s*$/\tsql/' /etc/raddb/sites-enabled/inner-tunnel \
+ && sed -i -E '/session \{/,/^\}/ { s/^[[:space:]]*#[[:space:]]*sql$/\tsql/ }' /etc/raddb/sites-enabled/default \
+ && sed -i -E '/session \{/,/^\}/ { s/^[[:space:]]*#[[:space:]]*sql$/\tsql/ }' /etc/raddb/sites-enabled/inner-tunnel \
  && sed -i -E 's/^[[:space:]]*#[[:space:]]*-?sqlippool[[:space:]]*$/\tsqlippool\n\tcleanup_ippool_reply/' /etc/raddb/sites-enabled/default \
  && sed -i -E 's/^[[:space:]]*#[[:space:]]*-?sqlippool[[:space:]]*$/\tsqlippool\n\tcleanup_ippool_reply/' /etc/raddb/sites-enabled/inner-tunnel \
  && sed -i -E 's/^\s*-sqlippool\s*$/\tsqlippool/' /etc/raddb/sites-enabled/default \

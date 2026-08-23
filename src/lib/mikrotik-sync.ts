@@ -47,6 +47,11 @@ export function startMikrotikSync(): void {
     try {
       g.__mikrotikLastTickAt = started;
       const results = await syncAllRouters();
+
+      // Bersihkan sesi zombie radacct (> 3 menit tanpa update) & IP pool kadaluarsa
+      const { cleanupZombieSessions } = await import("./radacct-cleanup");
+      await cleanupZombieSessions(3);
+
       const summaryStr = results
         .map(
           (r) =>

@@ -78,18 +78,28 @@ sql {
 	# 	Class               = "class"
 	# }
 
-	# Query untuk menghapus stale sessions (sesi yang AcctStopTime NULL tapi tidak ada update lama)
-	# FreeRADIUS default query tidak ada untuk PostgreSQL, jadi kita definisikan manual
-	delete_stale_sessions_query = "\
-		DELETE FROM ${acct_table1} \
-		WHERE AcctStopTime IS NULL \
-		AND AcctUpdateTime < NOW() - INTERVAL '2 hours'"
-
 	# Tetap wajib ada walau read_groups=no — dipakai sebagai string di
 	# queries.conf yang di-parse unconditional, bukan cuma saat runtime.
 	group_attribute = "${.:instance}-Group"
 
 	# Query bawaan FreeRADIUS (authorize_check, reply, accounting
-	# start/update/stop, postauth). Harus di baris paling akhir.
+	# start/update/stop, postauth).
 	$INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+
+	# Override simul_count_query & simul_verify_query agar mengabaikan sesi zombie (> 3 menit tanpa update)
+	simul_count_query = "\
+		SELECT COUNT(*) \
+		FROM ${acct_table1} \
+		WHERE username = '%{SQL-User-Name}' \
+		AND acctstoptime IS NULL \
+		AND (acctupdatetime > NOW() - INTERVAL '3 minutes' OR (acctupdatetime IS NULL AND acctstarttime > NOW() - INTERVAL '3 minutes'))"
+
+	simul_verify_query = "\
+		SELECT radacctid, acctsessionid, username, nasipaddress, \
+		       nasportid, framedipaddress, callingstationid, \
+		       framedprotocol \
+		FROM ${acct_table1} \
+		WHERE username = '%{SQL-User-Name}' \
+		AND acctstoptime IS NULL \
+		AND (acctupdatetime > NOW() - INTERVAL '3 minutes' OR (acctupdatetime IS NULL AND acctstarttime > NOW() - INTERVAL '3 minutes'))"
 }
