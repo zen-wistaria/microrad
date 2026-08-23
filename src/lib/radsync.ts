@@ -333,7 +333,7 @@ export async function syncPppProfileRadiusBulk(
 ) {
   const pppProfile = await tx.pppProfile.findUnique({
     where: { id: pppProfileId },
-    include: { bandwidth: true, profileGroup: true },
+    include: { bandwidth: true },
   });
   if (!pppProfile || !pppProfile.bandwidth) return;
 

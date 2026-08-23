@@ -8,13 +8,6 @@ export const GET = asyncApi(async () => {
   const profiles = await prisma.pppProfile.findMany({
     orderBy: { name: "asc" },
     include: {
-      profileGroup: {
-        include: {
-          nasRouter: {
-            select: { id: true, name: true, ipAddress: true },
-          },
-        },
-      },
       bandwidth: true,
       _count: {
         select: { customers: true },
@@ -44,16 +37,8 @@ export const POST = asyncApi(async (req: Request) => {
     throw new Error("Harga paket minimal Rp 0.");
   }
 
-  const profileGroupId = body.profileGroupId?.trim();
-  if (!profileGroupId) throw new Error("Wajib memilih Profile Group.");
-
   const bandwidthId = body.bandwidthId?.trim();
   if (!bandwidthId) throw new Error("Wajib memilih Konfigurasi Bandwidth.");
-
-  const group = await prisma.profileGroup.findUnique({
-    where: { id: profileGroupId },
-  });
-  if (!group) throw new Error("Profile Group tidak ditemukan.");
 
   const bw = await prisma.bandwidth.findUnique({ where: { id: bandwidthId } });
   if (!bw) throw new Error("Konfigurasi Bandwidth tidak ditemukan.");
@@ -68,18 +53,10 @@ export const POST = asyncApi(async (req: Request) => {
       id: `ppp-${Date.now()}`,
       name,
       price,
-      profileGroupId,
       bandwidthId,
       priority,
     },
     include: {
-      profileGroup: {
-        include: {
-          nasRouter: {
-            select: { id: true, name: true, ipAddress: true },
-          },
-        },
-      },
       bandwidth: true,
     },
   });

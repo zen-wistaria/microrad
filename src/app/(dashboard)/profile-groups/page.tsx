@@ -1,6 +1,6 @@
 "use client";
 
-import { Edit, Network, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Edit, Network, Plus, RefreshCw, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -50,11 +50,11 @@ export default function ProfileGroupsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-            Profile Group
+            Profile Group (Infrastruktur Jaringan)
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Pengelompokan jaringan, asosiasi Router NAS, modul IP pool, gateway,
-            dan DNS server.
+            dan DNS server untuk setiap node/lokasi.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -91,7 +91,8 @@ export default function ProfileGroupsPage() {
             </span>
           </div>
           <CardDescription>
-            Grup jaringan yang diasosiasikan ke dalam paket PPP Profile.
+            Grup jaringan yang menghubungkan pelanggan ke Router NAS dan subnet
+            IP gateway terkait.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -107,7 +108,7 @@ export default function ProfileGroupsPage() {
                   <th className="py-3 px-4 font-semibold">Local Gateway</th>
                   <th className="py-3 px-4 font-semibold">Rentang IP Pool</th>
                   <th className="py-3 px-4 font-semibold">DNS Server</th>
-                  <th className="py-3 px-4 font-semibold">Paket</th>
+                  <th className="py-3 px-4 font-semibold">Pelanggan</th>
                   <th className="py-3 px-4 font-semibold text-right">Aksi</th>
                 </tr>
               </thead>
@@ -186,10 +187,11 @@ export default function ProfileGroupsPage() {
                       </td>
                       <td className="py-3.5 px-4">
                         <Badge
-                          variant="secondary"
-                          className="font-mono text-xs"
+                          variant="outline"
+                          className="font-mono text-xs gap-1"
                         >
-                          {group.pppProfileCount || 0} paket
+                          <Users className="h-3 w-3" />
+                          {group.customerCount || 0} user
                         </Badge>
                       </td>
                       <td className="py-3.5 px-4 text-right">
@@ -209,13 +211,12 @@ export default function ProfileGroupsPage() {
                             size="icon"
                             onClick={() => setDeleteTarget(group)}
                             disabled={Boolean(
-                              group.pppProfileCount &&
-                                group.pppProfileCount > 0,
+                              group.customerCount && group.customerCount > 0,
                             )}
                             className="h-8 w-8 text-slate-500 hover:text-red-600 disabled:opacity-30"
                             title={
-                              group.pppProfileCount && group.pppProfileCount > 0
-                                ? "Tidak dapat dihapus karena masih digunakan oleh PPP Profile"
+                              group.customerCount && group.customerCount > 0
+                                ? "Tidak dapat dihapus karena masih digunakan oleh pelanggan aktif"
                                 : "Hapus Profile Group"
                             }
                           >

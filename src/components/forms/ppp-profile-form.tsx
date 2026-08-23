@@ -28,7 +28,6 @@ import {
 import {
   useBandwidthsQuery,
   useCreatePppProfileMutation,
-  useProfileGroupsQuery,
   useUpdatePppProfileMutation,
 } from "@/lib/api/hooks";
 import { formatBandwidthRateLimit } from "@/lib/radius-format";
@@ -38,7 +37,6 @@ import { formatRupiah, getErrorMessage } from "@/lib/utils";
 const pppProfileSchema = z.object({
   name: z.string().min(3, "Nama PPP Profile minimal 3 karakter"),
   price: z.number().min(0, "Harga paket minimal Rp 0"),
-  profileGroupId: z.string().min(1, "Wajib memilih Profile Group"),
   bandwidthId: z.string().min(1, "Wajib memilih Konfigurasi Bandwidth"),
   priority: z.number().int().min(1).max(8),
 });
@@ -66,10 +64,7 @@ export function PppProfileForm({
   isEditing = false,
 }: PppProfileFormProps) {
   const router = useRouter();
-  const { data: groupsRes } = useProfileGroupsQuery();
   const { data: bwsRes } = useBandwidthsQuery();
-
-  const groups = groupsRes?.data || [];
   const bandwidths = bwsRes?.data || [];
 
   const createMutation = useCreatePppProfileMutation();
@@ -88,7 +83,6 @@ export function PppProfileForm({
     defaultValues: {
       name: initialData?.name || "",
       price: initialData?.price ?? 100000,
-      profileGroupId: initialData?.profileGroupId || "",
       bandwidthId: initialData?.bandwidthId || "",
       priority: initialData?.priority || 8,
     },
@@ -99,11 +93,6 @@ export function PppProfileForm({
   const selectedBandwidth = useMemo(
     () => bandwidths.find((b) => b.id === watchedValues.bandwidthId),
     [bandwidths, watchedValues.bandwidthId],
-  );
-
-  const selectedGroup = useMemo(
-    () => groups.find((g) => g.id === watchedValues.profileGroupId),
-    [groups, watchedValues.profileGroupId],
   );
 
   const rateLimitPreview = useMemo(() => {
@@ -143,8 +132,8 @@ export function PppProfileForm({
               {isEditing ? "Edit PPP Profile" : "Tambah PPP Profile Baru"}
             </h1>
             <p className="text-xs text-slate-500">
-              Paket layanan PPPoE yang menggabungkan Bandwidth, Profile Group,
-              dan Harga.
+              Paket layanan PPPoE global yang menentukan Bandwidth, Harga
+              Tagihan, dan Priority.
             </p>
           </div>
         </div>
@@ -171,7 +160,7 @@ export function PppProfileForm({
                 </CardTitle>
               </div>
               <CardDescription>
-                Nama paket yang tampil di invoice billing dan portal pelanggan.
+                Nama paket dan tarif bulanan langganan untuk invoice billing.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -179,7 +168,7 @@ export function PppProfileForm({
                 <Label htmlFor="name">Nama PPP Profile</Label>
                 <Input
                   id="name"
-                  placeholder="Contoh: Home Basic 10M / Gamer Ultra 50M"
+                  placeholder="Contoh: Paket 2 Mbps / Paket Home 10 Mbps / Gamer Ultra 50M"
                   {...register("name")}
                   className="mt-1"
                 />
@@ -211,55 +200,28 @@ export function PppProfileForm({
                   </p>
                 )}
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Tarif bulanan langganan untuk pembuatan tagihan otomatis.
+                  Tarif bulanan langganan untuk pembuatan invoice billing
+                  otomatis.
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          {/* Card 2: Relasi Bandwidth, Group, & Priority */}
+          {/* Card 2: Relasi Bandwidth & Priority */}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <Sliders className="h-4 w-4 text-violet-600" />
                 <CardTitle className="text-base">
-                  Konfigurasi Network & QoS
+                  Konfigurasi Kecepatan & QoS
                 </CardTitle>
               </div>
               <CardDescription>
-                Hubungkan Profile Group jaringan dan Bandwidth limit.
+                Pilih konfigurasi bandwidth MIR/CIR & antrian priority
+                FreeRADIUS.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="profileGroupId">
-                  Profile Group (Router NAS & IP Pool)
-                </Label>
-                <Select
-                  value={watchedValues.profileGroupId}
-                  onValueChange={(v) =>
-                    setValue("profileGroupId", v, { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger id="profileGroupId" className="mt-1">
-                    <SelectValue placeholder="Pilih Profile Group..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groups.map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.name} ({g.nasRouter?.name || "NAS"} -{" "}
-                        {g.localAddress})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.profileGroupId && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {errors.profileGroupId.message}
-                  </p>
-                )}
-              </div>
-
               <div>
                 <Label htmlFor="bandwidthId">Konfigurasi Bandwidth</Label>
                 <Select
@@ -338,15 +300,11 @@ export function PppProfileForm({
                   </span>
                 </div>
                 <div className="flex justify-between border-b border-blue-200/50 pb-2 dark:border-blue-800/50">
-                  <span>Router NAS:</span>
+                  <span>Kecepatan:</span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {selectedGroup?.nasRouter?.name || "-"}
-                  </span>
-                </div>
-                <div className="flex justify-between border-b border-blue-200/50 pb-2 dark:border-blue-800/50">
-                  <span>Local Gateway:</span>
-                  <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
-                    {selectedGroup?.localAddress || "-"}
+                    {selectedBandwidth
+                      ? `↓${selectedBandwidth.maxDownload} ${selectedBandwidth.maxDownloadUnit} / ↑${selectedBandwidth.maxUpload} ${selectedBandwidth.maxUploadUnit}`
+                      : "-"}
                   </span>
                 </div>
                 <div className="flex flex-col gap-1 border-b border-blue-200/50 pb-2 dark:border-blue-800/50">

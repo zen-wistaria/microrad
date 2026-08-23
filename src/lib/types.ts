@@ -50,15 +50,13 @@ export interface ProfileGroup {
   parentQueue?: string | null;
   createdAt: string;
   updatedAt: string;
-  pppProfileCount?: number; // derived
+  customerCount?: number; // derived
 }
 
 export interface PppProfile {
   id: string;
   name: string;
   price: number; // IDR / bulan
-  profileGroupId: string;
-  profileGroup?: ProfileGroup;
   bandwidthId: string;
   bandwidth?: Bandwidth;
   priority: number; // 1-8 (default 8)
@@ -79,10 +77,17 @@ export interface Customer {
   phone?: string;
   address?: string;
   status: CustomerStatus;
-  profileId: string; // relasi ke PppProfile
+  profileId: string; // relasi ke PppProfile (Paket Layanan)
   profile?: PppProfile | null;
+  profileGroupId?: string; // relasi ke ProfileGroup (Area / Node / Gateway)
+  profileGroup?: ProfileGroup | null;
   staticIp?: string; // radreply: Framed-IP-Address
-  nasId?: string; // NAS default/terakhir dipakai
+  nasId?: string; // NAS router ID
+  nasRouter?: {
+    id: string;
+    name: string;
+    ipAddress: string;
+  } | null;
   bindOnNas?: boolean; // hanya boleh login lewat router tertentu (radnasallow)
   sessionMode?: "single" | "multi"; // mode sesi PPPoE
   maxSimultaneous?: number; // maksimal sesi simultan jika multi (Simultaneous-Use)

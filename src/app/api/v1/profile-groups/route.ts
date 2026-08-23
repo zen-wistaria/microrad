@@ -50,7 +50,7 @@ export const GET = asyncApi(async () => {
         select: { id: true, name: true, ipAddress: true },
       },
       _count: {
-        select: { pppProfiles: true },
+        select: { customers: true },
       },
     },
   });
@@ -59,7 +59,7 @@ export const GET = asyncApi(async () => {
     ...g,
     createdAt: g.createdAt.toISOString(),
     updatedAt: g.updatedAt.toISOString(),
-    pppProfileCount: g._count.pppProfiles,
+    customerCount: g._count.customers,
   }));
 
   return NextResponse.json({ data });
@@ -118,7 +118,7 @@ export const POST = asyncApi(async (req: Request) => {
         ...created,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),
-        pppProfileCount: 0,
+        customerCount: 0,
       },
     },
     { status: 201 },

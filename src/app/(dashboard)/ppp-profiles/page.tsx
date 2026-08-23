@@ -53,8 +53,8 @@ export default function PppProfilesPage() {
             PPP Profile (Paket Layanan)
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Paket langganan internet PPPoE yang dipilih oleh pelanggan dan
-            menghasilkan konfigurasi RADIUS CoA / MikroTik.
+            Paket langganan internet PPPoE global yang menentukan batas
+            bandwidth (QoS), harga tagihan invoice, dan antrian priority.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -93,8 +93,8 @@ export default function PppProfilesPage() {
             </span>
           </div>
           <CardDescription>
-            Paket aktif yang dapat dipilih saat mendaftarkan atau mengedit
-            pelanggan.
+            Paket aktif yang dapat dipilih oleh pelanggan dari berbagai lokasi
+            router.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -107,9 +107,6 @@ export default function PppProfilesPage() {
                   <th className="py-3 px-4 font-semibold">
                     Kecepatan Bandwidth
                   </th>
-                  <th className="py-3 px-4 font-semibold">
-                    Profile Group (NAS & IP)
-                  </th>
                   <th className="py-3 px-4 font-semibold">Priority</th>
                   <th className="py-3 px-4 font-semibold">Pelanggan</th>
                   <th className="py-3 px-4 font-semibold text-right">Aksi</th>
@@ -120,7 +117,7 @@ export default function PppProfilesPage() {
                   Array.from({ length: 4 }).map((_, i) => (
                     <tr key={i}>
                       <td
-                        colSpan={7}
+                        colSpan={6}
                         className="p-4 text-center text-slate-400"
                       >
                         Memuat paket PPP profile...
@@ -129,7 +126,7 @@ export default function PppProfilesPage() {
                   ))
                 ) : profiles.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={6}>
                       <EmptyState
                         title="Belum ada PPP Profile"
                         description="Buat paket langganan PPPoE pertama Anda."
@@ -141,7 +138,6 @@ export default function PppProfilesPage() {
                 ) : (
                   profiles.map((profile) => {
                     const bw = profile.bandwidth;
-                    const group = profile.profileGroup;
 
                     return (
                       <tr
@@ -168,20 +164,6 @@ export default function PppProfilesPage() {
                               <span className="font-mono text-[11px] text-blue-600">
                                 (↓{bw.maxDownload} {bw.maxDownloadUnit} / ↑
                                 {bw.maxUpload} {bw.maxUploadUnit})
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {group ? (
-                            <div className="flex flex-col">
-                              <span className="font-medium text-slate-800 dark:text-slate-200">
-                                {group.name}
-                              </span>
-                              <span className="font-mono text-[10px] text-slate-400">
-                                {group.nasRouter?.name} ({group.localAddress})
                               </span>
                             </div>
                           ) : (

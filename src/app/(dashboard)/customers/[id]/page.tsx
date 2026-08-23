@@ -70,6 +70,7 @@ import {
   useDisconnectCustomerMutation,
   useInvoicesQuery,
   usePppProfileQuery,
+  useProfileGroupQuery,
   useRouterNasQuery,
   useUpdateCustomerMutation,
 } from "@/lib/api/hooks";
@@ -159,7 +160,11 @@ export default function CustomerDetailPage({
 
   const { data: pppProfRes } = usePppProfileQuery(customer?.profileId || "");
   const profile = pppProfRes?.data || customer?.profile;
-  const { data: routerNas } = useRouterNasQuery(customer?.nasId || "");
+  const { data: grpRes } = useProfileGroupQuery(customer?.profileGroupId || "");
+  const profileGroup = grpRes?.data || customer?.profileGroup;
+  const { data: routerNas } = useRouterNasQuery(
+    profileGroup?.nasId || customer?.nasId || "",
+  );
   const { data: activeSession } = useCustomerActiveSessionQuery(customerId);
   const { data: sessionHistory = [] } = useCustomerSessionsQuery(
     customerId,
@@ -603,14 +608,13 @@ export default function CustomerDetailPage({
                     {profile?.price ? formatRupiah(profile.price) : "-"}
                   </span>
                 </div>
-                {profile?.profileGroup && (
+                {profileGroup && (
                   <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
                     <span className="text-slate-500">
-                      Profile Group (Gateway):
+                      Lokasi / Profile Group:
                     </span>
                     <span className="font-medium text-slate-900 dark:text-slate-100">
-                      {profile.profileGroup.name} (
-                      {profile.profileGroup.localAddress})
+                      {profileGroup.name} (Gateway: {profileGroup.localAddress})
                     </span>
                   </div>
                 )}
@@ -656,9 +660,9 @@ export default function CustomerDetailPage({
                         className="text-indigo-600 border-indigo-200 text-[11px]"
                       >
                         🔒 Terkunci ke{" "}
-                        {profile?.profileGroup?.nasRouter?.name ||
+                        {profileGroup?.nasRouter?.name ||
                           routerNas?.name ||
-                          "Router Paket"}
+                          "Router Node"}
                       </Badge>
                     ) : (
                       <Badge
@@ -666,7 +670,7 @@ export default function CustomerDetailPage({
                         className="text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 text-[11px]"
                       >
                         🔓 Bebas / Failover (
-                        {profile?.profileGroup?.nasRouter?.name ||
+                        {profileGroup?.nasRouter?.name ||
                           routerNas?.name ||
                           "Semua Router"}
                         )

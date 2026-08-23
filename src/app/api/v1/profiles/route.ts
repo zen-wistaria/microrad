@@ -8,7 +8,6 @@ export const GET = asyncApi(async () => {
     orderBy: { name: "asc" },
     include: {
       bandwidth: true,
-      profileGroup: true,
       _count: {
         select: { customers: true },
       },

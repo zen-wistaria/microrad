@@ -179,6 +179,7 @@ model Customer {
   address          String?
   status           String    @default("active") // active | suspended | disabled
   profileId        String? // FK -> PppProfile.id
+  profileGroupId   String? // FK -> ProfileGroup.id
   staticIp         String?
   nasId            String?
   bindOnNas        Boolean   @default(false) // hanya boleh login lewat router tertentu
@@ -190,6 +191,7 @@ model Customer {
   lastSeenAt       DateTime?
 
   profile           PppProfile?        @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  profileGroup      ProfileGroup?      @relation(fields: [profileGroupId], references: [id], onDelete: SetNull)
   router            NasRouter?         @relation(fields: [nasId], references: [id], onDelete: SetNull)
   invoices          Invoice[]
   payments          PaymentRecord[]
@@ -246,7 +248,7 @@ model ProfileGroup {
   updatedAt    DateTime @updatedAt
 
   nasRouter    NasRouter    @relation(fields: [nasId], references: [id], onDelete: Restrict)
-  pppProfiles  PppProfile[]
+  customers    Customer[]
 
   @@map("profile_group")
 }
@@ -255,13 +257,11 @@ model PppProfile {
   id             String   @id // ppp-<timestamp>
   name           String
   price          Int      @default(0) // IDR / bulan
-  profileGroupId String
   bandwidthId    String
   priority       Int      @default(8) // 1 - 8 (default 8)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  profileGroup   ProfileGroup @relation(fields: [profileGroupId], references: [id], onDelete: Restrict)
   bandwidth      Bandwidth    @relation(fields: [bandwidthId], references: [id], onDelete: Restrict)
   customers      Customer[]
 

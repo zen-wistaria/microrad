@@ -14,13 +14,6 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
   const profile = await prisma.pppProfile.findUnique({
     where: { id },
     include: {
-      profileGroup: {
-        include: {
-          nasRouter: {
-            select: { id: true, name: true, ipAddress: true },
-          },
-        },
-      },
       bandwidth: true,
       _count: {
         select: { customers: true },
@@ -58,16 +51,8 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
     throw new Error("Harga paket minimal Rp 0.");
   }
 
-  const profileGroupId = body.profileGroupId?.trim();
-  if (!profileGroupId) throw new Error("Wajib memilih Profile Group.");
-
   const bandwidthId = body.bandwidthId?.trim();
   if (!bandwidthId) throw new Error("Wajib memilih Konfigurasi Bandwidth.");
-
-  const group = await prisma.profileGroup.findUnique({
-    where: { id: profileGroupId },
-  });
-  if (!group) throw new Error("Profile Group tidak ditemukan.");
 
   const bw = await prisma.bandwidth.findUnique({ where: { id: bandwidthId } });
   if (!bw) throw new Error("Konfigurasi Bandwidth tidak ditemukan.");
@@ -83,18 +68,10 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
       data: {
         name,
         price,
-        profileGroupId,
         bandwidthId,
         priority,
       },
       include: {
-        profileGroup: {
-          include: {
-            nasRouter: {
-              select: { id: true, name: true, ipAddress: true },
-            },
-          },
-        },
         bandwidth: true,
         _count: {
           select: { customers: true },

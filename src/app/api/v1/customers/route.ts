@@ -7,6 +7,7 @@ interface CustomersQuery {
   search?: string;
   status?: string;
   profile?: string;
+  group?: string;
   page?: number;
   limit?: number;
 }
@@ -18,6 +19,7 @@ export const GET = asyncApi(async (req: Request) => {
     search: url.searchParams.get("search") || undefined,
     status: url.searchParams.get("status") || undefined,
     profile: url.searchParams.get("profile") || undefined,
+    group: url.searchParams.get("group") || undefined,
     page: parseInt(url.searchParams.get("page") || "1", 10),
     limit: parseInt(url.searchParams.get("limit") || "10", 10),
   };
@@ -36,6 +38,7 @@ export const GET = asyncApi(async (req: Request) => {
   }
   if (q.status && q.status !== "all") where.status = q.status;
   if (q.profile && q.profile !== "all") where.profileId = q.profile;
+  if (q.group && q.group !== "all") where.profileGroupId = q.group;
 
   const [total, rows] = await Promise.all([
     prisma.customer.count({ where }),
@@ -48,9 +51,14 @@ export const GET = asyncApi(async (req: Request) => {
         profile: {
           include: {
             bandwidth: true,
-            profileGroup: true,
           },
         },
+        profileGroup: {
+          include: {
+            nasRouter: true,
+          },
+        },
+        router: true,
       },
     }),
   ]);
@@ -129,6 +137,7 @@ export const POST = asyncApi(async (req: Request) => {
     address?: string;
     status?: string;
     profileId?: string | null;
+    profileGroupId?: string | null;
     staticIp?: string;
     nasId?: string | null;
     bindOnNas?: boolean;
@@ -183,19 +192,23 @@ export const POST = asyncApi(async (req: Request) => {
   const customer = await prisma.$transaction(async (tx) => {
     const customerId = username;
 
-    // Ambil PPP Profile untuk menentukan nasId dari Profile Group
+    // Ambil PPP Profile & Profile Group
     const pppProf = body.profileId
       ? await tx.pppProfile.findUnique({
           where: { id: body.profileId },
-          include: {
-            bandwidth: true,
-            profileGroup: { include: { nasRouter: true } },
-          },
+          include: { bandwidth: true },
         })
       : null;
 
-    const nasId = pppProf?.profileGroup?.nasId ?? body.nasId ?? undefined;
-    const nasIp = pppProf?.profileGroup?.nasRouter?.ipAddress;
+    const profileGroup = body.profileGroupId
+      ? await tx.profileGroup.findUnique({
+          where: { id: body.profileGroupId },
+          include: { nasRouter: true },
+        })
+      : null;
+
+    const nasId = profileGroup?.nasId ?? body.nasId ?? undefined;
+    const nasIp = profileGroup?.nasRouter?.ipAddress;
 
     const created = await tx.customer.create({
       data: {
@@ -208,6 +221,7 @@ export const POST = asyncApi(async (req: Request) => {
         address: body.address,
         status: body.status ?? "active",
         profileId: body.profileId ?? undefined,
+        profileGroupId: body.profileGroupId ?? undefined,
         staticIp: body.staticIp?.trim() || undefined,
         nasId,
         bindOnNas: body.bindOnNas ?? false,
@@ -217,7 +231,7 @@ export const POST = asyncApi(async (req: Request) => {
       },
     });
 
-    // Buat akun Portal Pelanggan terhubung ke Customer (bisa login via username/email)
+    // Buat akun Portal Pelanggan terhubung ke Customer
     let portalPassword = body.portalPassword?.trim();
     if (!portalPassword) {
       const { generatePppoePassword } = await import("@/lib/generators");
@@ -253,7 +267,7 @@ export const POST = asyncApi(async (req: Request) => {
         ? {
             bandwidth: pppProf.bandwidth,
             priority: pppProf.priority,
-            dnsServers: pppProf.profileGroup?.dnsServers,
+            dnsServers: profileGroup?.dnsServers,
           }
         : null,
       password,

@@ -240,14 +240,14 @@ export default function PortalInfoPage() {
                 {periodLabel}
               </p>
             </div>
-            {profile.profileGroup && (
+            {customer.profileGroup && (
               <div className="sm:col-span-2 lg:col-span-4">
                 <p className="text-[11px] text-slate-500">
                   Profile Group (Gateway)
                 </p>
                 <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                  {profile.profileGroup.name} (Gateway:{" "}
-                  {profile.profileGroup.localAddress})
+                  {customer.profileGroup.name} (Gateway:{" "}
+                  {customer.profileGroup.localAddress})
                 </p>
               </div>
             )}

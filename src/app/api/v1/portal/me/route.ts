@@ -44,7 +44,7 @@ export const GET = asyncApi(async () => {
     customer.profileId
       ? prisma.pppProfile.findUnique({
           where: { id: customer.profileId },
-          include: { bandwidth: true, profileGroup: true },
+          include: { bandwidth: true },
         })
       : Promise.resolve(null),
     prisma.invoice.findMany({

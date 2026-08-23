@@ -8,7 +8,6 @@ import {
   CircleX,
   Eye,
   EyeOff,
-  Globe,
   Layers,
   Loader2,
   Network,
@@ -43,14 +42,15 @@ import {
 } from "@/components/ui/select";
 import {
   useCreateCustomerMutation,
+  useProfileGroupsQuery,
   useUpdateCustomerMutation,
 } from "@/lib/api/hooks";
 import { generatePppoePassword } from "@/lib/generators";
 import type {
   Customer,
   CustomerStatus,
-  NasRouter,
   PppProfile,
+  ProfileGroup,
 } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -87,6 +87,7 @@ const customerSchema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   profileId: z.string().min(1, "Wajib memilih paket PPP Profile"),
+  profileGroupId: z.string().min(1, "Wajib memilih Profile Group / Area"),
   staticIp: z
     .string()
     .optional()
@@ -110,19 +111,22 @@ type CustomerFormValues = z.infer<typeof customerSchema>;
 interface CustomerFormProps {
   initialData?: Customer;
   profiles: PppProfile[];
-  routers?: NasRouter[];
+  profileGroups?: ProfileGroup[];
   isEditing?: boolean;
 }
 
 export function CustomerForm({
   initialData,
   profiles,
-  routers: _routers,
+  profileGroups: initialGroups,
   isEditing = false,
 }: CustomerFormProps) {
   const router = useRouter();
   const [showPppoePassword, setShowPppoePassword] = useState(false);
   const [showPortalPassword, setShowPortalPassword] = useState(false);
+
+  const { data: groupsRes } = useProfileGroupsQuery();
+  const groups = initialGroups || groupsRes?.data || [];
 
   const createCustomerMutation = useCreateCustomerMutation();
   const updateCustomerMutation = useUpdateCustomerMutation();
@@ -147,6 +151,7 @@ export function CustomerForm({
       phone: initialData?.phone || "",
       address: initialData?.address || "",
       profileId: initialData?.profileId || profiles[0]?.id || "",
+      profileGroupId: initialData?.profileGroupId || groups[0]?.id || "",
       staticIp: initialData?.staticIp || "",
       nasId: initialData?.nasId || "",
       bindOnNas: initialData?.bindOnNas ?? false,
@@ -158,14 +163,15 @@ export function CustomerForm({
   });
 
   const selectedProfileId = watch("profileId");
+  const selectedGroupId = watch("profileGroupId");
   const selectedStatus = watch("status");
   const bindOnNas = watch("bindOnNas");
   const sessionMode = watch("sessionMode");
   const maxSimultaneous = watch("maxSimultaneous");
 
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
-  const targetGroup = selectedProfile?.profileGroup;
-  const targetRouter = targetGroup?.nasRouter;
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+  const targetRouter = selectedGroup?.nasRouter;
 
   const handleRandomizePppoePassword = () => {
     setValue("password", generatePppoePassword(8), { shouldValidate: true });
@@ -195,12 +201,14 @@ export function CustomerForm({
             phone: data.phone?.trim() || undefined,
             address: data.address?.trim() || undefined,
             profileId: data.profileId,
+            profileGroupId: data.profileGroupId,
             staticIp: data.staticIp?.trim() || undefined,
-            nasId: data.nasId || undefined,
+            nasId: selectedGroup?.nasId || data.nasId || undefined,
             bindOnNas: data.bindOnNas,
             sessionMode: data.sessionMode,
             maxSimultaneous: Number(data.maxSimultaneous) || 1,
-            allowedNasIps: data.bindOnNas ? data.allowedNasIps : [],
+            allowedNasIps:
+              data.bindOnNas && targetRouter ? [targetRouter.ipAddress] : [],
             status: data.status as CustomerStatus,
           },
         });
@@ -216,12 +224,14 @@ export function CustomerForm({
           phone: data.phone?.trim() || undefined,
           address: data.address?.trim() || undefined,
           profileId: data.profileId,
+          profileGroupId: data.profileGroupId,
           staticIp: data.staticIp?.trim() || undefined,
-          nasId: data.nasId || undefined,
+          nasId: selectedGroup?.nasId || data.nasId || undefined,
           bindOnNas: data.bindOnNas,
           sessionMode: data.sessionMode,
           maxSimultaneous: Number(data.maxSimultaneous) || 1,
-          allowedNasIps: data.bindOnNas ? data.allowedNasIps : [],
+          allowedNasIps:
+            data.bindOnNas && targetRouter ? [targetRouter.ipAddress] : [],
           status: data.status as CustomerStatus,
         });
         toast.success(
@@ -285,7 +295,7 @@ export function CustomerForm({
             </div>
             <CardDescription>
               {isEditing
-                ? "Informasi akun PPPoE dan paket profil bandwidth pelanggan."
+                ? "Informasi akun PPPoE, paket bandwidth, dan lokasi node/grup pelanggan."
                 : "Username PPPoE dan Password akun akan otomatis dibuatkan oleh sistem secara unik."}
             </CardDescription>
           </CardHeader>
@@ -401,9 +411,49 @@ export function CustomerForm({
                   })}
                 </SelectContent>
               </Select>
+              {selectedProfile?.bandwidth && (
+                <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
+                  ✓ Kecepatan: ↓{selectedProfile.bandwidth.maxDownload}{" "}
+                  {selectedProfile.bandwidth.maxDownloadUnit} / ↑
+                  {selectedProfile.bandwidth.maxUpload}{" "}
+                  {selectedProfile.bandwidth.maxUploadUnit} | Tarif: Rp{" "}
+                  {selectedProfile.price?.toLocaleString("id-ID")}/bln
+                </p>
+              )}
               {errors.profileId && (
                 <p className="text-xs text-rose-500">
                   {errors.profileId.message}
+                </p>
+              )}
+            </div>
+
+            {/* Profile Group / Lokasi Node */}
+            <div className="space-y-2">
+              <Label htmlFor="profileGroupId">
+                Lokasi Node / Profile Group{" "}
+                <span className="text-rose-500">*</span>
+              </Label>
+              <Select
+                value={selectedGroupId}
+                onValueChange={(val) =>
+                  setValue("profileGroupId", val, { shouldValidate: true })
+                }
+              >
+                <SelectTrigger id="profileGroupId">
+                  <SelectValue placeholder="Pilih Lokasi Node / Profile Group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name} — {g.nasRouter?.name || "Router NAS"} (Gateway:{" "}
+                      {g.localAddress})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.profileGroupId && (
+                <p className="text-xs text-rose-500">
+                  {errors.profileGroupId.message}
                 </p>
               )}
             </div>
@@ -598,7 +648,7 @@ export function CustomerForm({
               <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3.5 dark:border-slate-800 dark:bg-slate-900/40 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Router NAS Utama (Otomatis)
+                    Router NAS Utama ({selectedGroup?.name || "Node"})
                   </span>
                   {targetRouter && (
                     <Badge
@@ -613,12 +663,12 @@ export function CustomerForm({
                   <RouterIcon className="h-4 w-4 text-indigo-600" />
                   {targetRouter
                     ? `${targetRouter.name} (${targetRouter.ipAddress})`
-                    : "Mengikuti Paket PPP Profile"}
+                    : "Pilih Profile Group di atas"}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {targetGroup
-                    ? `Profile Group: ${targetGroup.name} (Gateway: ${targetGroup.localAddress})`
-                    : "Pilih paket PPP Profile di atas untuk menentukan router NAS."}
+                  {selectedGroup
+                    ? `Gateway IP: ${selectedGroup.localAddress} | IP Pool: ${selectedGroup.rangeIpStart} - ${selectedGroup.rangeIpEnd}`
+                    : "Pilih Lokasi Node / Profile Group di atas."}
                 </p>
               </div>
             </div>
@@ -638,19 +688,19 @@ export function CustomerForm({
                 />
                 <div className="space-y-0.5">
                   <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    Kunci Login ke Router NAS Paket Ini (NAS Binding)
+                    Kunci Login ke Router NAS Node Ini (NAS Binding)
                     {bindOnNas && (
                       <Badge
                         variant="outline"
                         className="text-indigo-600 border-indigo-300 text-[10px]"
                       >
-                        Terkunci ke {targetRouter?.name || "Router Paket"}
+                        Terkunci ke {targetRouter?.name || "Router Node"}
                       </Badge>
                     )}
                   </span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                     {bindOnNas
-                      ? `🔒 Pelanggan HANYA diizinkan dial PPPoE melalui router ${targetRouter?.name || "paket"} (${targetRouter?.ipAddress || ""}). Percobaan login dari router lain akan ditolak oleh FreeRADIUS.`
+                      ? `🔒 Pelanggan HANYA diizinkan dial PPPoE melalui router ${targetRouter?.name || "node"} (${targetRouter?.ipAddress || ""}). Percobaan login dari router lain akan ditolak oleh FreeRADIUS.`
                       : "🔓 Mode Bebas / Failover (Default): Pelanggan dapat dial melalui router mana pun jika router utama mengalami gangguan/mati."}
                   </span>
                 </div>
@@ -669,8 +719,8 @@ export function CustomerForm({
               </CardTitle>
             </div>
             <CardDescription>
-              Data pelanggan dan akses login ke Portal Pelanggan Self-Care (
-              <code className="text-xs">/portal</code>).
+              Data kontak pelanggan dan akses login web portal mandiri
+              pelanggan.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -679,7 +729,7 @@ export function CustomerForm({
                 <Label htmlFor="fullName">Nama Lengkap Pelanggan</Label>
                 <Input
                   id="fullName"
-                  placeholder="mis. Budi Santoso"
+                  placeholder="Contoh: Budi Santoso"
                   {...register("fullName")}
                 />
               </div>
@@ -688,97 +738,9 @@ export function CustomerForm({
                 <Label htmlFor="phone">Nomor Telepon / WhatsApp</Label>
                 <Input
                   id="phone"
-                  placeholder="mis. 081234567890"
+                  placeholder="Contoh: 08123456789"
                   {...register("phone")}
                 />
-              </div>
-            </div>
-
-            {/* Akun portal self-care */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/50 space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                <Globe className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <span>Akun Portal Pelanggan (Customer Self-Care)</span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Pelanggan dapat login ke web <code>/portal</code> menggunakan
-                Username PPPoE atau Email terdaftar untuk melihat tagihan,
-                riwayat pemakaian, dan status jaringan secara mandiri.
-              </p>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email Pelanggan (Opsional)</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="mis. budi@gmail.com (opsional)"
-                    {...register("email")}
-                    className={errors.email ? "border-rose-500" : ""}
-                  />
-                  {errors.email && (
-                    <p className="text-xs text-rose-500">
-                      {errors.email.message}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="portalPassword">
-                      {isEditing
-                        ? "Reset Password Portal"
-                        : "Password Portal (Opsional)"}
-                    </Label>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setShowPortalPassword(!showPortalPassword)
-                        }
-                        className="h-6 px-1.5 text-xs text-slate-500"
-                      >
-                        {showPortalPassword ? (
-                          <EyeOff className="h-3 w-3" />
-                        ) : (
-                          <Eye className="h-3 w-3" />
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRandomizePortalPassword}
-                        className="h-6 px-1.5 text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-                      >
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Acak Password
-                      </Button>
-                    </div>
-                  </div>
-                  <Input
-                    id="portalPassword"
-                    type={showPortalPassword ? "text" : "password"}
-                    placeholder={
-                      isEditing
-                        ? "Kosongkan jika tidak ingin mengubah password portal"
-                        : "Default: password123 (atau acak)"
-                    }
-                    {...register("portalPassword")}
-                    className={
-                      errors.portalPassword
-                        ? "border-rose-500 font-mono"
-                        : "font-mono"
-                    }
-                  />
-                  {errors.portalPassword && (
-                    <p className="text-xs text-rose-500">
-                      {errors.portalPassword.message}
-                    </p>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -786,27 +748,88 @@ export function CustomerForm({
               <Label htmlFor="address">Alamat Pemasangan</Label>
               <Input
                 id="address"
-                placeholder="mis. Jl. Merpati No. 12, RT 01/RW 03"
+                placeholder="Contoh: Jl. Merdeka No. 45, RT 01/RW 02"
                 {...register("address")}
               />
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Akun Portal Pelanggan</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Contoh: budi@gmail.com"
+                  {...register("email")}
+                  className={errors.email ? "border-rose-500" : ""}
+                />
+                <p className="text-[11px] text-slate-500">
+                  Digunakan pelanggan untuk login ke Web Portal Pelanggan.
+                </p>
+                {errors.email && (
+                  <p className="text-xs text-rose-500">
+                    {errors.email.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="portalPassword">
+                    {isEditing
+                      ? "Reset Password Portal"
+                      : "Password Portal Pelanggan"}
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowPortalPassword(!showPortalPassword)}
+                      className="h-6 px-1.5 text-xs text-slate-500"
+                    >
+                      {showPortalPassword ? (
+                        <EyeOff className="h-3 w-3" />
+                      ) : (
+                        <Eye className="h-3 w-3" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRandomizePortalPassword}
+                      className="h-6 px-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Acak
+                    </Button>
+                  </div>
+                </div>
+                <Input
+                  id="portalPassword"
+                  type={showPortalPassword ? "text" : "password"}
+                  placeholder={
+                    isEditing
+                      ? "Kosongkan jika tidak ingin mengubah password portal"
+                      : "Password akun portal"
+                  }
+                  {...register("portalPassword")}
+                  className={
+                    errors.portalPassword
+                      ? "border-rose-500 font-mono"
+                      : "font-mono"
+                  }
+                />
+                {errors.portalPassword && (
+                  <p className="text-xs text-rose-500">
+                    {errors.portalPassword.message}
+                  </p>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
-      </div>
-
-      <div className="flex items-center justify-end gap-3 pt-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.back()}
-          disabled={submitting}
-        >
-          Batal
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isEditing ? "Simpan Perubahan" : "Tambah Pelanggan"}
-        </Button>
       </div>
     </form>
   );

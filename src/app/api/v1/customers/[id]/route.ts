@@ -20,9 +20,14 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
       profile: {
         include: {
           bandwidth: true,
-          profileGroup: true,
         },
       },
+      profileGroup: {
+        include: {
+          nasRouter: true,
+        },
+      },
+      router: true,
       portalUser: {
         select: {
           id: true,
@@ -76,6 +81,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     address?: string;
     status?: string;
     profileId?: string | null;
+    profileGroupId?: string | null;
     staticIp?: string;
     nasId?: string | null;
     bindOnNas?: boolean;
@@ -110,13 +116,10 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       }),
     ]);
     if (dupCustomer || dupRad) {
-      throw new Error(
-        `Username PPPoE '${username}' sudah digunakan pelanggan lain.`,
-      );
+      throw new Error(`Username PPPoE '${username}' sudah terdaftar.`);
     }
   }
 
-  // Validasi email jika diubah
   if (body.email?.trim()) {
     const email = body.email.trim();
     const [dupCustEmail, dupPortalEmail] = await Promise.all([
@@ -147,15 +150,21 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     const pppProf = targetProfileId
       ? await tx.pppProfile.findUnique({
           where: { id: targetProfileId },
-          include: {
-            bandwidth: true,
-            profileGroup: { include: { nasRouter: true } },
-          },
+          include: { bandwidth: true },
         })
       : null;
 
-    const nasId = pppProf?.profileGroup?.nasId ?? body.nasId ?? existing.nasId;
-    const nasIp = pppProf?.profileGroup?.nasRouter?.ipAddress;
+    const targetGroupId =
+      "profileGroupId" in body ? body.profileGroupId : existing.profileGroupId;
+    const profileGroup = targetGroupId
+      ? await tx.profileGroup.findUnique({
+          where: { id: targetGroupId },
+          include: { nasRouter: true },
+        })
+      : null;
+
+    const nasId = profileGroup?.nasId ?? body.nasId ?? existing.nasId;
+    const nasIp = profileGroup?.nasRouter?.ipAddress;
     const bindOnNas =
       body.bindOnNas !== undefined ? body.bindOnNas : existing.bindOnNas;
 
@@ -179,6 +188,9 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
         ...("profileId" in body ? { profileId: body.profileId ?? null } : {}),
+        ...("profileGroupId" in body
+          ? { profileGroupId: body.profileGroupId ?? null }
+          : {}),
         ...(body.staticIp !== undefined
           ? { staticIp: body.staticIp.trim() || undefined }
           : {}),
@@ -220,15 +232,13 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
             accountId: targetEmail || updated.username,
           },
         });
-      } else if (targetEmail !== existing.email) {
-        await tx.portalAccount.updateMany({
-          where: { userId: existing.portalUser.id },
-          data: { accountId: targetEmail || updated.username },
-        });
       }
     } else {
-      // Buat portal user baru jika sebelumnya belum ada
-      const portalPassword = body.portalPassword?.trim() || "password123";
+      let portalPassword = body.portalPassword?.trim();
+      if (!portalPassword) {
+        const { generatePppoePassword } = await import("@/lib/generators");
+        portalPassword = generatePppoePassword(8);
+      }
       const hashedPassword = await hashPassword(portalPassword);
       const portalUserId = `usr-${updated.id}`;
       await tx.portalUser.create({
@@ -277,7 +287,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
         ? {
             bandwidth: pppProf.bandwidth,
             priority: pppProf.priority,
-            dnsServers: pppProf.profileGroup?.dnsServers,
+            dnsServers: profileGroup?.dnsServers,
           }
         : null,
       body.password ?? undefined,
@@ -318,7 +328,6 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       const online = await prisma.radAcct.findFirst({
         where: { username: customer.username, acctStopTime: null },
         orderBy: { acctStartTime: "desc" },
-        select: { acctSessionId: true },
       });
       if (online) {
         const { formatBandwidthRateLimit } = await import(
@@ -328,80 +337,84 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           newProfile.bandwidth,
           newProfile.priority,
         );
-        const coa = await sendCoa(
+        const coaRes = await sendCoa(
           customer.username,
           { "Mikrotik-Rate-Limit": rate },
-          { acctSessionId: online.acctSessionId ?? undefined },
+          {
+            acctSessionId: online.acctSessionId ?? undefined,
+            radiusIp: online.nasIpAddress ?? undefined,
+          },
         );
-        if (!coa.success) {
-          // CoA ditolak (RouterOS: Unsupported-Extension utk Mikrotik-Rate-Limit)
-          // atau tidak dijawab → kick agar sesi re-login dgn rate baru
-          console.warn(
-            `[coa] rate-limit utk ${customer.username} tidak diterapkan via ` +
-              `CoA (${coa.code ?? "no-ack"}) — fallback disconnect agar re-login.`,
-          );
-          const { kickSessionByUsername } = await import(
-            "@/lib/mikrotik-disconnect"
-          );
+        if (!coaRes.success) {
           await kickSessionByUsername(customer.username, customer.nasId);
         }
       }
-    } catch (e) {
-      console.warn("[coa] gagal push rate-limit utk", customer.username, e);
-    }
-  }
-
-  // ── Otomatis putus koneksi jika status diubah menjadi suspended atau disabled ──
-  if (
-    body.status !== undefined &&
-    body.status !== "active" &&
-    existing.status === "active"
-  ) {
-    try {
-      const online = await prisma.radAcct.findFirst({
-        where: { username: customer.username, acctStopTime: null },
-        orderBy: { acctStartTime: "desc" },
-        select: { acctSessionId: true },
-      });
-      if (online) {
-        const { sendDisconnect } = await import("@/lib/radius-coa");
-        const coaResult = await sendDisconnect(customer.username, {
-          acctSessionId: online.acctSessionId ?? undefined,
-        });
-        if (!coaResult.success) {
-          const { kickSessionByUsername } = await import(
-            "@/lib/mikrotik-disconnect"
-          );
-          await kickSessionByUsername(customer.username, customer.nasId);
-        }
-      }
-    } catch (err) {
+    } catch (coaErr) {
       console.warn(
-        `[disconnect] gagal putus sesi saat status ${customer.username} diubah:`,
-        err,
+        `[coa] CoA failed, fallback kick for ${customer.username}:`,
+        coaErr,
       );
+      try {
+        await kickSessionByUsername(customer.username, customer.nasId);
+      } catch (kickErr) {
+        console.warn(`[coa] fallback kick also failed:`, kickErr);
+      }
     }
   }
 
-  return NextResponse.json({ data: customer });
+  return NextResponse.json({
+    data: {
+      ...customer,
+      lastSeenAt: customer.lastSeenAt
+        ? new Date(customer.lastSeenAt).toISOString()
+        : undefined,
+      createdAt: new Date(customer.createdAt).toISOString(),
+      updatedAt: new Date(customer.updatedAt).toISOString(),
+    },
+  });
 });
 
 export const DELETE = asyncApi(
   async (_req: Request, ctx: { params: Params }) => {
     await requirePermission("customer.delete");
     const { id } = await ctx.params;
+    const customer = await prisma.customer.findUnique({ where: { id } });
+    if (!customer) throw new Error("Pelanggan tidak ditemukan.");
 
-    const existing = await prisma.customer.findUnique({ where: { id } });
-    if (!existing) throw new Error("Pelanggan tidak ditemukan.");
+    // Putus koneksi aktif di MikroTik jika sedang online
+    try {
+      await kickSessionByUsername(customer.username, customer.nasId);
+    } catch (err) {
+      console.warn(
+        `[delete-customer] Gagal putus sesi aktif ${customer.username}:`,
+        err,
+      );
+    }
 
     await prisma.$transaction(async (tx) => {
-      // Kick sesi aktif di router (best-effort) — FreeRADIUS Stop menyusul
-      await kickSessionByUsername(existing.username, existing.nasId);
+      // 1. Hapus baris RADIUS (radcheck, radreply, radnasallow)
+      await removeCustomerRadius(tx, customer.username);
 
-      // radsync: hapus baris RADIUS (histori radacct tetap)
-      await removeCustomerRadius(tx, existing.username);
+      // 2. Hapus sesi & akun portal jika ada
+      const portalUser = await tx.portalUser.findUnique({
+        where: { customerId: customer.id },
+      });
+      if (portalUser) {
+        await tx.portalSession.deleteMany({
+          where: { userId: portalUser.id },
+        });
+        await tx.portalAccount.deleteMany({
+          where: { userId: portalUser.id },
+        });
+        await tx.portalUser.delete({ where: { id: portalUser.id } });
+      }
+
+      // 3. Hapus customer dari database aplikasi
       await tx.customer.delete({ where: { id } });
     });
-    return NextResponse.json({ success: true });
+
+    return NextResponse.json({
+      data: { id, username: customer.username, deleted: true },
+    });
   },
 );

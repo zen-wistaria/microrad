@@ -18,7 +18,7 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
         select: { id: true, name: true, ipAddress: true },
       },
       _count: {
-        select: { pppProfiles: true },
+        select: { customers: true },
       },
     },
   });
@@ -35,7 +35,7 @@ export const GET = asyncApi(async (_req: Request, { params }: Params) => {
       ...group,
       createdAt: group.createdAt.toISOString(),
       updatedAt: group.updatedAt.toISOString(),
-      pppProfileCount: group._count.pppProfiles,
+      customerCount: group._count.customers,
     },
   });
 });
@@ -86,7 +86,7 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
         select: { id: true, name: true, ipAddress: true },
       },
       _count: {
-        select: { pppProfiles: true },
+        select: { customers: true },
       },
     },
   });
@@ -96,7 +96,7 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
       ...updated,
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
-      pppProfileCount: updated._count.pppProfiles,
+      customerCount: updated._count.customers,
     },
   });
 });
@@ -105,12 +105,12 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
   await requirePermission("profile.delete");
   const { id } = await params;
 
-  const count = await prisma.pppProfile.count({
+  const count = await prisma.customer.count({
     where: { profileGroupId: id },
   });
   if (count > 0) {
     throw new Error(
-      `Profile Group tidak dapat dihapus karena sedang digunakan oleh ${count} PPP Profile.`,
+      `Profile Group tidak dapat dihapus karena sedang digunakan oleh ${count} pelanggan.`,
     );
   }
 

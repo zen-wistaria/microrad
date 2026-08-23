@@ -84,10 +84,11 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
   - `password` (String? — password PPPoE dial-in, auto-generated 8 karakter)
   - `fullName`, `email`, `phone`, `address` (Metadata kontak pelanggan; `email` digunakan untuk pembuatan akun `PortalUser`)
   - `status` (`"active"` | `"suspended"` | `"disabled"`)
-  - `profileId` (FK $\rightarrow$ `PppProfile.id`)
+  - `profileId` (FK $\rightarrow$ `PppProfile.id` — Paket Layanan: Kecepatan & Tarif Bulanan)
+  - `profileGroupId` (FK $\rightarrow$ `ProfileGroup.id` — Lokasi Node: Router NAS, Gateway & IP Pool)
   - `staticIp` (String? — IP statis pelanggan / `Framed-IP-Address`)
-  - `nasId` (FK $\rightarrow$ `NasRouter.id`? — otomatis diturunkan dari `PppProfile.profileGroup.nasId`)
-  - `bindOnNas` (Boolean, default `false` — kunci dial login hanya melalui router NAS milik paket `PppProfile`)
+  - `nasId` (FK $\rightarrow$ `NasRouter.id`? — otomatis diturunkan dari `profileGroup.nasId`)
+  - `bindOnNas` (Boolean, default `false` — kunci dial login hanya melalui router NAS milik `profileGroup`)
   - `createdAt`, `updatedAt`, `lastSeenAt` (DateTime)
   - `portalUser` (Relasi 1-to-1 ke `PortalUser` untuk login Customer Self-Care)
 
@@ -105,11 +106,10 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
   - `rangeIpStart` (String IPv4), `rangeIpEnd` (String IPv4)
   - `dnsServers` (String — default `"8.8.8.8,8.8.4.4"`)
   - `parentQueue` (String?)
-  - `pppProfileCount` (Derived di API)
+  - `customerCount` (Derived di API dari jumlah `Customer` terkait)
 
 - **`PppProfile` (`ppp_profile`)**:
   - `id` (String PK, format `ppp-<timestamp>`), `name` (String), `price` (Int IDR/bulan)
-  - `profileGroupId` (FK $\rightarrow$ `ProfileGroup.id`)
   - `bandwidthId` (FK $\rightarrow$ `Bandwidth.id`)
   - `priority` (Int 1–8, default 8)
   - `customerCount` (Derived di API dari jumlah `Customer` terkait)

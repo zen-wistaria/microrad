@@ -11,7 +11,6 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
     where: { id },
     include: {
       bandwidth: true,
-      profileGroup: true,
       _count: {
         select: { customers: true },
       },
