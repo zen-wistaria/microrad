@@ -111,12 +111,26 @@ export default function CustomerDetailPage({
     parseAsString.withDefault("all"),
   );
 
+  // Tab aktif + pagination (via nuqs — konsisten saat refresh)
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsString.withDefault("overview"),
+  );
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+
   const sessFilter = useMemo(
     () => ({
       year: selectedYear,
       month: selectedMonth !== "all" ? Number(selectedMonth) : undefined,
+      page,
+      limit: safeLimit,
     }),
-    [selectedYear, selectedMonth],
+    [selectedYear, selectedMonth, page, safeLimit],
   );
 
   const usageFilter = useMemo(
@@ -134,18 +148,6 @@ export default function CustomerDetailPage({
     for (let y = cur; y >= cur - 3; y--) arr.push(y);
     return arr;
   }, []);
-
-  // Tab aktif + pagination (via nuqs — konsisten saat refresh)
-  const [activeTab, setActiveTab] = useQueryState(
-    "tab",
-    parseAsString.withDefault("overview"),
-  );
-  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
-  const [limit, setLimit] = useQueryState(
-    "limit",
-    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
-  );
-  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
 
   // Disconnect Dialog
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
@@ -166,10 +168,9 @@ export default function CustomerDetailPage({
   const profileGroup = grpRes?.data || customer?.profileGroup;
   const { data: routerNas } = useRouterNasQuery(customer?.nasId || "");
   const { data: activeSession } = useCustomerActiveSessionQuery(customerId);
-  const { data: sessionHistory = [] } = useCustomerSessionsQuery(
-    customerId,
-    sessFilter,
-  );
+  const { data: sessionRes } = useCustomerSessionsQuery(customerId, sessFilter);
+  const sessionHistory = sessionRes?.data || [];
+  const sessionTotalCount = sessionRes?.total ?? 0;
   const { data: usageHistory = [] } = useCustomerUsageHistoryQuery(
     customerId,
     usageFilter,
@@ -250,13 +251,9 @@ export default function CustomerDetailPage({
     toast.success("Data pelanggan berhasil disegarkan.");
   };
 
-  // Pagination slice — tab sesi
-  const sessionTotalPages = Math.ceil(sessionHistory.length / safeLimit) || 1;
+  // Pagination — tab sesi (server-side paginated)
+  const sessionTotalPages = Math.ceil(sessionTotalCount / safeLimit) || 1;
   const sessionSafePage = Math.min(Math.max(page, 1), sessionTotalPages);
-  const paginatedSessions = useMemo(() => {
-    const start = (sessionSafePage - 1) * safeLimit;
-    return sessionHistory.slice(start, start + safeLimit);
-  }, [sessionHistory, sessionSafePage, safeLimit]);
 
   // Pagination slice — tab tagihan
   const invoiceTotalPages = Math.ceil(invoices.length / safeLimit) || 1;
@@ -538,7 +535,14 @@ export default function CustomerDetailPage({
       )}
 
       {/* Tabs Section: Overview, History, Usage Stats, Billing */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v);
+          setPage(1);
+        }}
+        className="w-full"
+      >
         <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="overview" className="gap-1.5 text-xs">
             <User className="h-3.5 w-3.5" />
@@ -546,7 +550,7 @@ export default function CustomerDetailPage({
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-1.5 text-xs">
             <History className="h-3.5 w-3.5" />
-            Sesi ({sessionHistory.length})
+            Sesi ({sessionTotalCount})
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-1.5 text-xs">
             <BarChart3 className="h-3.5 w-3.5" />
@@ -782,7 +786,10 @@ export default function CustomerDetailPage({
                 <div className="flex items-center gap-2">
                   <Select
                     value={String(selectedYear)}
-                    onValueChange={(v) => setSelectedYear(Number(v))}
+                    onValueChange={(v) => {
+                      setSelectedYear(Number(v));
+                      setPage(1);
+                    }}
                   >
                     <SelectTrigger className="w-28 h-9">
                       <SelectValue placeholder="Tahun" />
@@ -797,7 +804,10 @@ export default function CustomerDetailPage({
                   </Select>
                   <Select
                     value={selectedMonth}
-                    onValueChange={(v) => setSelectedMonth(v)}
+                    onValueChange={(v) => {
+                      setSelectedMonth(v);
+                      setPage(1);
+                    }}
                   >
                     <SelectTrigger className="w-32 h-9">
                       <SelectValue placeholder="Bulan" />
@@ -849,7 +859,7 @@ export default function CustomerDetailPage({
                         </td>
                       </tr>
                     ) : (
-                      paginatedSessions.map((sess) => (
+                      sessionHistory.map((sess) => (
                         <tr
                           key={sess.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -905,27 +915,24 @@ export default function CustomerDetailPage({
               </div>
 
               {/* Pagination Footer — Sesi */}
-              {sessionHistory.length > 0 && (
+              {sessionTotalCount > 0 && (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span>
                       Menampilkan{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {Math.min(
-                          (sessionSafePage - 1) * safeLimit + 1,
-                          sessionHistory.length,
-                        )}
+                        {(sessionSafePage - 1) * safeLimit + 1}
                       </span>{" "}
                       -{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
                         {Math.min(
                           sessionSafePage * safeLimit,
-                          sessionHistory.length,
+                          sessionTotalCount,
                         )}
                       </span>{" "}
                       dari{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {sessionHistory.length}
+                        {sessionTotalCount}
                       </span>{" "}
                       sesi
                     </span>

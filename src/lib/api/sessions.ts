@@ -62,13 +62,19 @@ export async function getActiveSessions(
 
 export async function getCustomerSessions(
   customerId: string,
-  params: { year?: number; month?: number } = {},
-): Promise<Session[]> {
-  return fetchSessions({
+  params: {
+    year?: number;
+    month?: number;
+    page?: number;
+    limit?: number;
+  } = {},
+): Promise<{ data: Session[]; total: number }> {
+  return getSessionsPaginated({
     customerId,
     year: params.year,
     month: params.month,
-    limit: 1000,
+    page: params.page ?? 1,
+    limit: params.limit ?? 10,
   });
 }
 

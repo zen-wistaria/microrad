@@ -46,7 +46,12 @@ export function useCustomerActiveSessionQuery(id: string) {
 
 export function useCustomerSessionsQuery(
   id: string,
-  filter?: { year?: number; month?: number },
+  filter?: {
+    year?: number;
+    month?: number;
+    page?: number;
+    limit?: number;
+  },
 ) {
   return useQuery({
     queryKey: queryKeys.customers.sessions(id, filter),

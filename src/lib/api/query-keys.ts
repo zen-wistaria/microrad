@@ -20,8 +20,10 @@ export const queryKeys = {
       ["customers", "list", ...(params ? [params] : [])] as const,
     detail: (id: string) => ["customers", "detail", id] as const,
     activeSession: (id: string) => ["customers", "active-session", id] as const,
-    sessions: (id: string, filter?: { year?: number; month?: number }) =>
-      ["customers", "sessions", id, ...(filter ? [filter] : [])] as const,
+    sessions: (
+      id: string,
+      filter?: { year?: number; month?: number; page?: number; limit?: number },
+    ) => ["customers", "sessions", id, ...(filter ? [filter] : [])] as const,
     usageHistory: (id: string, filter?: { year?: number; month?: number }) =>
       ["customers", "usage-history", id, ...(filter ? [filter] : [])] as const,
     monthlyUsage: (id: string, year: number) =>

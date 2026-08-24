@@ -37,7 +37,7 @@ export const GET = asyncApi(async (req: Request) => {
     limit: parseInt(url.searchParams.get("limit") || "10", 10),
   };
 
-  const safeLimit = Math.min(Math.max(q.limit || 10, 1), 50);
+  const safeLimit = Math.min(Math.max(q.limit || 10, 1), 100);
   const safePage = Math.max(q.page || 1, 1);
 
   // Bersihkan sesi zombie yang tidak aktif (> 3 menit tanpa update)
