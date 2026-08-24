@@ -200,8 +200,7 @@ async function syncCustomerRadiusRows(
     where: { username: u, attribute: "NAS-IP-Address" },
   });
 
-  // radreply: Framed-IP-Address (static IP) vs Framed-Pool (Dynamic SQL IP Pool)
-  const poolToAssign = customer.poolName || profile?.poolName;
+  // radreply: Framed-IP-Address (static IP)
   if (customer.staticIp) {
     await tx.radReply.upsert({
       where: {
@@ -219,42 +218,16 @@ async function syncCustomerRadiusRows(
       where: { username: u, attribute: "Framed-Pool" },
     });
   } else {
+    // Pelanggan dinamis: Framed-Pool & Mikrotik-Group disematkan secara dinamis oleh policy FreeRADIUS
+    // (set_ippool_name) berdasarkan router tempat dial-in dan ProfileGroup pelanggan.
     await tx.radReply.deleteMany({
-      where: { username: u, attribute: "Framed-IP-Address" },
+      where: {
+        username: u,
+        attribute: {
+          in: ["Framed-IP-Address", "Framed-Pool", "Mikrotik-Group"],
+        },
+      },
     });
-    if (poolToAssign) {
-      await tx.radReply.upsert({
-        where: {
-          username_attribute: { username: u, attribute: "Framed-Pool" },
-        },
-        update: { value: poolToAssign, op: ":=" },
-        create: {
-          username: u,
-          attribute: "Framed-Pool",
-          op: ":=",
-          value: poolToAssign,
-        },
-      });
-      await tx.radReply.upsert({
-        where: {
-          username_attribute: { username: u, attribute: "Mikrotik-Group" },
-        },
-        update: { value: poolToAssign, op: ":=" },
-        create: {
-          username: u,
-          attribute: "Mikrotik-Group",
-          op: ":=",
-          value: poolToAssign,
-        },
-      });
-    } else {
-      await tx.radReply.deleteMany({
-        where: {
-          username: u,
-          attribute: { in: ["Framed-Pool", "Mikrotik-Group"] },
-        },
-      });
-    }
   }
 
   // radreply: Mikrotik-Rate-Limit dari profil
@@ -576,7 +549,6 @@ export async function syncProfileGroupRadiusBulk(
 
   const sqlNode =
     group.pppProfiles.find((p) => p.ipModule === "sql") ?? group.pppProfiles[0];
-  const poolName = sqlNode?.name?.trim() || null;
 
   // Ambil seluruh pelanggan di group ini yang menggunakan IP dinamis (non-statis)
   const customers = await tx.customer.findMany({
@@ -588,80 +560,54 @@ export async function syncProfileGroupRadiusBulk(
 
   const usernames = customers.map((c) => c.username);
 
-  if (poolName) {
-    for (const u of usernames) {
-      await tx.radReply.upsert({
-        where: {
-          username_attribute: { username: u, attribute: "Framed-Pool" },
-        },
-        update: { value: poolName, op: ":=" },
-        create: {
-          username: u,
-          attribute: "Framed-Pool",
-          op: ":=",
-          value: poolName,
-        },
-      });
-      await tx.radReply.upsert({
-        where: {
-          username_attribute: { username: u, attribute: "Mikrotik-Group" },
-        },
-        update: { value: poolName, op: ":=" },
-        create: {
-          username: u,
-          attribute: "Mikrotik-Group",
-          op: ":=",
-          value: poolName,
-        },
-      });
+  // Bersihkan baris Framed-Pool & Mikrotik-Group lama agar sepenuhnya dinamis
+  await tx.radReply.deleteMany({
+    where: {
+      username: { in: usernames },
+      attribute: { in: ["Framed-Pool", "Mikrotik-Group"] },
+    },
+  });
 
-      if (sqlNode?.dnsServers) {
-        const dnsParts = sqlNode.dnsServers
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (dnsParts[0]) {
-          await tx.radReply.upsert({
-            where: {
-              username_attribute: {
-                username: u,
-                attribute: "MS-Primary-DNS-Server",
-              },
-            },
-            update: { value: dnsParts[0], op: ":=" },
-            create: {
+  if (sqlNode?.dnsServers) {
+    const dnsParts = sqlNode.dnsServers
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const u of usernames) {
+      if (dnsParts[0]) {
+        await tx.radReply.upsert({
+          where: {
+            username_attribute: {
               username: u,
               attribute: "MS-Primary-DNS-Server",
-              op: ":=",
-              value: dnsParts[0],
             },
-          });
-        }
-        if (dnsParts[1]) {
-          await tx.radReply.upsert({
-            where: {
-              username_attribute: {
-                username: u,
-                attribute: "MS-Secondary-DNS-Server",
-              },
-            },
-            update: { value: dnsParts[1], op: ":=" },
-            create: {
+          },
+          update: { value: dnsParts[0], op: ":=" },
+          create: {
+            username: u,
+            attribute: "MS-Primary-DNS-Server",
+            op: ":=",
+            value: dnsParts[0],
+          },
+        });
+      }
+      if (dnsParts[1]) {
+        await tx.radReply.upsert({
+          where: {
+            username_attribute: {
               username: u,
               attribute: "MS-Secondary-DNS-Server",
-              op: ":=",
-              value: dnsParts[1],
             },
-          });
-        }
+          },
+          update: { value: dnsParts[1], op: ":=" },
+          create: {
+            username: u,
+            attribute: "MS-Secondary-DNS-Server",
+            op: ":=",
+            value: dnsParts[1],
+          },
+        });
       }
     }
-  } else {
-    await tx.radReply.deleteMany({
-      where: {
-        username: { in: usernames },
-        attribute: { in: ["Framed-Pool", "Mikrotik-Group"] },
-      },
-    });
   }
 }
