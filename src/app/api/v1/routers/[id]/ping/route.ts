@@ -1,15 +1,23 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { connectRouterOS } from "@/lib/mikrotik-client";
-import { pingRouterHost } from "@/lib/ping";
+import { pingIcmp } from "@/lib/ping";
 import { prisma } from "@/lib/prisma";
+import type { NasRouterStatus } from "@/lib/types";
 
 type Params = Promise<{ id: string }>;
 
 /**
- * Ping nyata ke router (ICMP / TCP reachability).
- * Status online/offline didapat dari ping tanpa memerlukan kredensial API.
- * Jika kredensial tersedia, akan otomatis membaca identity RouterOS jika memungkinkan.
+ * POST /api/v1/routers/[id]/ping
+ * Melakukan pengecekan status router:
+ * 1. Ping ICMP Host Reachability
+ * 2. Koneksi API RouterOS (Port, Kredensial & Identity)
+ *
+ * Menghasilkan 4 varian status:
+ * - online (Hijau): Ping ICMP OK + API RouterOS OK
+ * - online_ping_only (Kuning): Ping ICMP OK + API RouterOS Gagal
+ * - online_api_only (Biru): Ping ICMP Gagal + API RouterOS OK
+ * - offline (Merah): Ping ICMP Gagal + API RouterOS Gagal
  */
 export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   await requirePermission("router.read");
@@ -18,49 +26,76 @@ export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   if (!router) throw new Error("Router tidak ditemukan.");
 
   const now = new Date();
-  const ping = await pingRouterHost(router.ipAddress, router.apiPort || 8728);
 
-  if (!ping.alive) {
-    await prisma.nasRouter.update({
-      where: { id },
-      data: { status: "offline", lastSeenAt: now },
-    });
-    return NextResponse.json({
-      data: {
-        status: "offline",
-        latencyMs: ping.latencyMs,
-        message: ping.error || "Host tidak terjangkau (ping timeout)",
-      },
-    });
-  }
+  // 1. Tes Ping ICMP
+  const icmp = await pingIcmp(router.ipAddress, 1500);
+  const pingOk = icmp.alive;
 
-  // Router online! Cek apakah kita bisa mengambil identity RouterOS jika kredensial diisi
+  // 2. Tes Koneksi API RouterOS
+  let apiOk = false;
   let identity: string | undefined;
+  let apiError: string | undefined;
+
   if (router.apiUsername) {
     try {
-      const mikrotik = await connectRouterOS(router, 2000);
+      const mikrotik = await connectRouterOS(
+        {
+          ipAddress: router.ipAddress,
+          apiUsername: router.apiUsername,
+          apiPassword: router.apiPassword ?? "",
+          apiPort: router.apiPort || 8728,
+        },
+        2500,
+      );
       try {
         const rows = await mikrotik.write("/system/identity/print");
-        identity = rows[0]?.name;
+        identity = rows[0]?.name || router.name;
+        apiOk = true;
       } finally {
         mikrotik.close();
       }
-    } catch {
-      // Gagal baca identity karena password salah / port API ditutup, tapi router tetap online via ping
+    } catch (err) {
+      apiOk = false;
+      apiError = err instanceof Error ? err.message : String(err);
     }
+  } else {
+    apiOk = false;
+    apiError = "Kredensial API RouterOS belum dikonfigurasi";
   }
 
+  // 3. Tentukan Status Router
+  let status: NasRouterStatus;
+  if (pingOk && apiOk) {
+    status = "online";
+  } else if (pingOk && !apiOk) {
+    status = "online_ping_only";
+  } else if (!pingOk && apiOk) {
+    status = "online_api_only";
+  } else {
+    status = "offline";
+  }
+
+  // 4. Update status ke Database
   await prisma.nasRouter.update({
     where: { id },
-    data: { status: "online", lastSeenAt: now, lastSyncedAt: now },
+    data: {
+      status,
+      lastSeenAt: now,
+      lastSyncedAt: status !== "offline" ? now : undefined,
+    },
   });
 
   return NextResponse.json({
     data: {
-      status: "online",
-      latencyMs: ping.latencyMs,
+      status,
+      pingOk,
+      apiOk,
+      latencyMs: icmp.latencyMs,
       identity: identity ?? router.name,
-      method: ping.method,
+      apiError,
+      pingError: pingOk
+        ? undefined
+        : `Host tidak merespons ping ICMP (${icmp.latencyMs}ms timeout)`,
     },
   });
 });

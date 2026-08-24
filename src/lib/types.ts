@@ -187,7 +187,12 @@ export interface BillingSummary {
   totalInvoicesCount: number;
 }
 
-export type NasRouterStatus = "online" | "offline" | "unknown";
+export type NasRouterStatus =
+  | "online"
+  | "online_ping_only"
+  | "online_api_only"
+  | "offline"
+  | "unknown";
 
 export interface NasRouter {
   id: string;

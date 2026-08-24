@@ -7,14 +7,16 @@
  *
  * Interval default: 30 detik (MIKROTIK_SYNC_INTERVAL_MS = 30000).
  */
-import { pingRouterHost } from "./ping";
+import { connectRouterOS } from "./mikrotik-client";
+import { pingIcmp } from "./ping";
 import { prisma } from "./prisma";
+import type { NasRouterStatus } from "./types";
 
 export interface SyncSummary {
   id: string;
   name: string;
   ipAddress: string;
-  status: "online" | "offline";
+  status: NasRouterStatus;
   latencyMs: number;
   error?: string;
 }
@@ -94,7 +96,7 @@ export async function syncAllRouters(): Promise<SyncSummary[]> {
   return Promise.all(routers.map((r) => syncSingleRouter(r)));
 }
 
-/** Heartbeat satu router (mengecek status via ping). */
+/** Heartbeat satu router (mengecek status via ping ICMP & API RouterOS). */
 export async function syncSingleRouter(router: {
   id: string;
   ipAddress: string;
@@ -104,38 +106,70 @@ export async function syncSingleRouter(router: {
   apiPort?: number;
 }): Promise<SyncSummary> {
   const now = new Date();
-  const ping = await pingRouterHost(router.ipAddress, router.apiPort || 8728);
 
-  if (ping.alive) {
-    // Router aktif / online via ping
-    await prisma.nasRouter.update({
-      where: { id: router.id },
-      data: { status: "online", lastSeenAt: now, lastSyncedAt: now },
-    });
+  // 1. Tes Ping ICMP
+  const icmp = await pingIcmp(router.ipAddress, 1500);
+  const pingOk = icmp.alive;
 
-    return {
-      id: router.id,
-      name: router.name,
-      ipAddress: router.ipAddress,
-      status: "online",
-      latencyMs: ping.latencyMs,
-    };
+  // 2. Tes API RouterOS jika kredensial ada
+  let apiOk = false;
+  let apiError: string | undefined;
+
+  if (router.apiUsername) {
+    try {
+      const mikrotik = await connectRouterOS(
+        {
+          ipAddress: router.ipAddress,
+          apiUsername: router.apiUsername,
+          apiPassword: router.apiPassword ?? "",
+          apiPort: router.apiPort || 8728,
+        },
+        2000,
+      );
+      try {
+        await mikrotik.write("/system/identity/print");
+        apiOk = true;
+      } finally {
+        mikrotik.close();
+      }
+    } catch (err) {
+      apiOk = false;
+      apiError = err instanceof Error ? err.message : String(err);
+    }
   } else {
-    // Router tidak merespons ping -> offline
-    await prisma.nasRouter.update({
-      where: { id: router.id },
-      data: { status: "offline", lastSeenAt: now },
-    });
-
-    return {
-      id: router.id,
-      name: router.name,
-      ipAddress: router.ipAddress,
-      status: "offline",
-      latencyMs: ping.latencyMs,
-      error: ping.error || "Host tidak terjangkau (ping timeout)",
-    };
+    apiOk = false;
+    apiError = "Kredensial API belum dikonfigurasi";
   }
+
+  // 3. Tentukan Status
+  let status: NasRouterStatus;
+  if (pingOk && apiOk) {
+    status = "online";
+  } else if (pingOk && !apiOk) {
+    status = "online_ping_only";
+  } else if (!pingOk && apiOk) {
+    status = "online_api_only";
+  } else {
+    status = "offline";
+  }
+
+  await prisma.nasRouter.update({
+    where: { id: router.id },
+    data: {
+      status,
+      lastSeenAt: now,
+      lastSyncedAt: status !== "offline" ? now : undefined,
+    },
+  });
+
+  return {
+    id: router.id,
+    name: router.name,
+    ipAddress: router.ipAddress,
+    status,
+    latencyMs: icmp.latencyMs,
+    error: status === "offline" ? "Host dan API tidak terjangkau" : apiError,
+  };
 }
 
 /**

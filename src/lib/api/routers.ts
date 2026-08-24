@@ -1,4 +1,4 @@
-import type { NasRouter } from "@/lib/types";
+import type { NasRouter, NasRouterStatus } from "@/lib/types";
 import { apiFetch } from "./client";
 
 export type GetRoutersParams = Record<string, unknown>;
@@ -16,7 +16,8 @@ export async function getRouterById(id: string): Promise<NasRouter | null> {
 /** Payload pembuatan/perubahan router (termasuk kredensial yang tidak
  * diekspos di NasRouter — dirahasiakan dari client) */
 export interface RouterPayload
-  extends Omit<NasRouter, "id" | "activeSessionCount"> {
+  extends Omit<NasRouter, "id" | "activeSessionCount" | "status"> {
+  status?: NasRouterStatus;
   apiUsername?: string;
   apiPassword?: string;
   apiPasswordSet?: never;
@@ -48,17 +49,19 @@ export async function deleteRouter(id: string): Promise<{ success: boolean }> {
   });
 }
 
-export async function pingRouter(id: string): Promise<{
-  status: "online" | "offline";
+export interface RouterPingResult {
+  status: NasRouterStatus;
+  pingOk: boolean;
+  apiOk: boolean;
   latencyMs: number;
   identity?: string;
-}> {
+  apiError?: string;
+  pingError?: string;
+}
+
+export async function pingRouter(id: string): Promise<RouterPingResult> {
   return apiFetch<{
-    data: {
-      status: "online" | "offline";
-      latencyMs: number;
-      identity?: string;
-    };
+    data: RouterPingResult;
   }>(`/routers/${id}/ping`, { method: "POST", body: JSON.stringify({}) }).then(
     (r) => r.data,
   );

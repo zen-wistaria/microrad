@@ -23,18 +23,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   useCreateRouterMutation,
   useUpdateRouterMutation,
 } from "@/lib/api/hooks";
 import type { RouterPayload } from "@/lib/api/routers";
-import type { NasRouter, NasRouterStatus } from "@/lib/types";
+import type { NasRouter } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
 const ipv4Regex =
@@ -47,25 +40,18 @@ const routerSchema = z.object({
     .min(1, "IP Address wajib diisi")
     .regex(ipv4Regex, "Format IPv4 tidak valid (contoh: 192.168.88.1)"),
   location: z.string().optional(),
-  status: z.enum(["online", "offline", "unknown"]),
   apiUsername: z.string().trim().optional(),
   apiPassword: z.string().optional(),
-  apiPort: z.preprocess(
-    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
-    z
-      .number({ message: "Port API harus angka (default 8728)" })
-      .int()
-      .min(1)
-      .max(65535),
-  ),
+  apiPort: z
+    .number({ message: "Port API harus berupa angka (default 8728)" })
+    .int("Port API harus bilangan bulat")
+    .min(1, "Port API minimal 1")
+    .max(65535, "Port API maksimal 65535"),
   radiusSecret: z.string().trim().optional(),
-  syncEnabled: z.boolean().default(true),
+  syncEnabled: z.boolean(),
 });
 
-// zod v4: preprocess mengubah input (string) → output (number), jadi kita
-// pakai generic 3-kali RHF: input type utk form state, output type utk submit.
-type RouterFormInput = z.input<typeof routerSchema>;
-type RouterFormValues = z.output<typeof routerSchema>;
+type RouterFormValues = z.infer<typeof routerSchema>;
 
 interface RouterFormProps {
   initialData?: NasRouter;
@@ -86,16 +72,13 @@ export function RouterForm({
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
     formState: { errors },
-  } = useForm<RouterFormInput, unknown, RouterFormValues>({
+  } = useForm<RouterFormValues>({
     resolver: zodResolver(routerSchema),
     defaultValues: {
       name: initialData?.name || "",
       ipAddress: initialData?.ipAddress || "",
       location: initialData?.location || "",
-      status: initialData?.status || "online",
       apiUsername: initialData?.apiUsername || "",
       apiPassword: "",
       apiPort: initialData?.apiPort ?? 8728,
@@ -103,8 +86,6 @@ export function RouterForm({
       syncEnabled: initialData?.syncEnabled ?? true,
     },
   });
-
-  const selectedStatus = watch("status");
 
   const onSubmit = async (data: RouterFormValues) => {
     try {
@@ -114,7 +95,6 @@ export function RouterForm({
           name: data.name,
           ipAddress: data.ipAddress,
           location: data.location,
-          status: data.status as NasRouterStatus,
           apiUsername: data.apiUsername || undefined,
           apiPort: data.apiPort,
           radiusSecret: data.radiusSecret || undefined,
@@ -132,7 +112,6 @@ export function RouterForm({
           ipAddress: data.ipAddress,
           location: data.location,
           type: "mikrotik",
-          status: data.status as NasRouterStatus,
           apiUsername: data.apiUsername || undefined,
           apiPassword: data.apiPassword || undefined,
           apiPort: data.apiPort,
@@ -220,29 +199,6 @@ export function RouterForm({
               {...register("location")}
             />
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="status">Status Router</Label>
-            <Select
-              value={selectedStatus}
-              onValueChange={(val) =>
-                setValue("status", val as NasRouterStatus, {
-                  shouldValidate: true,
-                })
-              }
-            >
-              <SelectTrigger id="status">
-                <SelectValue placeholder="Pilih Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="online">🟢 Online (Terhubung)</SelectItem>
-                <SelectItem value="offline">
-                  🔴 Offline (Tidak Terjangkau)
-                </SelectItem>
-                <SelectItem value="unknown">⚪ Unknown</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </CardContent>
       </Card>
 
@@ -256,8 +212,8 @@ export function RouterForm({
           </div>
           <CardDescription>
             Kredensial API RouterOS untuk sinkronisasi sesi (Test Ping,
-            Sinkronkan, Hubungkan ke FreeRADIUS). Radius Secret harus sama
-            dengan shared secret di FreeRADIUS (<code>nas.secret</code>).
+            Hubungkan ke FreeRADIUS). Radius Secret harus sama dengan shared
+            secret di FreeRADIUS (<code>nas.secret</code>).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -305,8 +261,10 @@ export function RouterForm({
               <Input
                 id="apiPort"
                 type="number"
+                min={1}
+                max={65535}
                 placeholder="8728"
-                {...register("apiPort")}
+                {...register("apiPort", { valueAsNumber: true })}
                 className={errors.apiPort ? "border-rose-500" : ""}
               />
               {errors.apiPort && (

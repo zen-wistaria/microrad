@@ -2,7 +2,9 @@
 
 import {
   Activity,
+  AlertCircle,
   Cable,
+  CheckCircle2,
   Edit,
   KeyRound,
   Loader2,
@@ -13,6 +15,7 @@ import {
   Signal,
   Trash2,
   Unplug,
+  WifiOff,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -29,7 +32,6 @@ import {
   useDisconnectRadiusMutation,
   usePingRouterMutation,
   useRoutersQuery,
-  useSyncRouterMutation,
 } from "@/lib/api/hooks";
 import type { NasRouter } from "@/lib/types";
 import { formatDate, getErrorMessage } from "@/lib/utils";
@@ -48,7 +50,6 @@ export default function RoutersPage() {
   const pingRouterMutation = usePingRouterMutation();
   const connectRadiusMutation = useConnectRadiusMutation();
   const disconnectRadiusMutation = useDisconnectRadiusMutation();
-  const syncRouterMutation = useSyncRouterMutation();
 
   const [busy, setBusy] = useState<BusyId | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NasRouter | null>(null);
@@ -66,26 +67,32 @@ export default function RoutersPage() {
     }
   };
 
-  // Test Ping — koneksi API RouterOS nyata (bukan simulasi)
+  // Test Ping & API Connection — koneksi nyata ke host & RouterOS API
   const handleTestPing = async (router: NasRouter) => {
     setBusy(`${router.id}:ping`);
     try {
       const res = await pingRouterMutation.mutateAsync(router.id);
       if (res.status === "online") {
         toast.success(
-          `Router ${router.name} (${router.ipAddress}) online — latency ${res.latencyMs}ms${
-            res.identity ? `, identity "${res.identity}"` : ""
-          }.`,
+          `Router ${router.name} (${router.ipAddress}) Online: Ping ICMP (${res.latencyMs}ms) dan API RouterOS terhubung (${res.identity || router.name}).`,
+        );
+      } else if (res.status === "online_ping_only") {
+        toast.warning(
+          `Router ${router.name} Online via Ping (${res.latencyMs}ms), tetapi API RouterOS gagal terhubung (${res.apiError || "periksa kredensial/port"}).`,
+        );
+      } else if (res.status === "online_api_only") {
+        toast.info(
+          `Router ${router.name} API RouterOS terhubung (${res.identity || router.name}), namun ping ICMP tidak merespons (kemungkinan diblokir firewall).`,
         );
       } else {
         toast.error(
-          `Router ${router.name} (${router.ipAddress}) tidak terjangkau (${res.latencyMs}ms timeout).`,
+          `Router ${router.name} (${router.ipAddress}) Offline: Host ping dan API tidak terjangkau (${res.latencyMs}ms timeout).`,
         );
       }
       await refreshAll();
     } catch (err: unknown) {
       toast.error(
-        getErrorMessage(err) || "Gagal melakukan test ping ke router.",
+        getErrorMessage(err) || "Gagal melakukan test ping & API ke router.",
       );
     } finally {
       setBusy(null);
@@ -114,35 +121,14 @@ export default function RoutersPage() {
   const handleDisconnectRadius = async (router: NasRouter) => {
     setBusy(`${router.id}:disconnect`);
     try {
-      const res = await disconnectRadiusMutation.mutateAsync(router.id);
+      await disconnectRadiusMutation.mutateAsync(router.id);
       toast.success(
-        `Router ${router.name} diputus dari FreeRADIUS (${res.removed} entri /radius dihapus, use-radius=no).`,
+        `Router ${router.name} (${router.ipAddress}) berhasil diputus dari FreeRADIUS.`,
       );
     } catch (err: unknown) {
       toast.error(
         getErrorMessage(err) || "Gagal memutuskan router dari FreeRADIUS.",
       );
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // Sinkronisasi manual status router (ping)
-  const handleSyncNow = async (router: NasRouter) => {
-    setBusy(`${router.id}:sync`);
-    try {
-      const s = await syncRouterMutation.mutateAsync(router.id);
-      if (s.error || s.status === "offline") {
-        toast.error(
-          `Router ${router.name} (${router.ipAddress}) tidak terjangkau / offline.`,
-        );
-      } else {
-        toast.success(
-          `Status ${router.name} (${router.ipAddress}) berhasil diperbarui: ONLINE (${s.latencyMs}ms).`,
-        );
-      }
-    } catch (err: unknown) {
-      toast.error(getErrorMessage(err) || "Gagal sinkronisasi status router.");
     } finally {
       setBusy(null);
     }
@@ -212,7 +198,6 @@ export default function RoutersPage() {
             const isPinging = busy === `${router.id}:ping`;
             const isConnecting = busy === `${router.id}:connect`;
             const isDisconnecting = busy === `${router.id}:disconnect`;
-            const isSyncing = busy === `${router.id}:sync`;
             const isBusy = Boolean(busy?.startsWith(`${router.id}:`));
             // Kredensial lengkap: username terisi + password tersimpan di DB
             // (boleh kosong — password kosong adalah default RouterOS yang sah)
@@ -276,6 +261,86 @@ export default function RoutersPage() {
                       )}
                     </div>
 
+                    {/* Status Alert Banner when status is Green (online - Ping & API OK) */}
+                    {router.status === "online" && (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-2.5 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+                        <div className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-emerald-900 dark:text-emerald-200">
+                              Koneksi Normal (Ping & API Terhubung)
+                            </p>
+                            <p className="mt-0.5 text-emerald-700 dark:text-emerald-300/90 leading-relaxed">
+                              Ping ICMP dan API RouterOS berhasil terhubung.
+                              Pemantauan sesi, status heartbeat, dan
+                              sinkronisasi RADIUS berjalan optimal.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Problem Alert Banner when status is Yellow (online_ping_only) */}
+                    {router.status === "online_ping_only" && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-2.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-amber-900 dark:text-amber-200">
+                              Kendala API RouterOS
+                            </p>
+                            <p className="mt-0.5 text-amber-700 dark:text-amber-300/90 leading-relaxed">
+                              Ping ICMP berhasil terhubung, namun koneksi API
+                              RouterOS gagal. Periksa service{" "}
+                              <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">
+                                /ip service api
+                              </code>{" "}
+                              (port {router.apiPort || 8728}), API username,
+                              atau password.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Problem Alert Banner when status is Blue (online_api_only) */}
+                    {router.status === "online_api_only" && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-2.5 text-xs text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300">
+                        <div className="flex items-start gap-2">
+                          <Activity className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-blue-900 dark:text-blue-200">
+                              Kendala Ping ICMP
+                            </p>
+                            <p className="mt-0.5 text-blue-700 dark:text-blue-300/90 leading-relaxed">
+                              API RouterOS berhasil terhubung, namun ping ICMP
+                              tidak merespons. Periksa aturan firewall MikroTik
+                              (drop ping ICMP pada filter rules).
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Problem Alert Banner when status is Red (offline) */}
+                    {router.status === "offline" && (
+                      <div className="rounded-lg border border-rose-200 bg-rose-50/80 p-2.5 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">
+                        <div className="flex items-start gap-2">
+                          <WifiOff className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-rose-900 dark:text-rose-200">
+                              Router Tidak Terjangkau
+                            </p>
+                            <p className="mt-0.5 text-rose-700 dark:text-rose-300/90 leading-relaxed">
+                              Host router dan API RouterOS tidak merespons ping
+                              / timeout. Periksa konektivitas jaringan atau IP
+                              address router.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Active Sessions Mini Box */}
                     <div className="flex items-center justify-between rounded-lg bg-slate-50 p-3 dark:bg-slate-800/50">
                       <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
@@ -330,14 +395,14 @@ export default function RoutersPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="w-full">
                     {router.radiusEnabled ? (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleDisconnectRadius(router)}
                         disabled={isBusy}
-                        className="h-8 text-xs text-rose-600 dark:text-rose-400 gap-1.5"
+                        className="w-full h-8 text-xs text-rose-600 dark:text-rose-400 gap-1.5"
                       >
                         {isDisconnecting ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -351,7 +416,7 @@ export default function RoutersPage() {
                         size="sm"
                         disabled={isBusy || !credSet}
                         onClick={() => handleConnectRadius(router)}
-                        className="h-8 text-xs gap-1.5"
+                        className="w-full h-8 text-xs gap-1.5"
                       >
                         {isConnecting ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -363,21 +428,6 @@ export default function RoutersPage() {
                           : "Hubungkan FreeRADIUS"}
                       </Button>
                     )}
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSyncNow(router)}
-                      disabled={isBusy || !credSet}
-                      className="h-8 text-xs gap-1.5"
-                    >
-                      {isSyncing ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      )}
-                      {isSyncing ? "Sinkronisasi..." : "Sinkronkan Sekarang"}
-                    </Button>
                   </div>
                 </div>
               </Card>

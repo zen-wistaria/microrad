@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertCircle,
   CheckCircle2,
   FolderKanban,
@@ -10,7 +11,12 @@ import {
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { AppUserRole, AppUserStatus, CustomerStatus } from "@/lib/types";
+import type {
+  AppUserRole,
+  AppUserStatus,
+  CustomerStatus,
+  NasRouterStatus,
+} from "@/lib/types";
 
 interface CustomerStatusBadgeProps {
   status: CustomerStatus;
@@ -59,29 +65,41 @@ export function CustomerStatusBadge({
   );
 }
 
-export function RouterStatusBadge({
-  status,
-}: {
-  status: "online" | "offline" | "unknown";
-}) {
+export function RouterStatusBadge({ status }: { status: NasRouterStatus }) {
   if (status === "online") {
     return (
-      <Badge variant="success" className="font-medium">
+      <Badge variant="success" className="font-medium gap-1">
         <Wifi className="h-3 w-3" />
         Online
       </Badge>
     );
   }
+  if (status === "online_ping_only") {
+    return (
+      <Badge variant="warning" className="font-medium gap-1">
+        <AlertCircle className="h-3 w-3" />
+        Online (Hanya Ping)
+      </Badge>
+    );
+  }
+  if (status === "online_api_only") {
+    return (
+      <Badge variant="info" className="font-medium gap-1">
+        <Activity className="h-3 w-3" />
+        Online (Hanya API)
+      </Badge>
+    );
+  }
   if (status === "offline") {
     return (
-      <Badge variant="destructive" className="font-medium">
+      <Badge variant="destructive" className="font-medium gap-1">
         <WifiOff className="h-3 w-3" />
         Offline
       </Badge>
     );
   }
   return (
-    <Badge variant="secondary" className="font-medium">
+    <Badge variant="secondary" className="font-medium gap-1">
       <AlertCircle className="h-3 w-3" />
       Unknown
     </Badge>
