@@ -85,6 +85,12 @@ export const queryKeys = {
     all: ["billing"] as const,
     invoices: (params?: GetInvoicesParams) =>
       ["billing", "invoices", ...(params ? [params] : [])] as const,
+    payments: (params?: {
+      paysearch?: string;
+      page?: number;
+      limit?: number;
+      customerId?: string;
+    }) => ["billing", "payments", ...(params ? [params] : [])] as const,
     invoiceDetail: (id: string) => ["billing", "invoice", id] as const,
     summary: ["billing", "summary"] as const,
     months: ["billing", "months"] as const,

@@ -34,9 +34,10 @@ export function usePaymentsQuery(params?: {
   paysearch?: string;
   page?: number;
   limit?: number;
+  customerId?: string;
 }) {
   return useQuery({
-    queryKey: ["billing", "payments", params],
+    queryKey: queryKeys.billing.payments(params),
     queryFn: () => getPaymentsPaginated(params),
     placeholderData: keepPreviousData,
   });

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BulkGenerateDialog } from "@/components/billing/bulk-generate-dialog";
 import { CreateInvoiceDialog } from "@/components/billing/create-invoice-dialog";
@@ -102,25 +102,40 @@ function BillingContent() {
   const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
   const safePage = Math.max(page, 1);
 
+  const invParams = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      status: statusFilter,
+      month: monthFilter,
+      page: activeTab === "invoices" ? safePage : 1,
+      limit: safeLimit,
+    }),
+    [search, statusFilter, monthFilter, activeTab, safePage, safeLimit],
+  );
+
+  const payParams = useMemo(
+    () => ({
+      paysearch: paymentSearch.trim() || undefined,
+      page: activeTab === "payments" ? safePage : 1,
+      limit: safeLimit,
+    }),
+    [paymentSearch, activeTab, safePage, safeLimit],
+  );
+
   // TanStack Query
   const {
     data: invRes,
     isLoading: invoicesLoading,
     refetch: refetchInvoices,
     isFetching: invoicesFetching,
-  } = useInvoicesQuery({
-    search: search.trim() || undefined,
-    status: statusFilter,
-    month: monthFilter,
-    page: safePage,
-    limit: safeLimit,
-  });
+  } = useInvoicesQuery(invParams);
 
-  const { data: payRes, refetch: refetchPayments } = usePaymentsQuery({
-    paysearch: paymentSearch.trim() || undefined,
-    page: safePage,
-    limit: safeLimit,
-  });
+  const {
+    data: payRes,
+    isLoading: paymentsLoading,
+    refetch: refetchPayments,
+    isFetching: paymentsFetching,
+  } = usePaymentsQuery(payParams);
 
   const { data: custRes } = useCustomersQuery({ limit: 1000 });
   const { data: profiles = [] } = useProfilesQuery();
@@ -217,7 +232,7 @@ function BillingContent() {
             variant="outline"
             size="sm"
             onClick={refetchAll}
-            disabled={invoicesFetching}
+            disabled={invoicesFetching || paymentsFetching}
             className="gap-1.5 text-xs text-slate-600 dark:text-slate-400"
           >
             <RefreshCw
@@ -355,20 +370,26 @@ function BillingContent() {
       </div>
 
       {/* Main Tabs Container */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(t) => {
+          setActiveTab(t);
+          setPage(1);
+        }}
+      >
         <TabsList className="bg-slate-100 dark:bg-slate-800">
           <TabsTrigger value="invoices" className="gap-2">
             <Receipt className="h-4 w-4" />
             <span>Daftar Tagihan</span>
             <span className="ml-1 rounded-full bg-slate-200 dark:bg-slate-700 px-1.5 py-0.2 text-[10px] font-bold">
-              {invoices.length}
+              {totalInvoicesCount}
             </span>
           </TabsTrigger>
           <TabsTrigger value="payments" className="gap-2">
             <CreditCard className="h-4 w-4" />
             <span>Riwayat Pembayaran</span>
             <span className="ml-1 rounded-full bg-slate-200 dark:bg-slate-700 px-1.5 py-0.2 text-[10px] font-bold">
-              {payments.length}
+              {totalPaymentsCount}
             </span>
           </TabsTrigger>
         </TabsList>
@@ -395,7 +416,10 @@ function BillingContent() {
                   <div className="w-40">
                     <Select
                       value={statusFilter}
-                      onValueChange={setStatusFilter}
+                      onValueChange={(v) => {
+                        setStatusFilter(v);
+                        setPage(1);
+                      }}
                     >
                       <SelectTrigger className="h-9 text-xs">
                         <SelectValue placeholder="Status Tagihan" />
@@ -411,26 +435,28 @@ function BillingContent() {
                   </div>
 
                   <div className="w-36">
-                    <Select value={monthFilter} onValueChange={setMonthFilter}>
+                    <Select
+                      value={monthFilter}
+                      onValueChange={(v) => {
+                        setMonthFilter(v);
+                        setPage(1);
+                      }}
+                    >
                       <SelectTrigger className="h-9 text-xs">
                         <SelectValue placeholder="Bulan" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Semua Bulan</SelectItem>
-                        {/* Opsi bulan diambil dinamis dari data invoice yang
-                            tersedia (termasuk hasil generate massal) */}
-                        {Array.from(
-                          new Set(invoices.map((inv) => inv.periodMonth)),
-                        )
-                          .sort((a, b) => b - a)
-                          .map((m) => (
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map(
+                          (m) => (
                             <SelectItem key={m} value={String(m)}>
                               {new Date(2026, m - 1, 1).toLocaleDateString(
                                 "id-ID",
                                 { month: "long" },
                               )}
                             </SelectItem>
-                          ))}
+                          ),
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -447,6 +473,7 @@ function BillingContent() {
                         setSearch("");
                         setStatusFilter("all");
                         setMonthFilter("all");
+                        setPage(1);
                       }}
                       className="text-xs text-slate-500 hover:text-slate-900"
                     >
@@ -740,7 +767,15 @@ function BillingContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {payments.length === 0 ? (
+                    {paymentsLoading && !payRes ? (
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <tr key={i}>
+                          <td colSpan={7} className="p-4">
+                            <Skeleton className="h-5 w-full" />
+                          </td>
+                        </tr>
+                      ))
+                    ) : payments.length === 0 ? (
                       <tr>
                         <td
                           colSpan={7}
