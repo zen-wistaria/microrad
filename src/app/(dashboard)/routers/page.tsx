@@ -12,19 +12,29 @@ import {
   Plus,
   RefreshCw,
   Router as RouterIcon,
+  Search,
   Signal,
   Trash2,
   Unplug,
   WifiOff,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { RouterStatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useConnectRadiusMutation,
@@ -34,17 +44,53 @@ import {
   useRoutersQuery,
 } from "@/lib/api/hooks";
 import type { NasRouter } from "@/lib/types";
+import { useDebounce } from "@/lib/use-debounce";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 
 type BusyId = `${string}:${string}`;
 
 export default function RoutersPage() {
+  // Search & Filters (via nuqs)
+  const [search, setSearch] = useQueryState(
+    "search",
+    parseAsString.withDefault(""),
+  );
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
+  const [statusFilter, setStatusFilter] = useQueryState(
+    "status",
+    parseAsString.withDefault("all"),
+  );
+
+  // Pagination (via nuqs — default limit 6)
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(6).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50); // maksimal 50
+  const safePage = Math.max(page, 1);
+
+  const routerParams = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      status: statusFilter !== "all" ? statusFilter : undefined,
+      page: safePage,
+      limit: safeLimit,
+    }),
+    [search, statusFilter, safePage, safeLimit],
+  );
+
   const {
-    data: routers = [],
+    data: routersRes,
     isLoading: routersLoading,
     refetch: refreshAll,
     isFetching,
-  } = useRoutersQuery();
+  } = useRoutersQuery(routerParams);
+
+  const routers = routersRes?.data || [];
+  const totalRoutersCount = routersRes?.total || 0;
 
   const deleteRouterMutation = useDeleteRouterMutation();
   const pingRouterMutation = usePingRouterMutation();
@@ -54,7 +100,21 @@ export default function RoutersPage() {
   const [busy, setBusy] = useState<BusyId | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NasRouter | null>(null);
 
-  const loading = routersLoading && routers.length === 0;
+  const loading = routersLoading && !routersRes;
+  const totalPages = Math.ceil(totalRoutersCount / safeLimit) || 1;
+  const safePageNumber = Math.min(safePage, totalPages);
+
+  // Sync debounced search to URL state
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch);
+      setPage(1);
+    }
+  }, [debouncedSearch, search, setSearch, setPage]);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -170,10 +230,71 @@ export default function RoutersPage() {
         </div>
       </div>
 
+      {/* Filter and Search Bar */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Cari nama router, IP address, atau lokasi..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-9 text-xs sm:text-sm"
+              />
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <div className="w-52">
+                <Select
+                  value={statusFilter}
+                  onValueChange={(v) => {
+                    setStatusFilter(v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Status Router" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Status</SelectItem>
+                    <SelectItem value="online">Online (Ping + API)</SelectItem>
+                    <SelectItem value="online_ping_only">
+                      Online (Hanya Ping)
+                    </SelectItem>
+                    <SelectItem value="online_api_only">
+                      Online (Hanya API)
+                    </SelectItem>
+                    <SelectItem value="offline">Offline</SelectItem>
+                    <SelectItem value="unknown">Unknown</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(search || searchInput || statusFilter !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearchInput("");
+                    setSearch("");
+                    setStatusFilter("all");
+                    setPage(1);
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-900"
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Routers Grid */}
       {loading ? (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
+          {Array.from({ length: safeLimit }).map((_, i) => (
             <Card key={i}>
               <CardContent className="p-6 space-y-4">
                 <Skeleton className="h-6 w-3/4" />
@@ -433,6 +554,69 @@ export default function RoutersPage() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {/* Pagination Footer */}
+      {!loading && totalRoutersCount > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border border-slate-200 px-4 py-3 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl shadow-xs">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span>
+              Menampilkan{" "}
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {(safePageNumber - 1) * safeLimit + 1}
+              </span>{" "}
+              -{" "}
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {Math.min(safePageNumber * safeLimit, totalRoutersCount)}
+              </span>{" "}
+              dari{" "}
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {totalRoutersCount}
+              </span>{" "}
+              router
+            </span>
+            <Select
+              value={String(safeLimit)}
+              onValueChange={(v) => {
+                setLimit(Number(v));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-8 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="6">6</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="15">15</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePageNumber === 1}
+              className="h-8 px-3 text-xs"
+            >
+              Sebelumnya
+            </Button>
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+              Hal {safePageNumber} dari {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePageNumber === totalPages}
+              className="h-8 px-3 text-xs"
+            >
+              Selanjutnya
+            </Button>
+          </div>
         </div>
       )}
 

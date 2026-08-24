@@ -4,12 +4,40 @@ import { ensureSyncRuns } from "@/lib/mikrotik-sync";
 import { prisma } from "@/lib/prisma";
 import { syncRouterNas } from "@/lib/radsync";
 
-export const GET = asyncApi(async () => {
+export const GET = asyncApi(async (req: Request) => {
   await requirePermission("router.read");
   ensureSyncRuns();
-  const routers = await prisma.nasRouter.findMany({
-    orderBy: { name: "asc" },
-  });
+  const url = new URL(req.url);
+  const search = url.searchParams.get("search") || undefined;
+  const status = url.searchParams.get("status") || undefined;
+  const page = parseInt(url.searchParams.get("page") || "1", 10);
+  const limit = parseInt(url.searchParams.get("limit") || "6", 10);
+
+  const safeLimit = Math.min(Math.max(limit || 6, 1), 50);
+  const safePage = Math.max(page || 1, 1);
+
+  const where: Record<string, unknown> = {};
+  if (status && status !== "all") {
+    where.status = status;
+  }
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { ipAddress: { contains: search, mode: "insensitive" } },
+      { location: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  const [total, routers] = await Promise.all([
+    prisma.nasRouter.count({ where }),
+    prisma.nasRouter.findMany({
+      where,
+      orderBy: { name: "asc" },
+      skip: (safePage - 1) * safeLimit,
+      take: safeLimit,
+    }),
+  ]);
+
   // Sesi aktif per router = radacct online count by NAS IP (group by)
   const onlineCounts = await prisma.radAcct.groupBy({
     by: ["nasIpAddress"],
@@ -27,7 +55,7 @@ export const GET = asyncApi(async () => {
     apiPasswordSet: r.apiPassword !== null,
     activeSessionCount: countByIp.get(r.ipAddress) ?? 0,
   }));
-  return NextResponse.json({ data });
+  return NextResponse.json({ data, total });
 });
 
 export const POST = asyncApi(async (req: Request) => {

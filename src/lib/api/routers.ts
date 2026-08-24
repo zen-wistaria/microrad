@@ -1,10 +1,29 @@
 import type { NasRouter, NasRouterStatus } from "@/lib/types";
-import { apiFetch } from "./client";
+import { apiFetch, paginated } from "./client";
 
-export type GetRoutersParams = Record<string, unknown>;
+export interface GetRoutersParams {
+  search?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+}
 
-export async function getRouters(): Promise<NasRouter[]> {
-  return apiFetch<{ data: NasRouter[] }>("/routers").then((r) => r.data);
+export async function getRoutersPaginated(
+  params?: GetRoutersParams,
+): Promise<{ data: NasRouter[]; total: number }> {
+  return paginated<NasRouter>("/routers", {
+    search: params?.search,
+    status: params?.status,
+    page: params?.page,
+    limit: params?.limit ?? 6,
+  });
+}
+
+export async function getRouters(
+  params?: GetRoutersParams,
+): Promise<NasRouter[]> {
+  const limit = params?.limit ?? 1000;
+  return getRoutersPaginated({ ...params, limit }).then((r) => r.data);
 }
 
 export async function getRouterById(id: string): Promise<NasRouter | null> {

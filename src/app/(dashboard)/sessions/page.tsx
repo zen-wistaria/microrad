@@ -38,7 +38,8 @@ import { useDebounce } from "@/lib/use-debounce";
 import { formatBytes, getErrorMessage } from "@/lib/utils";
 
 export default function SessionsPage() {
-  const { data: routers = [] } = useRoutersQuery();
+  const { data: routersRes } = useRoutersQuery({ limit: 1000 });
+  const routers = routersRes?.data || [];
 
   // Search & Filter
   const [search, setSearch] = useQueryState(

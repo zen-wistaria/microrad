@@ -1,22 +1,29 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { queryKeys } from "../query-keys";
 import {
   connectRouterRadius,
   createRouter,
   deleteRouter,
   disconnectRouterRadius,
+  type GetRoutersParams,
   getRouterById,
-  getRouters,
+  getRoutersPaginated,
   pingRouter,
   type RouterPayload,
   syncRouterNow,
   updateRouter,
 } from "../routers";
 
-export function useRoutersQuery() {
+export function useRoutersQuery(params?: GetRoutersParams) {
   return useQuery({
-    queryKey: queryKeys.routers.all,
-    queryFn: getRouters,
+    queryKey: queryKeys.routers.list(params),
+    queryFn: () => getRoutersPaginated(params),
+    placeholderData: keepPreviousData,
   });
 }
 

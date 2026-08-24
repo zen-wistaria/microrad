@@ -131,9 +131,11 @@ export function PppProfileForm({
   const createMutation = useCreatePppProfileMutation();
   const updateMutation = useUpdatePppProfileMutation();
 
-  const { data: routersRes, isLoading: loadingRouters } = useRoutersQuery();
+  const { data: routersRes, isLoading: loadingRouters } = useRoutersQuery({
+    limit: 1000,
+  });
   const { data: groupsRes, isLoading: loadingGroups } = useProfileGroupsQuery();
-  const routers: NasRouter[] = routersRes || [];
+  const routers: NasRouter[] = routersRes?.data || [];
   const groups: ProfileGroup[] = groupsRes?.data || [];
 
   const {
