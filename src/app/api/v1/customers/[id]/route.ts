@@ -412,6 +412,8 @@ export const DELETE = asyncApi(
         const { sendDisconnect } = await import("@/lib/radius-coa");
         const coaResult = await sendDisconnect(customer.username, {
           acctSessionId: online.acctSessionId ?? undefined,
+          nasIp: online.nasIpAddress ?? undefined,
+          framedIp: online.framedIpAddress ?? undefined,
         });
         if (!coaResult.success) {
           await kickSessionByUsername(customer.username, customer.nasId);

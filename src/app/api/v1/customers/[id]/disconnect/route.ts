@@ -21,10 +21,12 @@ export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
     orderBy: { acctStartTime: "desc" },
   });
   if (online) {
-    // 1) CoA Disconnect-Request via FreeRADIUS (RFC 5176)
+    // 1) CoA Disconnect-Request via Native RFC 5176 UDP
     const { sendDisconnect } = await import("@/lib/radius-coa");
     const coaResult = await sendDisconnect(existing.username, {
       acctSessionId: online.acctSessionId ?? undefined,
+      nasIp: online.nasIpAddress ?? undefined,
+      framedIp: online.framedIpAddress ?? undefined,
     });
 
     // 2) Fallback RouterOS API bila CoA gagal/tidak dijawab ACK

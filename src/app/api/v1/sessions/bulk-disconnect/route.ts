@@ -53,6 +53,8 @@ export const POST = asyncApi(async (req: Request) => {
 
     const coaResult = await sendDisconnect(sess.username, {
       acctSessionId: sess.acctSessionId ?? undefined,
+      nasIp: sess.nasIpAddress ?? undefined,
+      framedIp: sess.framedIpAddress ?? undefined,
     });
 
     if (!coaResult.success) {

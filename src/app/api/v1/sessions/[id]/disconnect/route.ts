@@ -35,6 +35,8 @@ export const POST = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   const { sendDisconnect } = await import("@/lib/radius-coa");
   const coaResult = await sendDisconnect(username, {
     acctSessionId: acct.acctSessionId ?? undefined,
+    nasIp: acct.nasIpAddress ?? undefined,
+    framedIp: acct.framedIpAddress ?? undefined,
   });
 
   // 2) Fallback: RouterOS API bila CoA gagal/tidak dijawab ACK

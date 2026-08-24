@@ -65,6 +65,8 @@ export const POST = asyncApi(async (req: Request) => {
       if (online) {
         const coaResult = await sendDisconnect(customer.username, {
           acctSessionId: online.acctSessionId ?? undefined,
+          nasIp: online.nasIpAddress ?? undefined,
+          framedIp: online.framedIpAddress ?? undefined,
         });
 
         if (!coaResult.success) {
@@ -173,6 +175,8 @@ export const POST = asyncApi(async (req: Request) => {
       if (online) {
         const coaResult = await sendDisconnect(customer.username, {
           acctSessionId: online.acctSessionId ?? undefined,
+          nasIp: online.nasIpAddress ?? undefined,
+          framedIp: online.framedIpAddress ?? undefined,
         });
         if (!coaResult.success) {
           await kickSessionByUsername(customer.username, customer.nasId);
@@ -200,6 +204,8 @@ export const POST = asyncApi(async (req: Request) => {
         if (online) {
           const coaResult = await sendDisconnect(customer.username, {
             acctSessionId: online.acctSessionId ?? undefined,
+            nasIp: online.nasIpAddress ?? undefined,
+            framedIp: online.framedIpAddress ?? undefined,
           });
           if (!coaResult.success) {
             await kickSessionByUsername(customer.username, customer.nasId);
