@@ -109,6 +109,9 @@ export const GET = asyncApi(async (req: Request) => {
   }
 
   const total = rows.length;
+  const totalDownload = rows.reduce((acc, s) => acc + s.outputBytes, 0);
+  const totalUpload = rows.reduce((acc, s) => acc + s.inputBytes, 0);
+
   const pageRows = rows.slice(
     (safePage - 1) * safeLimit,
     (safePage - 1) * safeLimit + safeLimit,
@@ -117,5 +120,9 @@ export const GET = asyncApi(async (req: Request) => {
   return NextResponse.json({
     data: pageRows,
     total,
+    stats: {
+      totalDownload,
+      totalUpload,
+    },
   });
 });

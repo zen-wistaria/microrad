@@ -1,5 +1,5 @@
 import type { Session } from "@/lib/types";
-import { apiFetch, paginated } from "./client";
+import { apiFetch, toQuery } from "./client";
 
 export interface GetSessionsParams {
   activeOnly?: boolean;
@@ -13,20 +13,31 @@ export interface GetSessionsParams {
   router?: string;
 }
 
+export interface PaginatedSessionsResponse {
+  data: Session[];
+  total: number;
+  stats?: {
+    totalDownload: number;
+    totalUpload: number;
+  };
+}
+
 export async function getSessionsPaginated(
   params: GetSessionsParams = {},
-): Promise<{ data: Session[]; total: number }> {
-  return paginated<Session>("/sessions", {
-    activeOnly: params.activeOnly ? "true" : undefined,
-    customerId: params.customerId,
-    nasId: params.nasId,
-    search: params.search,
-    router: params.router,
-    year: params.year,
-    month: params.month,
-    page: params.page ?? 1,
-    limit: params.limit ?? 10,
-  });
+): Promise<PaginatedSessionsResponse> {
+  return apiFetch<PaginatedSessionsResponse>(
+    `/sessions${toQuery({
+      activeOnly: params.activeOnly ? "true" : undefined,
+      customerId: params.customerId,
+      nasId: params.nasId,
+      search: params.search,
+      router: params.router,
+      year: params.year,
+      month: params.month,
+      page: params.page ?? 1,
+      limit: params.limit ?? 10,
+    })}`,
+  );
 }
 
 async function fetchSessions(

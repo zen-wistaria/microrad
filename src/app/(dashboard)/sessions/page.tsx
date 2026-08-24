@@ -9,13 +9,8 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
-import {
-  parseAsInteger,
-  parseAsString,
-  parseAsStringEnum,
-  useQueryState,
-} from "nuqs";
-import { useEffect, useMemo, useState } from "react";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -55,9 +50,7 @@ export default function SessionsPage() {
 
   const [routerFilter, setRouterFilter] = useQueryState(
     "router",
-    parseAsStringEnum(["all", ...routers.map((r) => r.ipAddress)]).withDefault(
-      "all",
-    ),
+    parseAsString.withDefault("all"),
   );
 
   // Pagination (via nuqs — konsisten saat refresh)
@@ -181,15 +174,13 @@ export default function SessionsPage() {
     }
   };
 
-  // Aggregate KPI Stats
-  const totalDownloadActive = useMemo(
-    () => sessions.reduce((acc, s) => acc + s.outputBytes, 0),
-    [sessions],
-  );
-  const totalUploadActive = useMemo(
-    () => sessions.reduce((acc, s) => acc + s.inputBytes, 0),
-    [sessions],
-  );
+  // Aggregate KPI Stats (keseluruhan sesi aktif dari backend)
+  const totalDownloadActive =
+    sessRes?.stats?.totalDownload ??
+    sessions.reduce((acc, s) => acc + s.outputBytes, 0);
+  const totalUploadActive =
+    sessRes?.stats?.totalUpload ??
+    sessions.reduce((acc, s) => acc + s.inputBytes, 0);
 
   return (
     <div className="space-y-6">
@@ -288,7 +279,13 @@ export default function SessionsPage() {
 
             <div className="flex items-center gap-2.5">
               <div className="w-56">
-                <Select value={routerFilter} onValueChange={setRouterFilter}>
+                <Select
+                  value={routerFilter}
+                  onValueChange={(v) => {
+                    setRouterFilter(v);
+                    setPage(1);
+                  }}
+                >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder="Pilih NAS Router" />
                   </SelectTrigger>
