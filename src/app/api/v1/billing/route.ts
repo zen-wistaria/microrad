@@ -93,6 +93,7 @@ interface BillingQuery {
   tab?: string;
   page?: number;
   limit?: number;
+  customerId?: string;
 }
 
 export const GET = asyncApi(async (req: Request) => {
@@ -104,16 +105,18 @@ export const GET = asyncApi(async (req: Request) => {
     month: url.searchParams.get("month") || undefined,
     paysearch: url.searchParams.get("paysearch") || undefined,
     tab: url.searchParams.get("tab") || undefined,
+    customerId: url.searchParams.get("customerId") || undefined,
     page: parseInt(url.searchParams.get("page") || "1", 10),
     limit: parseInt(url.searchParams.get("limit") || "10", 10),
   };
 
-  const safeLimit = Math.min(Math.max(q.limit || 10, 1), 50);
+  const safeLimit = Math.min(Math.max(q.limit || 10, 1), 100);
   const safePage = Math.max(q.page || 1, 1);
   const tab = q.tab === "payments" ? "payments" : "invoices";
 
   // ── Filter invoice ──
   const invWhere: Record<string, unknown> = {};
+  if (q.customerId) invWhere.customerId = q.customerId;
   if (q.search) {
     invWhere.OR = [
       { customerUsername: { contains: q.search, mode: "insensitive" } },
@@ -126,6 +129,7 @@ export const GET = asyncApi(async (req: Request) => {
 
   // ── Filter payment ──
   const payWhere: Record<string, unknown> = {};
+  if (q.customerId) payWhere.customerId = q.customerId;
   if (q.paysearch) {
     payWhere.OR = [
       { invoiceNumber: { contains: q.paysearch, mode: "insensitive" } },

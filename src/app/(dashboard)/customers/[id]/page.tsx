@@ -177,16 +177,19 @@ export default function CustomerDetailPage({
   );
   const { data: monthlyUsage = [], isLoading: monthlyLoading } =
     useCustomerMonthlyUsageQuery(customerId, selectedYear);
-  const { data: invoicesRes } = useInvoicesQuery({ limit: 1000 });
 
-  const invoices = useMemo(() => {
-    if (!customer || !invoicesRes?.data) return [];
-    return invoicesRes.data.filter(
-      (inv) =>
-        inv.customerId === customer.id ||
-        inv.customerUsername === customer.username,
-    );
-  }, [customer, invoicesRes]);
+  const invFilter = useMemo(
+    () => ({
+      customerId,
+      page,
+      limit: safeLimit,
+    }),
+    [customerId, page, safeLimit],
+  );
+
+  const { data: invoicesRes } = useInvoicesQuery(invFilter);
+  const invoices = invoicesRes?.data || [];
+  const invoiceTotalCount = invoicesRes?.total ?? 0;
 
   const disconnectCustomerMutation = useDisconnectCustomerMutation();
   const updateCustomerMutation = useUpdateCustomerMutation();
@@ -248,6 +251,9 @@ export default function CustomerDetailPage({
     queryClient.invalidateQueries({
       queryKey: queryKeys.customers.monthlyUsage(customerId, selectedYear),
     });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.billing.invoices(invFilter),
+    });
     toast.success("Data pelanggan berhasil disegarkan.");
   };
 
@@ -255,13 +261,9 @@ export default function CustomerDetailPage({
   const sessionTotalPages = Math.ceil(sessionTotalCount / safeLimit) || 1;
   const sessionSafePage = Math.min(Math.max(page, 1), sessionTotalPages);
 
-  // Pagination slice — tab tagihan
-  const invoiceTotalPages = Math.ceil(invoices.length / safeLimit) || 1;
+  // Pagination — tab tagihan (server-side paginated)
+  const invoiceTotalPages = Math.ceil(invoiceTotalCount / safeLimit) || 1;
   const invoiceSafePage = Math.min(Math.max(page, 1), invoiceTotalPages);
-  const paginatedInvoices = useMemo(() => {
-    const start = (invoiceSafePage - 1) * safeLimit;
-    return invoices.slice(start, start + safeLimit);
-  }, [invoices, invoiceSafePage, safeLimit]);
 
   if (customerLoading && !customer) {
     return (
@@ -558,7 +560,7 @@ export default function CustomerDetailPage({
           </TabsTrigger>
           <TabsTrigger value="billing" className="gap-1.5 text-xs">
             <Receipt className="h-3.5 w-3.5" />
-            Tagihan ({invoices.length})
+            Tagihan ({invoiceTotalCount})
           </TabsTrigger>
         </TabsList>
 
@@ -1177,7 +1179,7 @@ export default function CustomerDetailPage({
                         </td>
                       </tr>
                     ) : (
-                      paginatedInvoices.map((inv) => (
+                      invoices.map((inv) => (
                         <tr
                           key={inv.id}
                           className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30"
@@ -1223,24 +1225,24 @@ export default function CustomerDetailPage({
               </div>
 
               {/* Pagination Footer — Tagihan */}
-              {invoices.length > 0 && (
+              {invoiceTotalCount > 0 && (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span>
                       Menampilkan{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {Math.min(
-                          (invoiceSafePage - 1) * safeLimit + 1,
-                          invoices.length,
-                        )}
+                        {(invoiceSafePage - 1) * safeLimit + 1}
                       </span>{" "}
                       -{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {Math.min(invoiceSafePage * safeLimit, invoices.length)}
+                        {Math.min(
+                          invoiceSafePage * safeLimit,
+                          invoiceTotalCount,
+                        )}
                       </span>{" "}
                       dari{" "}
                       <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {invoices.length}
+                        {invoiceTotalCount}
                       </span>{" "}
                       tagihan
                     </span>

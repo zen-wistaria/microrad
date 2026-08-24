@@ -14,6 +14,7 @@ export interface GetInvoicesParams {
   tab?: string;
   page?: number;
   limit?: number;
+  customerId?: string;
 }
 
 export async function getInvoicesPaginated(
@@ -23,6 +24,7 @@ export async function getInvoicesPaginated(
     search: params?.search,
     status: params?.status,
     month: params?.month,
+    customerId: params?.customerId,
     tab: "invoices",
     page: params?.page,
     limit: params?.limit,
@@ -33,9 +35,11 @@ export async function getPaymentsPaginated(params?: {
   paysearch?: string;
   page?: number;
   limit?: number;
+  customerId?: string;
 }): Promise<{ data: PaymentRecord[]; total: number }> {
   return paginated<PaymentRecord>("/billing", {
     paysearch: params?.paysearch,
+    customerId: params?.customerId,
     tab: "payments",
     page: params?.page,
     limit: params?.limit,
