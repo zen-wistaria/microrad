@@ -1,17 +1,24 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createProfileGroup,
   deleteProfileGroup,
+  type GetProfileGroupsParams,
   getProfileGroupById,
-  getProfileGroups,
+  getProfileGroupsPaginated,
   updateProfileGroup,
 } from "../profile-groups";
 import { queryKeys } from "../query-keys";
 
-export function useProfileGroupsQuery() {
+export function useProfileGroupsQuery(params?: GetProfileGroupsParams) {
   return useQuery({
-    queryKey: queryKeys.profileGroups.list(),
-    queryFn: () => getProfileGroups(),
+    queryKey: queryKeys.profileGroups.list(params),
+    queryFn: () => getProfileGroupsPaginated(params),
+    placeholderData: keepPreviousData,
   });
 }
 

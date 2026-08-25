@@ -112,7 +112,7 @@ export function CustomerForm({
   const [showPppoePassword, setShowPppoePassword] = useState(false);
   const [showPortalPassword, setShowPortalPassword] = useState(false);
 
-  const { data: groupsRes } = useProfileGroupsQuery();
+  const { data: groupsRes } = useProfileGroupsQuery({ limit: 1000 });
   const groups = initialGroups || groupsRes?.data || [];
 
   const createCustomerMutation = useCreateCustomerMutation();

@@ -134,7 +134,9 @@ export function PppProfileForm({
   const { data: routersRes, isLoading: loadingRouters } = useRoutersQuery({
     limit: 1000,
   });
-  const { data: groupsRes, isLoading: loadingGroups } = useProfileGroupsQuery();
+  const { data: groupsRes, isLoading: loadingGroups } = useProfileGroupsQuery({
+    limit: 1000,
+  });
   const routers: NasRouter[] = routersRes?.data || [];
   const groups: ProfileGroup[] = groupsRes?.data || [];
 

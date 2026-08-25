@@ -2,17 +2,35 @@ import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
-export const GET = asyncApi(async () => {
+export const GET = asyncApi(async (req: Request) => {
   await requirePermission("profile.read");
+  const url = new URL(req.url);
+  const search = url.searchParams.get("search") || undefined;
+  const page = parseInt(url.searchParams.get("page") || "1", 10);
+  const limit = parseInt(url.searchParams.get("limit") || "10", 10);
 
-  const bandwidths = await prisma.bandwidth.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      _count: {
-        select: { internetProfiles: true },
+  const safeLimit = Math.min(Math.max(limit || 10, 1), 50);
+  const safePage = Math.max(page || 1, 1);
+
+  const where: Record<string, unknown> = {};
+  if (search) {
+    where.name = { contains: search, mode: "insensitive" };
+  }
+
+  const [total, bandwidths] = await Promise.all([
+    prisma.bandwidth.count({ where }),
+    prisma.bandwidth.findMany({
+      where,
+      orderBy: { name: "asc" },
+      skip: (safePage - 1) * safeLimit,
+      take: safeLimit,
+      include: {
+        _count: {
+          select: { internetProfiles: true },
+        },
       },
-    },
-  });
+    }),
+  ]);
 
   const data = bandwidths.map((b) => ({
     ...b,
@@ -21,7 +39,7 @@ export const GET = asyncApi(async () => {
     pppProfileCount: b._count.internetProfiles,
   }));
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data, total });
 });
 
 export const POST = asyncApi(async (req: Request) => {

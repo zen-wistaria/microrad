@@ -1,8 +1,26 @@
 import type { Bandwidth } from "../types";
-import { apiFetch } from "./client";
+import { apiFetch, paginated } from "./client";
 
-export async function getBandwidths(): Promise<{ data: Bandwidth[] }> {
-  return apiFetch<{ data: Bandwidth[] }>("/bandwidths");
+export interface GetBandwidthsParams {
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export async function getBandwidthsPaginated(
+  params?: GetBandwidthsParams,
+): Promise<{ data: Bandwidth[]; total: number }> {
+  return paginated<Bandwidth>("/bandwidths", {
+    search: params?.search,
+    page: params?.page,
+    limit: params?.limit ?? 10,
+  });
+}
+
+export async function getBandwidths(
+  params?: GetBandwidthsParams,
+): Promise<{ data: Bandwidth[]; total: number }> {
+  return getBandwidthsPaginated(params);
 }
 
 export async function getBandwidthById(

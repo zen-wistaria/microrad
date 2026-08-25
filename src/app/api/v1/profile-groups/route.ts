@@ -2,27 +2,48 @@ import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
-export const GET = asyncApi(async () => {
+export const GET = asyncApi(async (req: Request) => {
   await requirePermission("profile.read");
+  const url = new URL(req.url);
+  const search = url.searchParams.get("search") || undefined;
+  const page = parseInt(url.searchParams.get("page") || "1", 10);
+  const limit = parseInt(url.searchParams.get("limit") || "10", 10);
 
-  const groups = await prisma.profileGroup.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      pppProfiles: {
-        include: {
-          nasRouter: {
-            select: { id: true, name: true, ipAddress: true },
+  const safeLimit = Math.min(Math.max(limit || 10, 1), 50);
+  const safePage = Math.max(page || 1, 1);
+
+  const where: Record<string, unknown> = {};
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { description: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  const [total, groups] = await Promise.all([
+    prisma.profileGroup.count({ where }),
+    prisma.profileGroup.findMany({
+      where,
+      orderBy: { name: "asc" },
+      skip: (safePage - 1) * safeLimit,
+      take: safeLimit,
+      include: {
+        pppProfiles: {
+          include: {
+            nasRouter: {
+              select: { id: true, name: true, ipAddress: true },
+            },
+          },
+        },
+        _count: {
+          select: {
+            pppProfiles: true,
+            customers: true,
           },
         },
       },
-      _count: {
-        select: {
-          pppProfiles: true,
-          customers: true,
-        },
-      },
-    },
-  });
+    }),
+  ]);
 
   const data = groups.map((g) => ({
     id: g.id,
@@ -39,7 +60,7 @@ export const GET = asyncApi(async () => {
     updatedAt: g.updatedAt.toISOString(),
   }));
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data, total });
 });
 
 export const POST = asyncApi(async (req: Request) => {

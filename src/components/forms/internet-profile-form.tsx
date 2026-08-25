@@ -55,7 +55,9 @@ export function InternetProfileForm({
   const createMutation = useCreateInternetProfileMutation();
   const updateMutation = useUpdateInternetProfileMutation();
 
-  const { data: bwRes, isLoading: loadingBw } = useBandwidthsQuery();
+  const { data: bwRes, isLoading: loadingBw } = useBandwidthsQuery({
+    limit: 1000,
+  });
   const bandwidths = bwRes?.data || [];
 
   const {

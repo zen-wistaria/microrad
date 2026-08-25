@@ -1,10 +1,26 @@
 import type { InternetProfile } from "../types";
-import { apiFetch } from "./client";
+import { apiFetch, paginated } from "./client";
 
-export async function getInternetProfiles(): Promise<{
-  data: InternetProfile[];
-}> {
-  return apiFetch<{ data: InternetProfile[] }>("/internet-profiles");
+export interface GetInternetProfilesParams {
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export async function getInternetProfilesPaginated(
+  params?: GetInternetProfilesParams,
+): Promise<{ data: InternetProfile[]; total: number }> {
+  return paginated<InternetProfile>("/internet-profiles", {
+    search: params?.search,
+    page: params?.page,
+    limit: params?.limit ?? 10,
+  });
+}
+
+export async function getInternetProfiles(
+  params?: GetInternetProfilesParams,
+): Promise<{ data: InternetProfile[]; total: number }> {
+  return getInternetProfilesPaginated(params);
 }
 
 export async function getInternetProfileById(

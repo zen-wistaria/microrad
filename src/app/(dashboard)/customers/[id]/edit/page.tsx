@@ -17,7 +17,7 @@ export default function EditCustomerPage({ params }: EditCustomerPageProps) {
   const { data: customer, isLoading: customerLoading } =
     useCustomerQuery(customerId);
   const { data: profilesRes, isLoading: profilesLoading } =
-    useInternetProfilesQuery();
+    useInternetProfilesQuery({ limit: 1000 });
 
   const profiles = profilesRes?.data || [];
 

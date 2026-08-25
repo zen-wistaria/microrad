@@ -102,7 +102,7 @@ export default function CustomersPage() {
     limit: safeLimit,
   });
 
-  const { data: netProfilesRes } = useInternetProfilesQuery();
+  const { data: netProfilesRes } = useInternetProfilesQuery({ limit: 1000 });
   const profiles = netProfilesRes?.data || [];
 
   const deleteCustomerMutation = useDeleteCustomerMutation();

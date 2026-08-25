@@ -1,17 +1,24 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createPppProfile,
   deletePppProfile,
+  type GetPppProfilesParams,
   getPppProfileById,
-  getPppProfiles,
+  getPppProfilesPaginated,
   updatePppProfile,
 } from "../ppp-profiles";
 import { queryKeys } from "../query-keys";
 
-export function usePppProfilesQuery() {
+export function usePppProfilesQuery(params?: GetPppProfilesParams) {
   return useQuery({
-    queryKey: queryKeys.pppProfiles.list(),
-    queryFn: () => getPppProfiles(),
+    queryKey: queryKeys.pppProfiles.list(params),
+    queryFn: () => getPppProfilesPaginated(params),
+    placeholderData: keepPreviousData,
   });
 }
 

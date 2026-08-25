@@ -7,7 +7,7 @@ import { useInternetProfilesQuery } from "@/lib/api/hooks";
 
 export default function NewCustomerPage() {
   const { data: profilesRes, isLoading: profilesLoading } =
-    useInternetProfilesQuery();
+    useInternetProfilesQuery({ limit: 1000 });
 
   const profiles = profilesRes?.data || [];
   const loading = profilesLoading && profiles.length === 0;

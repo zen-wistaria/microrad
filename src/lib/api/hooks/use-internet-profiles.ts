@@ -1,17 +1,24 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createInternetProfile,
   deleteInternetProfile,
+  type GetInternetProfilesParams,
   getInternetProfileById,
-  getInternetProfiles,
+  getInternetProfilesPaginated,
   updateInternetProfile,
 } from "../internet-profiles";
 import { queryKeys } from "../query-keys";
 
-export function useInternetProfilesQuery() {
+export function useInternetProfilesQuery(params?: GetInternetProfilesParams) {
   return useQuery({
-    queryKey: queryKeys.internetProfiles.list(),
-    queryFn: () => getInternetProfiles(),
+    queryKey: queryKeys.internetProfiles.list(params),
+    queryFn: () => getInternetProfilesPaginated(params),
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -7,10 +7,12 @@ import {
   Radio,
   RefreshCw,
   Router as RouterIcon,
+  Search,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -23,24 +25,72 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   useDeletePppProfileMutation,
   usePppProfilesQuery,
 } from "@/lib/api/hooks";
 import type { PppProfile } from "@/lib/types";
+import { useDebounce } from "@/lib/use-debounce";
 import { getErrorMessage } from "@/lib/utils";
 
 export default function PppProfilesPage() {
+  const [search, setSearch] = useQueryState(
+    "search",
+    parseAsString.withDefault(""),
+  );
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
+  const [limit, setLimit] = useQueryState(
+    "limit",
+    parseAsInteger.withDefault(10).withOptions({ history: "replace" }),
+  );
+  const safeLimit = Math.min(Math.max(limit, 1), 50);
+  const safePage = Math.max(page, 1);
+
+  const filterParams = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      page: safePage,
+      limit: safeLimit,
+    }),
+    [search, safePage, safeLimit],
+  );
+
   const {
     data: profilesRes,
     isLoading,
     refetch,
     isFetching,
-  } = usePppProfilesQuery();
+  } = usePppProfilesQuery(filterParams);
   const deleteMutation = useDeletePppProfileMutation();
 
   const profiles = profilesRes?.data || [];
+  const totalCount = profilesRes?.total || 0;
+  const totalPages = Math.ceil(totalCount / safeLimit) || 1;
+  const safePageNumber = Math.min(safePage, totalPages);
+
   const [deleteTarget, setDeleteTarget] = useState<PppProfile | null>(null);
+
+  useEffect(() => {
+    if (debouncedSearch !== search) {
+      setSearch(debouncedSearch);
+      setPage(1);
+    }
+  }, [debouncedSearch, search, setSearch, setPage]);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -86,12 +136,48 @@ export default function PppProfilesPage() {
         </div>
       </div>
 
+      {/* Filter and Search Bar */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Cari nama profile, local address gateway, atau IP pool..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-9 text-xs sm:text-sm"
+              />
+            </div>
+            {(search || searchInput) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchInput("");
+                  setSearch("");
+                  setPage(1);
+                }}
+                className="text-xs text-slate-500 hover:text-slate-900"
+              >
+                Reset
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Radio className="h-4 w-4 text-blue-600" />
-            Daftar PPP Profile Node
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Radio className="h-4 w-4 text-blue-600" />
+              Daftar PPP Profile Node
+            </CardTitle>
+            <span className="text-xs text-slate-400">
+              Total: {totalCount} profile
+            </span>
+          </div>
           <CardDescription>
             Konfigurasi interface PPP yang diterapkan pada router target.
           </CardDescription>
@@ -202,6 +288,69 @@ export default function PppProfilesPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Footer */}
+          {!isLoading && totalCount > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 px-4 py-3 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-b-xl">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>
+                  Menampilkan{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {(safePageNumber - 1) * safeLimit + 1}
+                  </span>{" "}
+                  -{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {Math.min(safePageNumber * safeLimit, totalCount)}
+                  </span>{" "}
+                  dari{" "}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {totalCount}
+                  </span>{" "}
+                  profile
+                </span>
+                <Select
+                  value={String(safeLimit)}
+                  onValueChange={(v) => {
+                    setLimit(Number(v));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-20 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePageNumber === 1}
+                  className="h-8 px-3 text-xs"
+                >
+                  Sebelumnya
+                </Button>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Hal {safePageNumber} dari {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePageNumber === totalPages}
+                  className="h-8 px-3 text-xs"
+                >
+                  Selanjutnya
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

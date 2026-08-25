@@ -1,8 +1,26 @@
 import type { ProfileGroup } from "../types";
-import { apiFetch } from "./client";
+import { apiFetch, paginated } from "./client";
 
-export async function getProfileGroups(): Promise<{ data: ProfileGroup[] }> {
-  return apiFetch<{ data: ProfileGroup[] }>("/profile-groups");
+export interface GetProfileGroupsParams {
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export async function getProfileGroupsPaginated(
+  params?: GetProfileGroupsParams,
+): Promise<{ data: ProfileGroup[]; total: number }> {
+  return paginated<ProfileGroup>("/profile-groups", {
+    search: params?.search,
+    page: params?.page,
+    limit: params?.limit ?? 10,
+  });
+}
+
+export async function getProfileGroups(
+  params?: GetProfileGroupsParams,
+): Promise<{ data: ProfileGroup[]; total: number }> {
+  return getProfileGroupsPaginated(params);
 }
 
 export async function getProfileGroupById(

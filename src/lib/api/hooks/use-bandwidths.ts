@@ -1,17 +1,24 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createBandwidth,
   deleteBandwidth,
+  type GetBandwidthsParams,
   getBandwidthById,
-  getBandwidths,
+  getBandwidthsPaginated,
   updateBandwidth,
 } from "../bandwidths";
 import { queryKeys } from "../query-keys";
 
-export function useBandwidthsQuery() {
+export function useBandwidthsQuery(params?: GetBandwidthsParams) {
   return useQuery({
-    queryKey: queryKeys.bandwidths.list(),
-    queryFn: () => getBandwidths(),
+    queryKey: queryKeys.bandwidths.list(params),
+    queryFn: () => getBandwidthsPaginated(params),
+    placeholderData: keepPreviousData,
   });
 }
 

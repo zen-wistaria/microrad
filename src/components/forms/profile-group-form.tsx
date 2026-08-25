@@ -53,7 +53,9 @@ export function ProfileGroupForm({
   const createMutation = useCreateProfileGroupMutation();
   const updateMutation = useUpdateProfileGroupMutation();
 
-  const { data: pppRes, isLoading: loadingPpp } = usePppProfilesQuery();
+  const { data: pppRes, isLoading: loadingPpp } = usePppProfilesQuery({
+    limit: 1000,
+  });
   const allPppProfiles = pppRes?.data || [];
 
   // Track checked PPP profiles

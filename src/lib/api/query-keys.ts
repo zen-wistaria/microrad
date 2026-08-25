@@ -1,6 +1,10 @@
+import type { GetBandwidthsParams } from "./bandwidths";
 import type { GetInvoicesParams } from "./billing";
 import type { GetCustomersParams } from "./customers";
+import type { GetInternetProfilesParams } from "./internet-profiles";
 import type { GetLogsParams } from "./logs";
+import type { GetPppProfilesParams } from "./ppp-profiles";
+import type { GetProfileGroupsParams } from "./profile-groups";
 import type { GetRoutersParams } from "./routers";
 import type { GetSessionsParams } from "./sessions";
 import type { GetUsersParams } from "./users";
@@ -33,35 +37,40 @@ export const queryKeys = {
   // Bandwidths
   bandwidths: {
     all: ["bandwidths"] as const,
-    list: () => ["bandwidths", "list"] as const,
+    list: (params?: GetBandwidthsParams) =>
+      ["bandwidths", "list", ...(params ? [params] : [])] as const,
     detail: (id: string) => ["bandwidths", "detail", id] as const,
   },
 
   // Profile Groups
   profileGroups: {
     all: ["profile-groups"] as const,
-    list: () => ["profile-groups", "list"] as const,
+    list: (params?: GetProfileGroupsParams) =>
+      ["profile-groups", "list", ...(params ? [params] : [])] as const,
     detail: (id: string) => ["profile-groups", "detail", id] as const,
   },
 
   // Internet Profiles (Paket Layanan)
   internetProfiles: {
     all: ["internet-profiles"] as const,
-    list: () => ["internet-profiles", "list"] as const,
+    list: (params?: GetInternetProfilesParams) =>
+      ["internet-profiles", "list", ...(params ? [params] : [])] as const,
     detail: (id: string) => ["internet-profiles", "detail", id] as const,
   },
 
   // PPP Profiles (Node MikroTik)
   pppProfiles: {
     all: ["ppp-profiles"] as const,
-    list: () => ["ppp-profiles", "list"] as const,
+    list: (params?: GetPppProfilesParams) =>
+      ["ppp-profiles", "list", ...(params ? [params] : [])] as const,
     detail: (id: string) => ["ppp-profiles", "detail", id] as const,
   },
 
   // Legacy Profiles (alias)
   profiles: {
     all: ["internet-profiles"] as const,
-    list: () => ["internet-profiles", "list"] as const,
+    list: (params?: GetInternetProfilesParams) =>
+      ["internet-profiles", "list", ...(params ? [params] : [])] as const,
     detail: (id: string) => ["internet-profiles", "detail", id] as const,
   },
 

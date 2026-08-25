@@ -2,18 +2,36 @@ import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
-export const GET = asyncApi(async () => {
+export const GET = asyncApi(async (req: Request) => {
   await requirePermission("profile.read");
+  const url = new URL(req.url);
+  const search = url.searchParams.get("search") || undefined;
+  const page = parseInt(url.searchParams.get("page") || "1", 10);
+  const limit = parseInt(url.searchParams.get("limit") || "10", 10);
 
-  const profiles = await prisma.internetProfile.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      bandwidth: true,
-      _count: {
-        select: { customers: true },
+  const safeLimit = Math.min(Math.max(limit || 10, 1), 50);
+  const safePage = Math.max(page || 1, 1);
+
+  const where: Record<string, unknown> = {};
+  if (search) {
+    where.name = { contains: search, mode: "insensitive" };
+  }
+
+  const [total, profiles] = await Promise.all([
+    prisma.internetProfile.count({ where }),
+    prisma.internetProfile.findMany({
+      where,
+      orderBy: { name: "asc" },
+      skip: (safePage - 1) * safeLimit,
+      take: safeLimit,
+      include: {
+        bandwidth: true,
+        _count: {
+          select: { customers: true },
+        },
       },
-    },
-  });
+    }),
+  ]);
 
   const data = profiles.map((p) => ({
     ...p,
@@ -22,7 +40,7 @@ export const GET = asyncApi(async () => {
     customerCount: p._count.customers,
   }));
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data, total });
 });
 
 export const POST = asyncApi(async (req: Request) => {

@@ -1,8 +1,26 @@
 import type { PppProfile } from "../types";
-import { apiFetch } from "./client";
+import { apiFetch, paginated } from "./client";
 
-export async function getPppProfiles(): Promise<{ data: PppProfile[] }> {
-  return apiFetch<{ data: PppProfile[] }>("/ppp-profiles");
+export interface GetPppProfilesParams {
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export async function getPppProfilesPaginated(
+  params?: GetPppProfilesParams,
+): Promise<{ data: PppProfile[]; total: number }> {
+  return paginated<PppProfile>("/ppp-profiles", {
+    search: params?.search,
+    page: params?.page,
+    limit: params?.limit ?? 10,
+  });
+}
+
+export async function getPppProfiles(
+  params?: GetPppProfilesParams,
+): Promise<{ data: PppProfile[]; total: number }> {
+  return getPppProfilesPaginated(params);
 }
 
 export async function getPppProfileById(

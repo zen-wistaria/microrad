@@ -40,20 +40,43 @@ export function validatePppProfileIps(
   }
 }
 
-export const GET = asyncApi(async () => {
+export const GET = asyncApi(async (req: Request) => {
   await requirePermission("profile.read");
+  const url = new URL(req.url);
+  const search = url.searchParams.get("search") || undefined;
+  const page = parseInt(url.searchParams.get("page") || "1", 10);
+  const limit = parseInt(url.searchParams.get("limit") || "10", 10);
 
-  const profiles = await prisma.pppProfile.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      nasRouter: {
-        select: { id: true, name: true, ipAddress: true },
+  const safeLimit = Math.min(Math.max(limit || 10, 1), 50);
+  const safePage = Math.max(page || 1, 1);
+
+  const where: Record<string, unknown> = {};
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { localAddress: { contains: search, mode: "insensitive" } },
+      { rangeIpStart: { contains: search, mode: "insensitive" } },
+      { rangeIpEnd: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  const [total, profiles] = await Promise.all([
+    prisma.pppProfile.count({ where }),
+    prisma.pppProfile.findMany({
+      where,
+      orderBy: { name: "asc" },
+      skip: (safePage - 1) * safeLimit,
+      take: safeLimit,
+      include: {
+        nasRouter: {
+          select: { id: true, name: true, ipAddress: true },
+        },
+        profileGroup: {
+          select: { id: true, name: true },
+        },
       },
-      profileGroup: {
-        select: { id: true, name: true },
-      },
-    },
-  });
+    }),
+  ]);
 
   const data = profiles.map((p) => ({
     ...p,
@@ -61,7 +84,7 @@ export const GET = asyncApi(async () => {
     updatedAt: p.updatedAt.toISOString(),
   }));
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data, total });
 });
 
 export const POST = asyncApi(async (req: Request) => {
