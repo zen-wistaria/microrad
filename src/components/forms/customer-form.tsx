@@ -158,7 +158,8 @@ export function CustomerForm({
 
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId);
   const selectedGroup = groups.find((g) => g.id === selectedGroupId);
-  const groupNodes = selectedGroup?.pppProfiles || [];
+  const _groupNodes = selectedGroup?.pppProfiles || [];
+  const groupRouters = selectedGroup?.routers || [];
 
   const handleRandomizePppoePassword = () => {
     setValue("password", generatePppoePassword(8), { shouldValidate: true });
@@ -175,12 +176,12 @@ export function CustomerForm({
       const cleanEmail = data.email?.trim() || undefined;
       const cleanPortalPassword = data.portalPassword?.trim() || undefined;
 
-      if (isEditing && initialData) {
-        const groupNasIps = (selectedGroup?.pppProfiles || [])
-          .map((p) => p.nasRouter?.ipAddress)
-          .filter((ip): ip is string => Boolean(ip));
-        const groupFirstNasId = selectedGroup?.pppProfiles?.[0]?.nasId;
+      const groupNasIps = (selectedGroup?.routers || [])
+        .map((r) => r.ipAddress)
+        .filter((ip): ip is string => Boolean(ip));
+      const groupFirstNasId = selectedGroup?.routers?.[0]?.id;
 
+      if (isEditing && initialData) {
         await updateCustomerMutation.mutateAsync({
           id: initialData.id,
           updates: {
@@ -208,11 +209,6 @@ export function CustomerForm({
         );
         router.push(`/customers/${initialData.id}`);
       } else {
-        const groupNasIps = (selectedGroup?.pppProfiles || [])
-          .map((p) => p.nasRouter?.ipAddress)
-          .filter((ip): ip is string => Boolean(ip));
-        const groupFirstNasId = selectedGroup?.pppProfiles?.[0]?.nasId;
-
         const created = await createCustomerMutation.mutateAsync({
           email: cleanEmail,
           portalPassword: cleanPortalPassword,
@@ -646,21 +642,19 @@ export function CustomerForm({
                     variant="outline"
                     className="text-[10px] font-mono text-indigo-600"
                   >
-                    {groupNodes.length} Node Router
+                    {groupRouters.length} Router NAS
                   </Badge>
                 </div>
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
                   <RouterIcon className="h-4 w-4 text-indigo-600" />
-                  {groupNodes.length > 0
-                    ? groupNodes
-                        .map((p) => p.nasRouter?.name || p.name)
-                        .join(", ")
-                    : "Pilih Profile Group di atas"}
+                  {groupRouters.length > 0
+                    ? groupRouters.map((r) => r.name).join(", ")
+                    : "Pilih Wilayah (Area Group) di atas"}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {groupNodes.length > 0
-                    ? `Zona Failover Otomatis: Pelanggan dapat tersambung ke ${groupNodes.length} router di wilayah ini.`
-                    : "Pilih Wilayah (Profile Group) di atas."}
+                  {groupRouters.length > 0
+                    ? `Zona Failover Otomatis: Pelanggan dapat tersambung ke ${groupRouters.length} router di wilayah ini.`
+                    : "Pilih Wilayah (Area Group) di atas."}
                 </p>
               </div>
             </div>
@@ -692,7 +686,7 @@ export function CustomerForm({
                   </span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                     {bindOnNas
-                      ? `🔒 Zero-Touch Failover: Pelanggan HANYA diizinkan dial PPPoE melalui router yang terdaftar di ${selectedGroup?.name || "wilayah ini"} (${groupNodes.map((p) => p.nasRouter?.name || p.name).join(", ") || "semua node"}). Jika 1 router mati, pelanggan otomatis dial ke router lain dalam wilayah yang sama.`
+                      ? `🔒 Zero-Touch Failover: Pelanggan HANYA diizinkan dial PPPoE melalui router yang terdaftar di ${selectedGroup?.name || "wilayah ini"} (${groupRouters.map((r) => r.name).join(", ") || "semua node"}). Jika 1 router mati, pelanggan otomatis dial ke router lain dalam wilayah yang sama.`
                       : "🔓 Mode Bebas / Global Failover (Default): Pelanggan dapat dial melalui router NAS mana pun di seluruh jaringan ISP."}
                   </span>
                 </div>

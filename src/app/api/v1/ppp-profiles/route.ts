@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
+import { syncSingleProfileToRouters } from "@/lib/mikrotik-ppp-profile";
 import { prisma } from "@/lib/prisma";
+import { syncAreaGroupRadiusBulk, syncPppProfileIpPool } from "@/lib/radsync";
 
 export function ipToNumber(ip: string): number {
   const parts = ip.trim().split(".").map(Number);
@@ -19,11 +21,11 @@ export function ipToNumber(ip: string): number {
 }
 
 export function validatePppProfileIps(
-  local: string,
-  start: string,
-  end: string,
+  local?: string | null,
+  start?: string | null,
+  end?: string | null,
 ) {
-  const localNum = ipToNumber(local);
+  if (!start || !end) return;
   const startNum = ipToNumber(start);
   const endNum = ipToNumber(end);
 
@@ -33,10 +35,13 @@ export function validatePppProfileIps(
     );
   }
 
-  if (localNum >= startNum && localNum <= endNum) {
-    throw new Error(
-      `Local Address Gateway (${local}) tidak boleh berada di dalam rentang Range IP (${start} - ${end}).`,
-    );
+  if (local?.trim()) {
+    const localNum = ipToNumber(local.trim());
+    if (localNum >= startNum && localNum <= endNum) {
+      throw new Error(
+        `Local Address Gateway (${local}) tidak boleh berada di dalam rentang Range IP (${start} - ${end}).`,
+      );
+    }
   }
 }
 
@@ -44,6 +49,7 @@ export const GET = asyncApi(async (req: Request) => {
   await requirePermission("profile.read");
   const url = new URL(req.url);
   const search = url.searchParams.get("search") || undefined;
+  const serviceType = url.searchParams.get("serviceType") || undefined;
   const page = parseInt(url.searchParams.get("page") || "1", 10);
   const limit = parseInt(url.searchParams.get("limit") || "10", 10);
 
@@ -51,6 +57,9 @@ export const GET = asyncApi(async (req: Request) => {
   const safePage = Math.max(page || 1, 1);
 
   const where: Record<string, unknown> = {};
+  if (serviceType && (serviceType === "PPP" || serviceType === "HOTSPOT")) {
+    where.serviceType = serviceType;
+  }
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },
@@ -68,10 +77,7 @@ export const GET = asyncApi(async (req: Request) => {
       skip: (safePage - 1) * safeLimit,
       take: safeLimit,
       include: {
-        nasRouter: {
-          select: { id: true, name: true, ipAddress: true },
-        },
-        profileGroup: {
+        areaGroup: {
           select: { id: true, name: true },
         },
       },
@@ -80,6 +86,9 @@ export const GET = asyncApi(async (req: Request) => {
 
   const data = profiles.map((p) => ({
     ...p,
+    type: p.serviceType, // backward compatibility
+    profileGroupId: p.areaGroupId,
+    profileGroup: p.areaGroup,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   }));
@@ -92,86 +101,95 @@ export const POST = asyncApi(async (req: Request) => {
   const body = await req.json();
 
   const name = body.name?.trim();
-  if (!name) throw new Error("Nama PPP Profile wajib diisi.");
+  if (!name) throw new Error("Nama Profile wajib diisi.");
 
-  const nasId = body.nasId?.trim();
-  if (!nasId) throw new Error("Wajib memilih Router NAS.");
-
-  const router = await prisma.nasRouter.findUnique({ where: { id: nasId } });
-  if (!router) throw new Error("Router NAS yang dipilih tidak ditemukan.");
-
-  const type = body.type || "PPP";
+  const serviceType = (body.serviceType || body.type || "PPP").toUpperCase();
   const ipModule = body.ipModule || "sql";
-  const localAddress = body.localAddress?.trim();
-  const rangeIpStart = body.rangeIpStart?.trim();
-  const rangeIpEnd = body.rangeIpEnd?.trim();
+  const localAddress = body.localAddress?.trim() || null;
+  const rangeIpStart = body.rangeIpStart?.trim() || null;
+  const rangeIpEnd = body.rangeIpEnd?.trim() || null;
   const dnsServers = body.dnsServers?.trim() || "8.8.8.8,8.8.4.4";
+  const sessionTimeout = body.sessionTimeout
+    ? parseInt(String(body.sessionTimeout), 10)
+    : null;
+  const idleTimeout = body.idleTimeout
+    ? parseInt(String(body.idleTimeout), 10)
+    : null;
   const parentQueue = body.parentQueue?.trim() || null;
-  const profileGroupId = body.profileGroupId?.trim() || null;
 
-  if (!localAddress) throw new Error("Local Address (Gateway) wajib diisi.");
-  if (!rangeIpStart) throw new Error("Range IP Start wajib diisi.");
-  if (!rangeIpEnd) throw new Error("Range IP End wajib diisi.");
+  // Khusus Hotspot
+  const insertQueueBefore = body.insertQueueBefore?.trim() || null;
+  const keepaliveTimeout = body.keepaliveTimeout?.trim() || null;
+  const addMacCookie = Boolean(body.addMacCookie);
+  const macCookieTimeout = body.macCookieTimeout?.trim() || null;
 
-  validatePppProfileIps(localAddress, rangeIpStart, rangeIpEnd);
+  const areaGroupId =
+    body.areaGroupId?.trim() || body.profileGroupId?.trim() || null;
 
-  if (profileGroupId) {
-    const group = await prisma.profileGroup.findUnique({
-      where: { id: profileGroupId },
-    });
-    if (!group) throw new Error("Profile Group tidak ditemukan.");
+  if (rangeIpStart && rangeIpEnd) {
+    validatePppProfileIps(localAddress, rangeIpStart, rangeIpEnd);
   }
 
-  const { syncPppProfileIpPool, syncProfileGroupRadiusBulk } = await import(
-    "@/lib/radsync"
-  );
+  if (areaGroupId) {
+    const area = await prisma.areaGroup.findUnique({
+      where: { id: areaGroupId },
+    });
+    if (!area) throw new Error("Wilayah (Area Group) tidak ditemukan.");
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     const ppp = await tx.pppProfile.create({
       data: {
         id: `ppp-${Date.now()}`,
         name,
-        nasId,
-        type,
+        serviceType,
         ipModule,
         localAddress,
         rangeIpStart,
         rangeIpEnd,
         dnsServers,
+        sessionTimeout,
+        idleTimeout,
         parentQueue,
-        profileGroupId,
+        insertQueueBefore,
+        keepaliveTimeout,
+        addMacCookie,
+        macCookieTimeout,
+        areaGroupId,
       },
       include: {
-        nasRouter: {
-          select: { id: true, name: true, ipAddress: true },
-        },
-        profileGroup: {
+        areaGroup: {
           select: { id: true, name: true },
         },
       },
     });
 
     await syncPppProfileIpPool(tx, ppp.id);
-    if (ppp.profileGroupId) {
-      await syncProfileGroupRadiusBulk(tx, ppp.profileGroupId);
+    if (ppp.areaGroupId) {
+      await syncAreaGroupRadiusBulk(tx, ppp.areaGroupId);
     }
     return ppp;
   });
 
-  // Otomatis sinkronisasi pembuatan profile ke router MikroTik via API
-  const { syncPppProfileToRouter } = await import("@/lib/mikrotik-ppp-profile");
-  await syncPppProfileToRouter({
-    nasId: created.nasId,
-    name: created.name,
-    localAddress: created.localAddress,
-    dnsServers: created.dnsServers,
-    parentQueue: created.parentQueue,
-  });
+  // Otomatis sinkronisasi pembuatan profile ke seluruh router di Wilayah terkait via API
+  let syncResults: string[] = [];
+  if (created.areaGroupId) {
+    try {
+      const syncRes = await syncSingleProfileToRouters(created.id);
+      syncResults = syncRes.results;
+    } catch (err) {
+      console.warn(`[ppp-profile-create] Auto sync ke router gagal:`, err);
+    }
+  }
 
   return NextResponse.json(
     {
       data: {
         ...created,
+        type: created.serviceType,
+        profileGroupId: created.areaGroupId,
+        profileGroup: created.areaGroup,
+        syncResults,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),
       },

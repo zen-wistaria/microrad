@@ -6,7 +6,6 @@ import {
   Plus,
   Radio,
   RefreshCw,
-  Router as RouterIcon,
   Search,
   Trash2,
 } from "lucide-react";
@@ -205,11 +204,11 @@ export default function PppProfilesPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-900/50 text-xs font-semibold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="px-4 py-3">Nama Profile</th>
-                    <th className="px-4 py-3">Router NAS Target</th>
+                    <th className="px-4 py-3">Nama Profil</th>
+                    <th className="px-4 py-3">Layanan</th>
+                    <th className="px-4 py-3">Wilayah (Area Group)</th>
                     <th className="px-4 py-3">Local Address (Gateway)</th>
                     <th className="px-4 py-3">Range IP Pool Client</th>
-                    <th className="px-4 py-3">Profile Group (Wilayah)</th>
                     <th className="px-4 py-3">IP Module</th>
                     <th className="px-4 py-3 text-right">Aksi</th>
                   </tr>
@@ -220,40 +219,54 @@ export default function PppProfilesPage() {
                       key={p.id}
                       className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors"
                     >
-                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
-                        {p.name}
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">
+                          {p.name}
+                        </p>
+                        {p.parentQueue && (
+                          <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                            Parent: {p.parentQueue}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                          <RouterIcon className="h-3.5 w-3.5 text-indigo-500" />
-                          <span className="font-medium">
-                            {p.nasRouter?.name || p.nasId}
-                          </span>
-                          <span className="font-mono text-[11px] text-slate-400">
-                            ({p.nasRouter?.ipAddress || "-"})
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                        {p.localAddress}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
-                        {p.rangeIpStart} - {p.rangeIpEnd}
+                        <Badge
+                          variant={
+                            p.serviceType === "HOTSPOT"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className={
+                            p.serviceType === "HOTSPOT"
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 text-[11px]"
+                              : "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300 text-[11px]"
+                          }
+                        >
+                          {p.serviceType || "PPP"}
+                        </Badge>
                       </td>
                       <td className="px-4 py-3">
-                        {p.profileGroup ? (
+                        {p.areaGroup ? (
                           <Badge
                             variant="secondary"
-                            className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 flex items-center gap-1 w-fit"
+                            className="bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 flex items-center gap-1 w-fit text-xs"
                           >
                             <Network className="h-3 w-3" />
-                            {p.profileGroup.name}
+                            {p.areaGroup.name}
                           </Badge>
                         ) : (
                           <span className="text-slate-400 text-xs italic">
-                            Tanpa Group
+                            Bebas / Tanpa Wilayah
                           </span>
                         )}
+                      </td>
+                      <td className="px-4 py-3 font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                        {p.localAddress || "-"}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
+                        {p.rangeIpStart && p.rangeIpEnd
+                          ? `${p.rangeIpStart} - ${p.rangeIpEnd}`
+                          : "-"}
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant="outline" className="text-xs">

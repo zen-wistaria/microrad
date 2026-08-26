@@ -42,7 +42,7 @@ export const GET = asyncApi(async (req: Request) => {
   }
   if (q.status && q.status !== "all") where.status = q.status;
   if (q.profile && q.profile !== "all") where.profileId = q.profile;
-  if (q.group && q.group !== "all") where.profileGroupId = q.group;
+  if (q.group && q.group !== "all") where.areaGroupId = q.group;
 
   const [total, rows] = await Promise.all([
     prisma.customer.count({ where }),
@@ -57,13 +57,10 @@ export const GET = asyncApi(async (req: Request) => {
             bandwidth: true,
           },
         },
-        profileGroup: {
+        areaGroup: {
           include: {
-            pppProfiles: {
-              include: {
-                nasRouter: true,
-              },
-            },
+            routers: true,
+            pppProfiles: true,
           },
         },
         router: true,
@@ -85,6 +82,8 @@ export const GET = asyncApi(async (req: Request) => {
 
   const data = rows.map((c) => ({
     ...c,
+    profileGroupId: c.areaGroupId,
+    profileGroup: c.areaGroup,
     isOnline: onlineUsernames.has(c.username),
     lastSeenAt: c.lastSeenAt ? c.lastSeenAt.toISOString() : undefined,
     createdAt: c.createdAt.toISOString(),
@@ -118,60 +117,42 @@ async function generateServerUniquePppoeUsername(
     }),
   ]);
 
-  const existingNums = new Set<number>();
+  const existingSuffixes = new Set<number>();
   for (const c of [...custMatches, ...radMatches]) {
-    const seqPart = c.username.slice(datePrefix.length);
-    const num = parseInt(seqPart, 10);
-    if (!Number.isNaN(num)) {
-      existingNums.add(num);
+    const suffixStr = c.username.slice(datePrefix.length);
+    if (/^\d{3,4}$/.test(suffixStr)) {
+      existingSuffixes.add(parseInt(suffixStr, 10));
     }
   }
 
-  let seq = 1;
-  while (existingNums.has(seq)) {
-    seq++;
+  let nextNum = 1;
+  while (existingSuffixes.has(nextNum)) {
+    nextNum++;
   }
-
-  return `${datePrefix}${String(seq).padStart(4, "0")}`;
+  return `${datePrefix}${String(nextNum).padStart(3, "0")}`;
 }
 
 export const POST = asyncApi(async (req: Request) => {
   await requirePermission("customer.create");
-  const body = (await req.json()) as {
-    username?: string;
-    fullName?: string;
-    email?: string;
-    phone?: string;
-    address?: string;
-    status?: string;
-    profileId?: string | null;
-    profileGroupId?: string | null;
-    staticIp?: string;
-    nasId?: string | null;
-    bindOnNas?: boolean;
-    sessionMode?: "single" | "multi" | string;
-    maxSimultaneous?: number;
-    allowedNasIps?: string[];
-    password?: string;
-    portalPassword?: string;
-  };
+  const body = await req.json();
 
-  // 1. Username PPPoE: auto-generate jika kosong, pastikan unik
   let username = body.username?.trim();
   if (!username) {
     username = await generateServerUniquePppoeUsername();
   }
 
-  const [dupCustomer, dupRad] = await Promise.all([
+  // 1. Validasi keunikan username di DB App & FreeRADIUS radcheck
+  const [dupCustomer, dupRadcheck] = await Promise.all([
     prisma.customer.findFirst({
       where: { username: { equals: username, mode: "insensitive" } },
     }),
     prisma.radCheck.findFirst({
-      where: { username },
+      where: { username: { equals: username, mode: "insensitive" } },
     }),
   ]);
-  if (dupCustomer || dupRad) {
-    throw new Error(`Username PPPoE '${username}' sudah terdaftar.`);
+
+  if (dupCustomer || dupRadcheck) {
+    throw new Error(`Username PPPoE '${username}' sudah digunakan.`);
   }
 
   // 2. Password PPPoE: auto-generate jika kosong
@@ -197,10 +178,13 @@ export const POST = asyncApi(async (req: Request) => {
     }
   }
 
+  const areaGroupId =
+    body.areaGroupId?.trim() || body.profileGroupId?.trim() || null;
+
   const customer = await prisma.$transaction(async (tx) => {
     const customerId = username;
 
-    // Ambil Internet Profile & Profile Group
+    // Ambil Internet Profile & Area Group
     const internetProf = body.profileId
       ? await tx.internetProfile.findUnique({
           where: { id: body.profileId },
@@ -208,23 +192,21 @@ export const POST = asyncApi(async (req: Request) => {
         })
       : null;
 
-    const profileGroup = body.profileGroupId
-      ? await tx.profileGroup.findUnique({
-          where: { id: body.profileGroupId },
+    const areaGroup = areaGroupId
+      ? await tx.areaGroup.findUnique({
+          where: { id: areaGroupId },
           include: {
-            pppProfiles: {
-              include: { nasRouter: true },
-            },
+            routers: true,
+            pppProfiles: true,
           },
         })
       : null;
 
-    const groupNasIps = (profileGroup?.pppProfiles ?? [])
-      .map((p) => p.nasRouter?.ipAddress)
+    const groupNasIps = (areaGroup?.routers ?? [])
+      .map((r) => r.ipAddress)
       .filter((ip): ip is string => Boolean(ip));
 
-    const nasId =
-      profileGroup?.pppProfiles[0]?.nasId ?? body.nasId ?? undefined;
+    const nasId = areaGroup?.routers[0]?.id ?? body.nasId ?? undefined;
     const nasIp = groupNasIps[0];
     const allowedNasIps = body.bindOnNas ? groupNasIps : [];
 
@@ -239,7 +221,7 @@ export const POST = asyncApi(async (req: Request) => {
         address: body.address,
         status: body.status ?? "active",
         profileId: body.profileId ?? undefined,
-        profileGroupId: body.profileGroupId ?? undefined,
+        areaGroupId,
         staticIp: body.staticIp?.trim() || undefined,
         nasId,
         bindOnNas: body.bindOnNas ?? false,
@@ -279,8 +261,8 @@ export const POST = asyncApi(async (req: Request) => {
 
     // radsync — tulis radcheck/radreply (dibaca FreeRADIUS) atomik
     const sqlNode =
-      profileGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
-      profileGroup?.pppProfiles[0];
+      areaGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
+      areaGroup?.pppProfiles[0];
     const poolName = sqlNode?.ipModule === "sql" ? sqlNode.name : null;
 
     await syncCustomerRadius(
@@ -288,6 +270,7 @@ export const POST = asyncApi(async (req: Request) => {
       { ...created, poolName },
       internetProf
         ? {
+            name: internetProf.name,
             bandwidth: internetProf.bandwidth,
             priority: internetProf.priority,
             dnsServers: sqlNode?.dnsServers,

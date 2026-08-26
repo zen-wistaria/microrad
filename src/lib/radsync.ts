@@ -9,7 +9,6 @@ import type { Prisma } from "@/generated/prisma";
 import {
   type BandwidthRateInput,
   formatBandwidthRateLimit,
-  rateLimitValue,
 } from "./radius-format";
 
 /** Bentuk minimal data yang dibutuhkan radsync (dari prisma/route). */
@@ -25,6 +24,7 @@ export interface RadiusCustomerInput {
   poolName?: string | null;
 }
 export interface RadiusProfileInput {
+  name?: string;
   // Dukungan data baru BandwidthRateInput
   bandwidth?: BandwidthRateInput | null;
   priority?: number | null;
@@ -200,7 +200,8 @@ async function syncCustomerRadiusRows(
     where: { username: u, attribute: "NAS-IP-Address" },
   });
 
-  // radreply: Framed-IP-Address (static IP)
+  // ── radusergroup & radreply ──
+  // radreply: Framed-IP-Address (HANYA untuk static IP per pelanggan)
   if (customer.staticIp) {
     await tx.radReply.upsert({
       where: {
@@ -214,130 +215,53 @@ async function syncCustomerRadiusRows(
         value: customer.staticIp,
       },
     });
-    await tx.radReply.deleteMany({
-      where: { username: u, attribute: "Framed-Pool" },
-    });
   } else {
-    // Pelanggan dinamis: Framed-Pool & Mikrotik-Group disematkan secara dinamis oleh policy FreeRADIUS
-    // (set_ippool_name) berdasarkan router tempat dial-in dan ProfileGroup pelanggan.
     await tx.radReply.deleteMany({
-      where: {
-        username: u,
-        attribute: {
-          in: ["Framed-IP-Address", "Framed-Pool", "Mikrotik-Group"],
-        },
-      },
+      where: { username: u, attribute: "Framed-IP-Address" },
     });
   }
 
-  // radreply: Mikrotik-Rate-Limit dari profil
-  if (profile) {
-    let rate = "";
-    if (profile.bandwidth) {
-      rate = formatBandwidthRateLimit(profile.bandwidth, profile.priority ?? 8);
-    } else if (profile.rateLimitDown && profile.rateLimitUp) {
-      rate = rateLimitValue({
-        maxDownload: `${profile.rateLimitDown}M`,
-        maxUpload: `${profile.rateLimitUp}M`,
-        burstDownload: profile.burstLimitDown
-          ? `${profile.burstLimitDown}k`
-          : undefined,
-        burstUpload: profile.burstLimitUp
-          ? `${profile.burstLimitUp}k`
-          : undefined,
-        burstThresholdDownload: profile.burstThresholdDown
-          ? `${profile.burstThresholdDown}k`
-          : undefined,
-        burstThresholdUp: profile.burstThresholdUp
-          ? `${profile.burstThresholdUp}k`
-          : undefined,
-        burstTimeSeconds: profile.burstTimeSeconds ?? undefined,
-        priority: profile.priority ?? undefined,
-        limitAtDownload: profile.limitAtDown
-          ? `${profile.limitAtDown}k`
-          : undefined,
-        limitAtUp: profile.limitAtUp ? `${profile.limitAtUp}k` : undefined,
-      });
-    }
-
-    if (rate) {
-      await tx.radReply.upsert({
-        where: {
-          username_attribute: { username: u, attribute: "Mikrotik-Rate-Limit" },
-        },
-        update: { value: rate },
-        create: {
-          username: u,
-          attribute: "Mikrotik-Rate-Limit",
-          op: ":=",
-          value: rate,
-        },
-      });
-    } else {
-      await tx.radReply.deleteMany({
-        where: { username: u, attribute: "Mikrotik-Rate-Limit" },
-      });
-    }
-
-    // DNS Server reply attributes
-    if (profile.dnsServers) {
-      const dnsParts = profile.dnsServers
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (dnsParts[0]) {
-        await tx.radReply.upsert({
-          where: {
-            username_attribute: {
-              username: u,
-              attribute: "MS-Primary-DNS-Server",
-            },
-          },
-          update: { value: dnsParts[0], op: ":=" },
-          create: {
-            username: u,
-            attribute: "MS-Primary-DNS-Server",
-            op: ":=",
-            value: dnsParts[0],
-          },
-        });
-      }
-      if (dnsParts[1]) {
-        await tx.radReply.upsert({
-          where: {
-            username_attribute: {
-              username: u,
-              attribute: "MS-Secondary-DNS-Server",
-            },
-          },
-          update: { value: dnsParts[1], op: ":=" },
-          create: {
-            username: u,
-            attribute: "MS-Secondary-DNS-Server",
-            op: ":=",
-            value: dnsParts[1],
-          },
-        });
-      }
-    }
-  } else {
-    await tx.radReply.deleteMany({
-      where: {
-        username: u,
-        attribute: {
-          in: [
-            "Mikrotik-Rate-Limit",
-            "MS-Primary-DNS-Server",
-            "MS-Secondary-DNS-Server",
-          ],
-        },
+  // Bersihkan atribut redundant dari radreply agar menggunakan Group Attributes (radgroupreply)
+  await tx.radReply.deleteMany({
+    where: {
+      username: u,
+      attribute: {
+        in: [
+          "Mikrotik-Rate-Limit",
+          "Mikrotik-Group",
+          "MS-Primary-DNS-Server",
+          "MS-Secondary-DNS-Server",
+          "Session-Timeout",
+          "Idle-Timeout",
+          "Framed-Pool",
+        ],
       },
-    });
+    },
+  });
+
+  // Hubungkan user ke group di radusergroup
+  if (profile) {
+    let groupName = "";
+    if (profile.bandwidth) {
+      // Jika profile adalah InternetProfile, gunakan nama grupnya
+      groupName = (profile as { name?: string }).name?.trim() || "";
+    }
+
+    if (groupName) {
+      await tx.radUserGroup.deleteMany({ where: { username: u } });
+      await tx.radUserGroup.create({
+        data: {
+          username: u,
+          groupname: groupName,
+          priority: 1,
+        },
+      });
+    }
   }
 }
 
 /**
- * Perbarui Mikrotik-Rate-Limit semua pelanggan suatu profil Internet
+ * Sinkronisasi Group Reply attributes (radgroupreply) untuk suatu Paket Internet (InternetProfile)
  */
 export async function syncInternetProfileRadiusBulk(
   tx: Prisma.TransactionClient,
@@ -349,22 +273,54 @@ export async function syncInternetProfileRadiusBulk(
   });
   if (!profile || !profile.bandwidth) return;
 
+  const groupName = profile.name.trim();
+  const rate = formatBandwidthRateLimit(profile.bandwidth, profile.priority);
+
+  // Hapus baris lama di radgroupreply untuk groupName ini
+  await tx.radGroupReply.deleteMany({
+    where: {
+      groupname: groupName,
+      attribute: { in: ["Mikrotik-Rate-Limit", "Mikrotik-Group"] },
+    },
+  });
+
+  // Tambahkan attribute group reply baru
+  await tx.radGroupReply.createMany({
+    data: [
+      {
+        groupname: groupName,
+        attribute: "Mikrotik-Rate-Limit",
+        op: ":=",
+        value: rate,
+      },
+      {
+        groupname: groupName,
+        attribute: "Mikrotik-Group",
+        op: ":=",
+        value: groupName,
+      },
+    ],
+  });
+
+  // Update radusergroup untuk semua pelanggan yang menggunakan profile ini
   const customers = await tx.customer.findMany({
     where: { profileId },
     select: { username: true },
   });
-  if (customers.length === 0) return;
 
-  const usernames = customers.map((c) => c.username);
-  const rate = formatBandwidthRateLimit(profile.bandwidth, profile.priority);
-
-  await tx.radReply.updateMany({
-    where: {
-      username: { in: usernames },
-      attribute: "Mikrotik-Rate-Limit",
-    },
-    data: { value: rate },
-  });
+  if (customers.length > 0) {
+    const usernames = customers.map((c) => c.username);
+    await tx.radUserGroup.deleteMany({
+      where: { username: { in: usernames } },
+    });
+    await tx.radUserGroup.createMany({
+      data: usernames.map((un) => ({
+        username: un,
+        groupname: groupName,
+        priority: 1,
+      })),
+    });
+  }
 }
 
 export const syncPppProfileRadiusBulk = syncInternetProfileRadiusBulk;
@@ -534,80 +490,48 @@ export async function cleanupPppProfileIpPool(
 }
 
 /**
- * Sinkronisasi massal seluruh pelanggan dinamis di suatu Profile Group saat
- * PPP Profile (Node Router / Pool Name / DNS) dibuat, diupdate, atau dihapus.
+ * Sinkronisasi massal seluruh pelanggan di suatu Area Group saat
+ * Profile atau Router NAS dibuat, diupdate, atau dihapus.
  */
-export async function syncProfileGroupRadiusBulk(
+export async function syncAreaGroupRadiusBulk(
   tx: Prisma.TransactionClient,
-  profileGroupId: string,
+  areaGroupId: string,
 ) {
-  const group = await tx.profileGroup.findUnique({
-    where: { id: profileGroupId },
-    include: { pppProfiles: true },
+  const group = await tx.areaGroup.findUnique({
+    where: { id: areaGroupId },
+    include: {
+      routers: true,
+      pppProfiles: true,
+    },
   });
   if (!group) return;
 
-  const sqlNode =
-    group.pppProfiles.find((p) => p.ipModule === "sql") ?? group.pppProfiles[0];
-
-  // Ambil seluruh pelanggan di group ini yang menggunakan IP dinamis (non-statis)
   const customers = await tx.customer.findMany({
-    where: { profileGroupId, staticIp: null },
-    select: { username: true },
+    where: { areaGroupId },
+    select: { username: true, bindOnNas: true, allowedNasIps: true },
   });
 
   if (customers.length === 0) return;
 
-  const usernames = customers.map((c) => c.username);
+  const routerIps = group.routers.map((r) => r.ipAddress).filter(Boolean);
 
-  // Bersihkan baris Framed-Pool & Mikrotik-Group lama agar sepenuhnya dinamis
-  await tx.radReply.deleteMany({
-    where: {
-      username: { in: usernames },
-      attribute: { in: ["Framed-Pool", "Mikrotik-Group"] },
-    },
-  });
-
-  if (sqlNode?.dnsServers) {
-    const dnsParts = sqlNode.dnsServers
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const u of usernames) {
-      if (dnsParts[0]) {
-        await tx.radReply.upsert({
-          where: {
-            username_attribute: {
-              username: u,
-              attribute: "MS-Primary-DNS-Server",
-            },
-          },
-          update: { value: dnsParts[0], op: ":=" },
-          create: {
-            username: u,
-            attribute: "MS-Primary-DNS-Server",
-            op: ":=",
-            value: dnsParts[0],
-          },
-        });
-      }
-      if (dnsParts[1]) {
-        await tx.radReply.upsert({
-          where: {
-            username_attribute: {
-              username: u,
-              attribute: "MS-Secondary-DNS-Server",
-            },
-          },
-          update: { value: dnsParts[1], op: ":=" },
-          create: {
-            username: u,
-            attribute: "MS-Secondary-DNS-Server",
-            op: ":=",
-            value: dnsParts[1],
-          },
+  // Update radnasallow untuk seluruh pelanggan yang bindOnNas di area ini
+  for (const c of customers) {
+    if (c.bindOnNas) {
+      await tx.radNasAllow.deleteMany({ where: { username: c.username } });
+      const targetIps = c.allowedNasIps?.length ? c.allowedNasIps : routerIps;
+      if (targetIps.length > 0) {
+        await tx.radNasAllow.createMany({
+          data: targetIps.map((ip) => ({
+            username: c.username,
+            nasIpAddress: ip,
+          })),
+          skipDuplicates: true,
         });
       }
     }
   }
 }
+
+// Backward compatibility alias
+export const syncProfileGroupRadiusBulk = syncAreaGroupRadiusBulk;

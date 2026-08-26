@@ -65,9 +65,10 @@ export async function configureRadiusOnRouter(
   }
   // Tambah entri baru
   await mikrotik.write("/radius/add", [
-    "=service=ppp",
+    "=service=ppp,hotspot",
     `=address=${radiusIp}`,
     `=secret=${radiusSecret}`,
+    "=comment=Managed by MicroRAD: radius",
   ]);
   // Aktifkan RADIUS untuk PPP (accounting + interim)
   await mikrotik.write("/ppp/aaa/set", [

@@ -22,13 +22,10 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
           bandwidth: true,
         },
       },
-      profileGroup: {
+      areaGroup: {
         include: {
-          pppProfiles: {
-            include: {
-              nasRouter: true,
-            },
-          },
+          routers: true,
+          pppProfiles: true,
         },
       },
       router: true,
@@ -68,6 +65,8 @@ export const GET = asyncApi(async (_req: Request, ctx: { params: Params }) => {
   return NextResponse.json({
     data: {
       ...customer,
+      profileGroupId: customer.areaGroupId,
+      profileGroup: customer.areaGroup,
       lastSeenAt,
       createdAt: new Date(customer.createdAt).toISOString(),
       updatedAt: new Date(customer.updatedAt).toISOString(),
@@ -88,6 +87,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     status?: string;
     profileId?: string | null;
     profileGroupId?: string | null;
+    areaGroupId?: string | null;
     staticIp?: string;
     nasId?: string | null;
     bindOnNas?: boolean;
@@ -161,24 +161,27 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       : null;
 
     const targetGroupId =
-      "profileGroupId" in body ? body.profileGroupId : existing.profileGroupId;
-    const profileGroup = targetGroupId
-      ? await tx.profileGroup.findUnique({
+      "areaGroupId" in body
+        ? body.areaGroupId
+        : "profileGroupId" in body
+          ? body.profileGroupId
+          : existing.areaGroupId;
+
+    const areaGroup = targetGroupId
+      ? await tx.areaGroup.findUnique({
           where: { id: targetGroupId },
           include: {
-            pppProfiles: {
-              include: { nasRouter: true },
-            },
+            routers: true,
+            pppProfiles: true,
           },
         })
       : null;
 
-    const groupNasIps = (profileGroup?.pppProfiles ?? [])
-      .map((p) => p.nasRouter?.ipAddress)
+    const groupNasIps = (areaGroup?.routers ?? [])
+      .map((r) => r.ipAddress)
       .filter((ip): ip is string => Boolean(ip));
 
-    const nasId =
-      profileGroup?.pppProfiles[0]?.nasId ?? body.nasId ?? existing.nasId;
+    const nasId = areaGroup?.routers[0]?.id ?? body.nasId ?? existing.nasId;
     const nasIp = groupNasIps[0];
     const bindOnNas =
       body.bindOnNas !== undefined ? body.bindOnNas : existing.bindOnNas;
@@ -204,8 +207,8 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
         ...("profileId" in body ? { profileId: body.profileId ?? null } : {}),
-        ...("profileGroupId" in body
-          ? { profileGroupId: body.profileGroupId ?? null }
+        ...("areaGroupId" in body || "profileGroupId" in body
+          ? { areaGroupId: targetGroupId }
           : {}),
         ...(body.staticIp !== undefined
           ? { staticIp: body.staticIp.trim() || undefined }
@@ -297,8 +300,8 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     }
 
     const sqlNode =
-      profileGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
-      profileGroup?.pppProfiles[0];
+      areaGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
+      areaGroup?.pppProfiles[0];
     const poolName = sqlNode?.ipModule === "sql" ? sqlNode.name : null;
 
     await syncCustomerRadius(
@@ -306,13 +309,16 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       { ...updated, poolName },
       internetProf
         ? {
+            name: internetProf.name,
             bandwidth: internetProf.bandwidth,
             priority: internetProf.priority,
             dnsServers: sqlNode?.dnsServers,
             poolName,
           }
         : null,
-      body.password ?? undefined,
+      body.password !== undefined
+        ? body.password
+        : (existing.password ?? undefined),
       nasIp,
     );
     return updated;

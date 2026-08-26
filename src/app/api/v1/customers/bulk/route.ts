@@ -34,9 +34,10 @@ export const POST = asyncApi(async (req: Request) => {
     where: { id: { in: customerIds } },
     include: {
       profile: { include: { bandwidth: true } },
-      profileGroup: {
+      areaGroup: {
         include: {
-          pppProfiles: { include: { nasRouter: true } },
+          routers: true,
+          pppProfiles: true,
         },
       },
       portalUser: true,
@@ -93,18 +94,17 @@ export const POST = asyncApi(async (req: Request) => {
         });
 
         const sqlNode =
-          customer.profileGroup?.pppProfiles.find(
-            (p) => p.ipModule === "sql",
-          ) ?? customer.profileGroup?.pppProfiles[0];
+          customer.areaGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
+          customer.areaGroup?.pppProfiles[0];
         const poolName = sqlNode?.ipModule === "sql" ? sqlNode.name : null;
-        const nasIp =
-          customer.profileGroup?.pppProfiles[0]?.nasRouter?.ipAddress;
+        const nasIp = customer.areaGroup?.routers[0]?.ipAddress;
 
         await syncCustomerRadius(
           tx,
           { ...updated, poolName },
           customer.profile
             ? {
+                name: customer.profile.name,
                 bandwidth: customer.profile.bandwidth,
                 priority: customer.profile.priority,
                 dnsServers: sqlNode?.dnsServers,
@@ -136,18 +136,17 @@ export const POST = asyncApi(async (req: Request) => {
         });
 
         const sqlNode =
-          customer.profileGroup?.pppProfiles.find(
-            (p) => p.ipModule === "sql",
-          ) ?? customer.profileGroup?.pppProfiles[0];
+          customer.areaGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
+          customer.areaGroup?.pppProfiles[0];
         const poolName = sqlNode?.ipModule === "sql" ? sqlNode.name : null;
-        const nasIp =
-          customer.profileGroup?.pppProfiles[0]?.nasRouter?.ipAddress;
+        const nasIp = customer.areaGroup?.routers[0]?.ipAddress;
 
         await syncCustomerRadius(
           tx,
           { ...updated, poolName },
           customer.profile
             ? {
+                name: customer.profile.name,
                 bandwidth: customer.profile.bandwidth,
                 priority: customer.profile.priority,
                 dnsServers: sqlNode?.dnsServers,

@@ -1,7 +1,16 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2, Network, Radio } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  Cookie,
+  Flame,
+  Loader2,
+  Network,
+  Radio,
+  Sliders,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -15,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,14 +37,13 @@ import {
 import {
   useCreatePppProfileMutation,
   useProfileGroupsQuery,
-  useRoutersQuery,
   useUpdatePppProfileMutation,
 } from "@/lib/api/hooks";
 import type {
+  AreaGroup,
   IpModuleType,
-  NasRouter,
   PppProfile,
-  ProfileGroup,
+  ServiceType,
 } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -57,88 +66,110 @@ function ipToNumber(ip: string): number {
   );
 }
 
-const pppProfileSchema = z
+const profileSchema = z
   .object({
-    name: z.string().min(3, "Nama PPP Profile minimal 3 karakter"),
-    nasId: z.string().min(1, "Wajib memilih Router NAS"),
-    type: z.enum(["PPP"]),
+    name: z.string().min(3, "Nama Profile minimal 3 karakter"),
+    serviceType: z.enum(["PPP", "HOTSPOT"]),
+    areaGroupId: z.string().optional().nullable(),
     ipModule: z.enum(["sql", "mikrotik_pool"]),
     localAddress: z
       .string()
-      .regex(
-        ipv4Regex,
+      .optional()
+      .nullable()
+      .refine(
+        (val) => !val || ipv4Regex.test(val),
         "Format Local Address (IPv4) tidak valid (contoh: 10.10.10.1)",
       ),
     rangeIpStart: z
       .string()
-      .regex(
-        ipv4Regex,
+      .optional()
+      .nullable()
+      .refine(
+        (val) => !val || ipv4Regex.test(val),
         "Format Range IP Start (IPv4) tidak valid (contoh: 10.10.10.2)",
       ),
     rangeIpEnd: z
       .string()
-      .regex(
-        ipv4Regex,
+      .optional()
+      .nullable()
+      .refine(
+        (val) => !val || ipv4Regex.test(val),
         "Format Range IP End (IPv4) tidak valid (contoh: 10.10.10.254)",
       ),
     dnsServers: z
       .string()
       .min(7, "Format DNS minimal 1 IP valid (misal: 8.8.8.8,8.8.4.4)"),
+    sessionTimeout: z.number().nullable().optional(),
+    idleTimeout: z.number().nullable().optional(),
     parentQueue: z.string().optional().nullable(),
-    profileGroupId: z.string().optional().nullable(),
+
+    // Khusus Hotspot
+    insertQueueBefore: z.string().optional().nullable(),
+    keepaliveTimeout: z.string().optional().nullable(),
+    addMacCookie: z.boolean(),
+    macCookieTimeout: z.string().optional().nullable(),
   })
   .superRefine((data, ctx) => {
-    const localNum = ipToNumber(data.localAddress);
-    const startNum = ipToNumber(data.rangeIpStart);
-    const endNum = ipToNumber(data.rangeIpEnd);
+    if (data.rangeIpStart && data.rangeIpEnd) {
+      const startNum = ipToNumber(data.rangeIpStart);
+      const endNum = ipToNumber(data.rangeIpEnd);
+      if (startNum > 0 && endNum > 0 && startNum > endNum) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rangeIpStart"],
+          message:
+            "Range IP Start harus lebih kecil atau sama dengan Range IP End",
+        });
+      }
 
-    if (startNum > 0 && endNum > 0 && startNum > endNum) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["rangeIpStart"],
-        message:
-          "Range IP Start harus lebih kecil atau sama dengan Range IP End",
-      });
+      if (data.localAddress) {
+        const localNum = ipToNumber(data.localAddress);
+        if (
+          localNum > 0 &&
+          startNum > 0 &&
+          endNum > 0 &&
+          localNum >= startNum &&
+          localNum <= endNum
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["localAddress"],
+            message: `Local Gateway (${data.localAddress}) tidak boleh berada di antara Range IP (${data.rangeIpStart} - ${data.rangeIpEnd})`,
+          });
+        }
+      }
     }
 
     if (
-      localNum > 0 &&
-      startNum > 0 &&
-      endNum > 0 &&
-      localNum >= startNum &&
-      localNum <= endNum
+      data.serviceType === "HOTSPOT" &&
+      data.insertQueueBefore &&
+      !data.parentQueue?.trim()
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["localAddress"],
-        message: `Local Address Gateway (${data.localAddress}) tidak boleh berada di antara Range IP (${data.rangeIpStart} - ${data.rangeIpEnd})`,
+        path: ["parentQueue"],
+        message:
+          "Parent Queue wajib diisi sebelum mengatur Insert Before Queue",
       });
     }
   });
 
-type PppProfileFormValues = z.infer<typeof pppProfileSchema>;
+type ProfileFormValues = z.infer<typeof profileSchema>;
 
-interface PppProfileFormProps {
+interface ProfileFormProps {
   initialData?: PppProfile;
   isEditing?: boolean;
 }
 
-export function PppProfileForm({
-  initialData,
-  isEditing,
-}: PppProfileFormProps) {
+export function PppProfileForm({ initialData, isEditing }: ProfileFormProps) {
   const router = useRouter();
   const createMutation = useCreatePppProfileMutation();
   const updateMutation = useUpdatePppProfileMutation();
 
-  const { data: routersRes, isLoading: loadingRouters } = useRoutersQuery({
-    limit: 1000,
-  });
   const { data: groupsRes, isLoading: loadingGroups } = useProfileGroupsQuery({
     limit: 1000,
   });
-  const routers: NasRouter[] = routersRes?.data || [];
-  const groups: ProfileGroup[] = groupsRes?.data || [];
+  const groups: AreaGroup[] = groupsRes?.data || [];
 
   const {
     register,
@@ -146,43 +177,99 @@ export function PppProfileForm({
     setValue,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<PppProfileFormValues>({
-    resolver: zodResolver(pppProfileSchema),
+  } = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileSchema),
     defaultValues: {
       name: initialData?.name || "",
-      nasId: initialData?.nasId || "",
-      type: "PPP",
+      serviceType: initialData?.serviceType === "HOTSPOT" ? "HOTSPOT" : "PPP",
+      areaGroupId: initialData?.areaGroupId || "",
       ipModule: initialData?.ipModule || "sql",
       localAddress: initialData?.localAddress || "10.10.10.1",
       rangeIpStart: initialData?.rangeIpStart || "10.10.10.2",
       rangeIpEnd: initialData?.rangeIpEnd || "10.10.10.254",
       dnsServers: initialData?.dnsServers || "8.8.8.8,8.8.4.4",
+      sessionTimeout: initialData?.sessionTimeout ?? null,
+      idleTimeout: initialData?.idleTimeout ?? null,
       parentQueue: initialData?.parentQueue || "",
-      profileGroupId: initialData?.profileGroupId || "",
+      insertQueueBefore: initialData?.insertQueueBefore || "",
+      keepaliveTimeout: initialData?.keepaliveTimeout || "2m",
+      addMacCookie: initialData?.addMacCookie || false,
+      macCookieTimeout: initialData?.macCookieTimeout || "3d",
     },
   });
 
-  const selectedNasId = watch("nasId");
+  const selectedServiceType = watch("serviceType");
   const selectedIpModule = watch("ipModule");
-  const selectedGroupId = watch("profileGroupId");
+  const selectedGroupId = watch("areaGroupId");
+  const parentQueueVal = watch("parentQueue");
+  const addMacCookieVal = watch("addMacCookie");
+  const insertQueueBeforeVal = watch("insertQueueBefore");
 
-  const onSubmit = async (values: PppProfileFormValues) => {
+  const onSubmit = async (values: ProfileFormValues) => {
     try {
       const payload = {
         ...values,
+        localAddress: values.localAddress?.trim() || null,
+        rangeIpStart: values.rangeIpStart?.trim() || null,
+        rangeIpEnd: values.rangeIpEnd?.trim() || null,
         parentQueue: values.parentQueue?.trim() || null,
-        profileGroupId: values.profileGroupId?.trim() || null,
+        insertQueueBefore: values.insertQueueBefore?.trim() || null,
+        keepaliveTimeout: values.keepaliveTimeout?.trim() || null,
+        macCookieTimeout: values.macCookieTimeout?.trim() || null,
+        areaGroupId: values.areaGroupId?.trim() || null,
+        profileGroupId: values.areaGroupId?.trim() || null,
       };
 
       if (isEditing && initialData) {
-        await updateMutation.mutateAsync({
+        const res = (await updateMutation.mutateAsync({
           id: initialData.id,
           data: payload,
-        });
-        toast.success("PPP Profile berhasil diperbarui.");
+        })) as { data?: { syncResults?: string[] } };
+
+        const syncResults = res?.data?.syncResults || [];
+        if (syncResults.length > 0) {
+          const failures = syncResults.filter(
+            (m) =>
+              m.toLowerCase().includes("gagal") ||
+              m.toLowerCase().includes("offline") ||
+              m.toLowerCase().includes("timeout"),
+          );
+          if (failures.length > 0) {
+            toast.warning(
+              `Profil ${values.serviceType} diperbarui, namun ada catatan: ${failures.join("; ")}`,
+            );
+          } else {
+            toast.success(
+              `Profil ${values.serviceType} diperbarui & disinkronkan ke router NAS.`,
+            );
+          }
+        } else {
+          toast.success(`Profil ${values.serviceType} berhasil diperbarui.`);
+        }
       } else {
-        await createMutation.mutateAsync(payload);
-        toast.success("PPP Profile baru berhasil ditambahkan.");
+        const res = (await createMutation.mutateAsync(payload)) as {
+          data?: { syncResults?: string[] };
+        };
+        const syncResults = res?.data?.syncResults || [];
+        if (syncResults.length > 0) {
+          const failures = syncResults.filter(
+            (m) =>
+              m.toLowerCase().includes("gagal") ||
+              m.toLowerCase().includes("offline") ||
+              m.toLowerCase().includes("timeout"),
+          );
+          if (failures.length > 0) {
+            toast.warning(
+              `Profil ${values.serviceType} dibuat, namun ada catatan: ${failures.join("; ")}`,
+            );
+          } else {
+            toast.success(
+              `Profil ${values.serviceType} baru dibuat & diterapkan ke router NAS.`,
+            );
+          }
+        } else {
+          toast.success(`Profil ${values.serviceType} baru berhasil dibuat.`);
+        }
       }
       router.push("/ppp-profiles");
     } catch (err) {
@@ -204,33 +291,35 @@ export function PppProfileForm({
           </Button>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              {isEditing ? "Edit PPP Profile" : "Tambah PPP Profile"}
+              {isEditing ? "Edit Profil Layanan" : "Tambah Profil Layanan"}
             </h1>
             <p className="text-xs text-slate-500">
               {isEditing
-                ? "Perbarui konfigurasi gateway & pool node Router MikroTik"
-                : "Konfigurasikan gateway PPP, IP pool, dan DNS untuk node Router MikroTik"}
+                ? "Perbarui konfigurasi gateway, IP pool, timeout, dan queue"
+                : "Konfigurasikan gateway, IP pool, DNS, timeout, dan queue untuk PPP/Hotspot"}
             </p>
           </div>
         </div>
       </div>
 
+      {/* Card 1: Identitas Profil & Wilayah */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Radio className="h-4 w-4 text-blue-600" />
-            Informasi PPP Profile Node
+            Identitas Profil & Wilayah Layanan
           </CardTitle>
           <CardDescription>
-            Tentukan nama profile di MikroTik dan router NAS target.
+            Tentukan nama profil di RouterOS, tipe layanan, dan wilayah (Area
+            Group).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="name">Nama Profile di MikroTik *</Label>
+            <Label htmlFor="name">Nama Profil di RouterOS *</Label>
             <Input
               id="name"
-              placeholder="Contoh: pppoe-node-a1, default-encryption"
+              placeholder="Contoh: profile-node-a1, hotspot-vip"
               {...register("name")}
             />
             {errors.name && (
@@ -238,145 +327,139 @@ export function PppProfileForm({
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="nasId">Router NAS Target *</Label>
-              <Link
-                href="/routers"
-                className="text-xs text-blue-600 hover:underline"
-              >
-                + Kelola Router
-              </Link>
-            </div>
-            <Select
-              value={selectedNasId}
-              onValueChange={(val) =>
-                setValue("nasId", val, { shouldValidate: true })
-              }
-              disabled={loadingRouters}
-            >
-              <SelectTrigger id="nasId">
-                <SelectValue placeholder="-- Pilih Router NAS --" />
-              </SelectTrigger>
-              <SelectContent>
-                {routers.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.name} ({r.ipAddress})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.nasId && (
-              <p className="text-xs text-rose-500">{errors.nasId.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="profileGroupId">
-                Profile Group / Wilayah (Opsional)
-              </Label>
-              <Link
-                href="/profile-groups"
-                className="text-xs text-blue-600 hover:underline"
-              >
-                + Kelola Wilayah
-              </Link>
-            </div>
-            <Select
-              value={selectedGroupId || "none"}
-              onValueChange={(val) =>
-                setValue("profileGroupId", val === "none" ? null : val, {
-                  shouldValidate: true,
-                })
-              }
-              disabled={loadingGroups}
-            >
-              <SelectTrigger id="profileGroupId">
-                <SelectValue placeholder="-- Belum dimasukkan ke Wilayah --" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">
-                  -- Tanpa Group / Mandiri --
-                </SelectItem>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-slate-400">
-              Mengelompokkan node ini ke dalam zona failover wilayah tertentu.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Network className="h-4 w-4 text-emerald-600" />
-            Alokasi IP & Jaringan PPP
-          </CardTitle>
-          <CardDescription>
-            Konfigurasi Local Gateway, Rentang Pool Client, DNS Server, dan
-            Parent Queue.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="type">Tipe Layanan</Label>
+              <Label>Tipe Layanan (Service Type) *</Label>
               <Select
-                value="PPP"
+                value={selectedServiceType}
                 onValueChange={(val) =>
-                  setValue("type", val as "PPP", { shouldValidate: true })
-                }
-              >
-                <SelectTrigger id="type">
-                  <SelectValue placeholder="Pilih Tipe" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PPP">PPP (PPPoE / L2TP / SSTP)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="ipModule">IP Module Allocation *</Label>
-              <Select
-                value={selectedIpModule}
-                onValueChange={(val) =>
-                  setValue("ipModule", val as IpModuleType, {
+                  setValue("serviceType", val as ServiceType, {
                     shouldValidate: true,
                   })
                 }
               >
-                <SelectTrigger id="ipModule">
-                  <SelectValue placeholder="Pilih IP Module" />
+                <SelectTrigger id="serviceType">
+                  <SelectValue placeholder="Pilih Tipe Layanan" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sql">
-                    SQL IP Module (FreeRADIUS IP Pool)
+                  <SelectItem value="PPP">
+                    <div className="flex items-center gap-2">
+                      <Radio className="h-4 w-4 text-blue-500" />
+                      <span>PPP (PPPoE / Tunnel)</span>
+                    </div>
                   </SelectItem>
-                  <SelectItem value="mikrotik_pool">
-                    MikroTik IP Pool (Local Router Pool)
+                  <SelectItem value="HOTSPOT">
+                    <div className="flex items-center gap-2">
+                      <Flame className="h-4 w-4 text-amber-500" />
+                      <span>Hotspot (Captive Portal)</span>
+                    </div>
                   </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="areaGroupId">Wilayah (Area Group)</Label>
+                <Link
+                  href="/profile-groups"
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  + Kelola Wilayah
+                </Link>
+              </div>
+              <Select
+                value={selectedGroupId || "none"}
+                onValueChange={(val) =>
+                  setValue("areaGroupId", val === "none" ? null : val, {
+                    shouldValidate: true,
+                  })
+                }
+                disabled={loadingGroups}
+              >
+                <SelectTrigger id="areaGroupId">
+                  <SelectValue placeholder="-- Pilih Wilayah (Area Group) --" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    -- Bebas / Tanpa Wilayah Tertentu --
+                  </SelectItem>
+                  {groups
+                    .filter((g) =>
+                      g.serviceType
+                        ?.toUpperCase()
+                        .includes(selectedServiceType.toUpperCase()),
+                    )
+                    .map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.name} ({g.serviceType})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-slate-400">
+                Profil ini akan otomatis di-apply ke seluruh router di Area
+                terpilih.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Card 2: IP Module & Network Allocation */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Network className="h-4 w-4 text-emerald-600" />
+            Alokasi IP & Jaringan
+          </CardTitle>
+          <CardDescription>
+            Konfigurasi modul IP, Local Gateway, Rentang Pool Client, dan DNS
+            Server.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="ipModule">IP Module Allocation *</Label>
+            <Select
+              value={selectedIpModule}
+              onValueChange={(val) =>
+                setValue("ipModule", val as IpModuleType, {
+                  shouldValidate: true,
+                })
+              }
+            >
+              <SelectTrigger id="ipModule">
+                <SelectValue placeholder="Pilih IP Module" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sql">
+                  SQL IP Module (FreeRADIUS IP Pool Pusat)
+                </SelectItem>
+                <SelectItem value="mikrotik_pool">
+                  MikroTik IP Pool (Private Pool di Router MikroTik)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-slate-400">
+              {selectedIpModule === "mikrotik_pool"
+                ? "Aplikasi akan otomatis membuat /ip/pool di Router MikroTik dengan nama yang sama dengan nama profil."
+                : "IP dialokasikan secara terpusat oleh database FreeRADIUS (sqlippool)."}
+            </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="localAddress">Local Address (PPP Gateway) *</Label>
+            <Label htmlFor="localAddress">
+              Local Address Gateway (IPv4){" "}
+              {selectedServiceType === "PPP" && "*"}
+            </Label>
             <Input
               id="localAddress"
               placeholder="10.10.10.1"
               {...register("localAddress")}
             />
             <p className="text-[11px] text-slate-400">
-              IP Gateway lokal interface PPP di sisi RouterOS.
+              IP Gateway interface lokal di sisi RouterOS.
             </p>
             {errors.localAddress && (
               <p className="text-xs text-rose-500">
@@ -387,7 +470,7 @@ export function PppProfileForm({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="rangeIpStart">Range IP Pool (Awal) *</Label>
+              <Label htmlFor="rangeIpStart">Range IP Pool (Awal)</Label>
               <Input
                 id="rangeIpStart"
                 placeholder="10.10.10.2"
@@ -401,7 +484,7 @@ export function PppProfileForm({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="rangeIpEnd">Range IP Pool (Akhir) *</Label>
+              <Label htmlFor="rangeIpEnd">Range IP Pool (Akhir)</Label>
               <Input
                 id="rangeIpEnd"
                 placeholder="10.10.10.254"
@@ -428,22 +511,179 @@ export function PppProfileForm({
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="parentQueue">
-              Parent Queue di RouterOS (Opsional)
-            </Label>
-            <Input
-              id="parentQueue"
-              placeholder="Contoh: TOTAL-CLIENT, PARENT-PPPOE"
-              {...register("parentQueue")}
-            />
-            <p className="text-[11px] text-slate-400">
-              Menghubungkan dynamic queue PPPoE ke antrean induk (Simple Queue).
-            </p>
+      {/* Card 3: Session & Idle Timeouts + Parent Queue */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="h-4 w-4 text-purple-600" />
+            Pengaturan Timeout & Queue
+          </CardTitle>
+          <CardDescription>
+            Atur batas waktu sesi, idle timeout, dan integrasi parent queue
+            RouterOS.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="sessionTimeout">
+                Session Timeout (Detik, Opsional)
+              </Label>
+              <Input
+                id="sessionTimeout"
+                type="number"
+                placeholder="Misal: 86400 (24 jam)"
+                {...register("sessionTimeout", {
+                  setValueAs: (v) =>
+                    v === "" || v === null || Number.isNaN(Number(v))
+                      ? null
+                      : Number(v),
+                })}
+              />
+              <p className="text-[11px] text-slate-400">
+                Maksimal durasi sesi aktif sebelum re-otentikasi.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="idleTimeout">
+                Idle Timeout (Detik, Opsional)
+              </Label>
+              <Input
+                id="idleTimeout"
+                type="number"
+                placeholder="Misal: 300 (5 menit)"
+                {...register("idleTimeout", {
+                  setValueAs: (v) =>
+                    v === "" || v === null || Number.isNaN(Number(v))
+                      ? null
+                      : Number(v),
+                })}
+              />
+              <p className="text-[11px] text-slate-400">
+                Putus koneksi otomatis jika tidak ada trafik data.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="parentQueue">
+                Parent Queue di RouterOS (Opsional)
+              </Label>
+              <Input
+                id="parentQueue"
+                placeholder="Contoh: TOTAL-CLIENT, PARENT-PPPOE, HOTSPOT-PARENT"
+                {...register("parentQueue")}
+              />
+              <p className="text-[11px] text-slate-400">
+                Nama induk Simple Queue di RouterOS untuk agregasi bandwidth
+                total.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="insertQueueBefore">
+                Insert Queue Position (RouterOS)
+              </Label>
+              <Select
+                value={insertQueueBeforeVal || "none"}
+                onValueChange={(val) =>
+                  setValue("insertQueueBefore", val === "none" ? null : val, {
+                    shouldValidate: true,
+                  })
+                }
+                disabled={!parentQueueVal?.trim()}
+              >
+                <SelectTrigger id="insertQueueBefore">
+                  <SelectValue placeholder="-- Pilih Posisi Antrean --" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    -- Default (Bawaan RouterOS) --
+                  </SelectItem>
+                  <SelectItem value="first">First (Paling Atas)</SelectItem>
+                  <SelectItem value="bottom">Bottom (Paling Bawah)</SelectItem>
+                </SelectContent>
+              </Select>
+              {!parentQueueVal?.trim() ? (
+                <p className="text-[11px] text-slate-400">
+                  * Isi Parent Queue terlebih dahulu untuk mengatur posisi ini.
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  Menentukan letak dynamic queue client di daftar Simple Queue.
+                </p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Card 4: Fitur Khusus Hotspot (Hanya tampil jika serviceType === "HOTSPOT") */}
+      {selectedServiceType === "HOTSPOT" && (
+        <Card className="border-amber-200 dark:border-amber-900/50 bg-amber-50/20 dark:bg-amber-950/10">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-amber-900 dark:text-amber-300">
+              <Sliders className="h-4 w-4 text-amber-600" />
+              Fitur Khusus Hotspot (Captive Portal)
+            </CardTitle>
+            <CardDescription>
+              Pengaturan keepalive timeout dan MAC Cookie.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="keepaliveTimeout">Keepalive Timeout</Label>
+              <Input
+                id="keepaliveTimeout"
+                placeholder="Contoh: 2m, 5m, 10m"
+                {...register("keepaliveTimeout")}
+              />
+              <p className="text-[11px] text-slate-400">
+                Interval ping keepalive RouterOS ke client hotspot.
+              </p>
+            </div>
+
+            <div className="p-3 border rounded-lg bg-white dark:bg-slate-900 space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="addMacCookie"
+                  checked={addMacCookieVal}
+                  onCheckedChange={(checked) =>
+                    setValue("addMacCookie", Boolean(checked))
+                  }
+                />
+                <label
+                  htmlFor="addMacCookie"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Cookie className="h-4 w-4 text-amber-600" />
+                  Aktifkan MAC Cookie (Auto-Login MAC Address)
+                </label>
+              </div>
+
+              {addMacCookieVal && (
+                <div className="space-y-1.5 pl-6">
+                  <Label htmlFor="macCookieTimeout">MAC Cookie Timeout</Label>
+                  <Input
+                    id="macCookieTimeout"
+                    placeholder="Contoh: 3d, 7d, 30d"
+                    {...register("macCookieTimeout")}
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    Masa berlaku cookie sebelum client diminta login ulang (e.g.
+                    3d = 3 hari).
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex items-center justify-end gap-3">
         <Button variant="outline" type="button" asChild>
@@ -451,7 +691,7 @@ export function PppProfileForm({
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-          {isEditing ? "Simpan Perubahan" : "Buat PPP Profile"}
+          {isEditing ? "Simpan Perubahan" : "Buat Profil Layanan"}
         </Button>
       </div>
     </form>

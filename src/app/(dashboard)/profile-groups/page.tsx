@@ -207,8 +207,9 @@ export default function ProfileGroupsPage() {
                 <thead className="bg-slate-50 dark:bg-slate-900/50 text-xs font-semibold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="px-4 py-3">Nama Wilayah</th>
-                    <th className="px-4 py-3">Router Node yang Tergabung</th>
-                    <th className="px-4 py-3">Keterangan</th>
+                    <th className="px-4 py-3">Layanan</th>
+                    <th className="px-4 py-3">Router NAS Terhubung</th>
+                    <th className="px-4 py-3">Profil Diterapkan</th>
                     <th className="px-4 py-3">Pelanggan</th>
                     <th className="px-4 py-3 text-right">Aksi</th>
                   </tr>
@@ -216,42 +217,98 @@ export default function ProfileGroupsPage() {
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {groups.map((group) => {
                     const profiles = group.pppProfiles || [];
+                    const routers = group.routers || [];
 
                     return (
                       <tr
                         key={group.id}
                         className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors"
                       >
-                        <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
-                          {group.name}
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">
+                            {group.name}
+                          </p>
+                          {group.description && (
+                            <p className="text-xs text-slate-500 max-w-xs truncate mt-0.5">
+                              {group.description}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3">
-                          {profiles.length === 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {group.serviceType
+                              ?.toUpperCase()
+                              .includes("PPP") && (
+                              <Badge
+                                variant="secondary"
+                                className="bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300 text-[11px]"
+                              >
+                                PPP
+                              </Badge>
+                            )}
+                            {group.serviceType
+                              ?.toUpperCase()
+                              .includes("HOTSPOT") && (
+                              <Badge
+                                variant="secondary"
+                                className="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 text-[11px]"
+                              >
+                                HOTSPOT
+                              </Badge>
+                            )}
+                            {!group.serviceType
+                              ?.toUpperCase()
+                              .includes("PPP") &&
+                              !group.serviceType
+                                ?.toUpperCase()
+                                .includes("HOTSPOT") && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[11px]"
+                                >
+                                  {group.serviceType || "PPP"}
+                                </Badge>
+                              )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {routers.length === 0 ? (
                             <span className="text-slate-400 text-xs italic">
-                              Belum ada router tergabung
+                              Belum ada router terhubung
                             </span>
                           ) : (
-                            <div className="flex flex-wrap gap-1.5 max-w-md">
-                              {profiles.map((p) => (
+                            <div className="flex flex-wrap gap-1.5 max-w-xs">
+                              {routers.map((r) => (
                                 <Badge
-                                  key={p.id}
+                                  key={r.id}
                                   variant="secondary"
                                   className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 flex items-center gap-1"
                                 >
-                                  <Radio className="h-3 w-3 text-blue-500" />
-                                  <span>{p.name}</span>
-                                  {p.nasRouter && (
-                                    <span className="text-[10px] text-slate-400">
-                                      ({p.nasRouter.name})
-                                    </span>
-                                  )}
+                                  <Radio className="h-3 w-3 text-indigo-500" />
+                                  <span>{r.name}</span>
                                 </Badge>
                               ))}
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate">
-                          {group.description || "-"}
+                        <td className="px-4 py-3">
+                          {profiles.length === 0 ? (
+                            <span className="text-slate-400 text-xs italic">
+                              Belum ada profil
+                            </span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5 max-w-xs">
+                              {profiles.map((p) => (
+                                <Badge
+                                  key={p.id}
+                                  variant="outline"
+                                  className="text-xs border-emerald-300 text-emerald-700 dark:text-emerald-300"
+                                >
+                                  {p.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <Badge

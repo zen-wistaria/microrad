@@ -32,24 +32,29 @@ export interface Bandwidth {
   pppProfileCount?: number; // derived
 }
 
+export type ServiceType = "PPP" | "HOTSPOT";
+
 export interface PppProfile {
   id: string;
   name: string;
-  nasId: string;
-  nasRouter?: {
-    id: string;
-    name: string;
-    ipAddress: string;
-  };
-  type: string; // "PPP"
+  serviceType: ServiceType; // "PPP" | "HOTSPOT"
   ipModule: IpModuleType;
-  localAddress: string; // IP Gateway (e.g. 10.10.10.1)
-  rangeIpStart: string; // e.g. 10.10.10.2
-  rangeIpEnd: string; // e.g. 10.10.10.254
+  localAddress?: string | null; // IP Gateway (e.g. 10.10.10.1)
+  rangeIpStart?: string | null; // e.g. 10.10.10.2
+  rangeIpEnd?: string | null; // e.g. 10.10.10.254
   dnsServers: string; // default "8.8.8.8,8.8.4.4"
+  sessionTimeout?: number | null; // in seconds
+  idleTimeout?: number | null; // in seconds
   parentQueue?: string | null;
-  profileGroupId?: string | null;
-  profileGroup?: {
+
+  // Khusus Hotspot Profile
+  insertQueueBefore?: string | null; // "first" | "bottom" | "before" | "after"
+  keepaliveTimeout?: string | null; // e.g. "2m"
+  addMacCookie: boolean;
+  macCookieTimeout?: string | null; // e.g. "3d"
+
+  areaGroupId?: string | null;
+  areaGroup?: {
     id: string;
     name: string;
   } | null;
@@ -57,16 +62,26 @@ export interface PppProfile {
   updatedAt: string;
 }
 
-export interface ProfileGroup {
+export interface AreaGroup {
   id: string;
   name: string;
   description?: string | null;
-  createdAt: string;
-  updatedAt: string;
+  serviceType: string; // "PPP" | "HOTSPOT" | "PPP,HOTSPOT"
+  routers?: Array<{
+    id: string;
+    name: string;
+    ipAddress: string;
+  }>;
   pppProfiles?: PppProfile[];
+  routerCount?: number; // derived
   pppProfileCount?: number; // derived
   customerCount?: number; // derived
+  createdAt: string;
+  updatedAt: string;
 }
+
+// Alias for backward compatibility
+export type ProfileGroup = AreaGroup;
 
 export interface InternetProfile {
   id: string;
@@ -94,7 +109,10 @@ export interface Customer {
   status: CustomerStatus;
   profileId: string; // relasi ke InternetProfile (Paket Internet)
   profile?: InternetProfile | null;
-  profileGroupId?: string; // relasi ke ProfileGroup (Wilayah / Failover Group)
+  areaGroupId?: string | null; // relasi ke AreaGroup (Wilayah / Area)
+  areaGroup?: AreaGroup | null;
+  // alias for backward compatibility
+  profileGroupId?: string | null;
   profileGroup?: ProfileGroup | null;
   staticIp?: string; // radreply: Framed-IP-Address
   nasId?: string; // NAS router ID (terakhir/default)

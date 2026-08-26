@@ -84,7 +84,7 @@ async function main() {
   await prisma.radIpPool.deleteMany();
   await prisma.internetProfile.deleteMany();
   await prisma.pppProfile.deleteMany();
-  await prisma.profileGroup.deleteMany();
+  await prisma.areaGroup.deleteMany();
   await prisma.bandwidth.deleteMany();
   await prisma.nasRouter.deleteMany();
   await prisma.role.deleteMany();
@@ -177,64 +177,69 @@ async function main() {
   }
   console.log(`✓ ${initialBws.length} konfigurasi bandwidth`);
 
-  // ── 4. Profile Group (Wilayah / Failover Group) ──
-  await prisma.profileGroup.create({
+  // ── 4. Area Group (Wilayah / Failover Group) ──
+  await prisma.areaGroup.create({
     data: {
       id: "grp-1",
       name: "Wilayah Kota A",
+      serviceType: "PPP",
       description: "Zona Failover Router MikroTik Kota A",
+      routers: {
+        connect: [{ id: "nas-1" }, { id: "nas-2" }],
+      },
     },
   });
-  await prisma.profileGroup.create({
+  await prisma.areaGroup.create({
     data: {
       id: "grp-2",
       name: "Wilayah Kota B",
+      serviceType: "PPP",
       description: "Zona Failover Router MikroTik Kota B",
+      routers: {
+        connect: [{ id: "nas-3" }],
+      },
     },
   });
-  console.log("✓ 2 Profile Group Wilayah (Kota A & Kota B)");
+  console.log("✓ 2 Area Group Wilayah (Kota A & Kota B)");
 
   // ── 5. PPP Profile Node (Konfigurasi Gateway & IP Pool MikroTik) ──
   await prisma.pppProfile.create({
     data: {
       id: "ppp-node-a1",
       name: "profile-node-a1",
-      nasId: "nas-1",
-      type: "PPP",
+      serviceType: "PPP",
       ipModule: "sql",
       localAddress: "10.10.1.1",
       rangeIpStart: "10.10.1.2",
       rangeIpEnd: "10.10.1.254",
       dnsServers: "8.8.8.8,8.8.4.4",
-      profileGroupId: "grp-1",
+      areaGroupId: "grp-1",
     },
   });
   await prisma.pppProfile.create({
     data: {
       id: "ppp-node-a2",
       name: "profile-node-a2",
-      nasId: "nas-2",
-      type: "PPP",
+      serviceType: "PPP",
       ipModule: "sql",
       localAddress: "10.10.2.1",
       rangeIpStart: "10.10.2.2",
       rangeIpEnd: "10.10.2.254",
       dnsServers: "8.8.8.8,8.8.4.4",
-      profileGroupId: "grp-1",
+      areaGroupId: "grp-1",
     },
   });
   await prisma.pppProfile.create({
     data: {
       id: "ppp-node-b1",
       name: "profile-node-b1",
-      nasId: "nas-3",
-      type: "PPP",
+      serviceType: "PPP",
       ipModule: "sql",
       localAddress: "10.20.1.1",
       rangeIpStart: "10.20.1.2",
       rangeIpEnd: "10.20.1.254",
       dnsServers: "8.8.8.8,8.8.4.4",
-      profileGroupId: "grp-2",
+      areaGroupId: "grp-2",
     },
   });
   const { syncPppProfileIpPool } = await import("@/lib/radsync");
@@ -274,7 +279,7 @@ async function main() {
         address: c.address,
         status: c.status,
         profileId: c.profileId,
-        profileGroupId: "grp-1",
+        areaGroupId: "grp-1",
         staticIp: isDynamic ? null : c.staticIp,
         nasId: c.nasId,
         createdAt: resolveDate(c.createdAt) ?? new Date(),
