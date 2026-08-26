@@ -30,7 +30,8 @@ RUN sed -i -E '/authorize \{/,/^\}/ { s/^\s*-?sql\s*$/\tsql\n\tcheck_nas_binding
  && sed -i -E 's/^[[:space:]]*#[[:space:]]*-?sqlippool[[:space:]]*$/\tsqlippool\n\tcleanup_ippool_reply/' /etc/raddb/sites-enabled/default \
  && sed -i -E 's/^[[:space:]]*#[[:space:]]*-?sqlippool[[:space:]]*$/\tsqlippool\n\tcleanup_ippool_reply/' /etc/raddb/sites-enabled/inner-tunnel \
  && sed -i -E 's/^\s*-sqlippool\s*$/\tsqlippool/' /etc/raddb/sites-enabled/default \
- && sed -i -E 's/^\s*-sqlippool\s*$/\tsqlippool/' /etc/raddb/sites-enabled/inner-tunnel
+ && sed -i -E 's/^\s*-sqlippool\s*$/\tsqlippool/' /etc/raddb/sites-enabled/inner-tunnel \
+ && sed -i -E 's/^[[:space:]]*event_timestamp_epoch = .*/event_timestamp_epoch = "%l"/' /etc/raddb/mods-config/sql/main/postgresql/queries.conf
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

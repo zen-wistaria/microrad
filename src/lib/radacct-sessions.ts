@@ -52,17 +52,45 @@ export async function getOnlineRadacct(
   return rows;
 }
 
+/** Helper untuk menormalisasi timestamp jika ada offset jam lokal router */
+function normalizeTimestampMs(time: Date | null, nowMs: number): number | null {
+  if (!time) return null;
+  let ms = time.getTime();
+  if (Number.isNaN(ms)) return null;
+  // Jika timestamp berada di masa depan (> nowMs + 1 menit), sesuaikan offset timezone (1-14 jam)
+  if (ms > nowMs + 60 * 1000) {
+    const hourDiff = Math.round((ms - nowMs) / 3600000);
+    if (hourDiff >= 1 && hourDiff <= 14) {
+      ms -= hourDiff * 3600000;
+    }
+  }
+  return ms;
+}
+
 /** Petakan row radacct → bentuk Session aplikasi (inflasi sejak Interim). */
 export function radacctRowToSession(
   row: RadacctSessionRow,
 ): Omit<Session, "id" | "nasId"> & { id: string; nasId: string } {
   const nowMs = Date.now();
   const started = row.acctStartTime ?? new Date();
-  const baseMs = Number(row.acctSessionTime ?? 0) * 1000;
-  const sinceUpdateMs = row.acctUpdateTime
-    ? Math.max(0, nowMs - new Date(row.acctUpdateTime).getTime())
-    : Math.max(0, nowMs - started.getTime());
-  const duration = Math.max(0, Math.round((baseMs + sinceUpdateMs) / 1000));
+  const startMs =
+    normalizeTimestampMs(row.acctStartTime, nowMs) ?? started.getTime();
+  const updateMs = normalizeTimestampMs(row.acctUpdateTime, nowMs);
+  const baseSeconds = Number(row.acctSessionTime ?? 0);
+
+  // Durasi presisi:
+  // Selisih waktu sekarang sejak mulai / update terakhir
+  let duration = baseSeconds;
+  if (startMs <= nowMs) {
+    const elapsedSinceStart = Math.floor((nowMs - startMs) / 1000);
+    duration = Math.max(duration, elapsedSinceStart);
+  }
+  if (updateMs && updateMs <= nowMs) {
+    const elapsedSinceUpdate = Math.floor((nowMs - updateMs) / 1000);
+    duration = Math.max(duration, baseSeconds + elapsedSinceUpdate);
+  }
+
+  duration = Math.max(0, duration);
   const growth = 1 + Math.min(duration * 10, 3600) / 3600;
 
   return {
@@ -146,16 +174,28 @@ export function radacctHistoryRowToSession(
 ): Omit<Session, "id" | "nasId"> & { id: string; nasId: string } {
   const started = row.acctStartTime ?? new Date();
   const stopAt = row.acctStopTime;
-  // Durasi: acctSessionTime (dari Interim/Stop); inflasi minor sejak update
-  // hanya untuk sesi yang masih online.
   let duration = Number(row.acctSessionTime ?? 0);
+
   if (!stopAt) {
     const nowMs = Date.now();
-    const sinceUpdateMs = row.acctUpdateTime
-      ? Math.max(0, nowMs - new Date(row.acctUpdateTime).getTime())
-      : Math.max(0, nowMs - started.getTime());
-    duration = Math.max(0, Math.round(duration + sinceUpdateMs / 1000));
+    const startMs =
+      normalizeTimestampMs(row.acctStartTime, nowMs) ?? started.getTime();
+    const updateMs = normalizeTimestampMs(row.acctUpdateTime, nowMs);
+
+    if (startMs <= nowMs) {
+      const elapsedSinceStart = Math.floor((nowMs - startMs) / 1000);
+      duration = Math.max(duration, elapsedSinceStart);
+    }
+    if (updateMs && updateMs <= nowMs) {
+      const elapsedSinceUpdate = Math.floor((nowMs - updateMs) / 1000);
+      duration = Math.max(
+        duration,
+        Number(row.acctSessionTime ?? 0) + elapsedSinceUpdate,
+      );
+    }
   }
+
+  duration = Math.max(0, duration);
   const growth = stopAt ? 1 : 1 + Math.min(duration * 10, 3600) / 3600;
 
   return {
@@ -167,7 +207,7 @@ export function radacctHistoryRowToSession(
     framedIp: row.framedIpAddress ?? undefined,
     startedAt: started.toISOString(),
     stoppedAt: stopAt ? stopAt.toISOString() : undefined,
-    durationSeconds: Math.max(0, Math.round(duration)),
+    durationSeconds: Math.round(duration),
     inputBytes: Math.round(Number(row.acctInputOctets ?? 0) * growth),
     outputBytes: Math.round(Number(row.acctOutputOctets ?? 0) * growth),
     extKey: row.acctUniqueId,

@@ -876,13 +876,25 @@ export default function CustomerDetailPage({
                           </td>
                           <td className="py-3 px-4">
                             {!sess.stoppedAt ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/30">
-                                <span className="relative flex h-2 w-2">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/30">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                  </span>
+                                  Online
                                 </span>
-                                Online
-                              </span>
+                                <div>
+                                  <LiveDurationCounter
+                                    startedAt={sess.startedAt}
+                                    baseSeconds={
+                                      sess.durationSeconds > 0
+                                        ? sess.durationSeconds
+                                        : undefined
+                                    }
+                                  />
+                                </div>
+                              </div>
                             ) : (
                               <div>
                                 <div className="font-medium text-slate-700 dark:text-slate-300">

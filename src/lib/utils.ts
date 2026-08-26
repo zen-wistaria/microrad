@@ -46,7 +46,7 @@ export function formatDuration(
   seconds: number,
   format: "short" | "human" = "human",
 ): string {
-  if (!seconds || seconds <= 0) return "0m";
+  if (!seconds || seconds <= 0) return format === "short" ? "00:00" : "0s";
 
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -62,10 +62,10 @@ export function formatDuration(
 
   const parts = [];
   if (hrs > 0) parts.push(`${hrs}h`);
-  if (mins > 0 || hrs > 0) parts.push(`${mins}m`);
-  if (hrs === 0 && mins < 5) parts.push(`${secs}s`);
+  if (mins > 0) parts.push(`${mins}m`);
+  parts.push(`${secs}s`);
 
-  return parts.join(" ") || "0m";
+  return parts.join(" ") || "0s";
 }
 
 /**
