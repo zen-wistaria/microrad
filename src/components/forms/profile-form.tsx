@@ -202,7 +202,6 @@ export function ProfileForm({ initialData, isEditing }: ProfileFormProps) {
   const selectedServiceType = watch("serviceType");
   const selectedIpModule = watch("ipModule");
   const selectedGroupId = watch("areaGroupId");
-  const parentQueueVal = watch("parentQueue");
   const addMacCookieVal = watch("addMacCookie");
   const insertQueueBeforeVal = watch("insertQueueBefore");
 
@@ -494,7 +493,6 @@ export function ProfileForm({ initialData, isEditing }: ProfileFormProps) {
                         },
                       )
                     }
-                    disabled={!parentQueueVal?.trim()}
                   >
                     <SelectTrigger id="insertQueueBefore">
                       <SelectValue placeholder="-- Posisi Antrean --" />
@@ -509,15 +507,9 @@ export function ProfileForm({ initialData, isEditing }: ProfileFormProps) {
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                  {!parentQueueVal?.trim() ? (
-                    <p className="text-[11px] text-slate-400">
-                      * Isi Parent Queue terlebih dahulu.
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-slate-400">
-                      Posisi dynamic queue di daftar Simple Queue.
-                    </p>
-                  )}
+                  <p className="text-[11px] text-slate-400">
+                    Posisi dynamic queue di daftar Simple Queue RouterOS.
+                  </p>
                 </div>
               </div>
             </CardContent>

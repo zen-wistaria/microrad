@@ -161,11 +161,15 @@ export async function syncProfileToRouter(
 
       if (params.parentQueue?.trim()) {
         commandParams.push(`=parent-queue=${params.parentQueue.trim()}`);
-        if (params.insertQueueBefore?.trim()) {
-          const iqb = params.insertQueueBefore.trim().toLowerCase();
-          if (iqb === "first" || iqb === "bottom") {
-            commandParams.push(`=insert-queue-before=${iqb}`);
-          }
+      }
+
+      if (
+        params.insertQueueBefore?.trim() &&
+        params.insertQueueBefore.trim().toLowerCase() !== "none"
+      ) {
+        const iqb = params.insertQueueBefore.trim().toLowerCase();
+        if (iqb === "first" || iqb === "bottom") {
+          commandParams.push(`=insert-queue-before=${iqb}`);
         }
       }
 
@@ -205,16 +209,12 @@ export async function syncProfileToRouter(
               `=.id=${existing[".id"]}`,
               "=value-name=parent-queue",
             ]);
-            await conn.write("/ip/hotspot/user/profile/unset", [
-              `=.id=${existing[".id"]}`,
-              "=value-name=insert-queue-before",
-            ]);
           } catch {}
-        } else if (
-          params.parentQueue?.trim() &&
-          existing["insert-queue-before"] &&
+        }
+        if (
           (!params.insertQueueBefore?.trim() ||
-            params.insertQueueBefore.trim().toLowerCase() === "none")
+            params.insertQueueBefore.trim().toLowerCase() === "none") &&
+          existing["insert-queue-before"]
         ) {
           try {
             await conn.write("/ip/hotspot/user/profile/unset", [
@@ -268,11 +268,15 @@ export async function syncProfileToRouter(
 
     if (params.parentQueue?.trim()) {
       commandParams.push(`=parent-queue=${params.parentQueue.trim()}`);
-      if (params.insertQueueBefore?.trim()) {
-        const iqb = params.insertQueueBefore.trim().toLowerCase();
-        if (iqb === "first" || iqb === "bottom") {
-          commandParams.push(`=insert-queue-before=${iqb}`);
-        }
+    }
+
+    if (
+      params.insertQueueBefore?.trim() &&
+      params.insertQueueBefore.trim().toLowerCase() !== "none"
+    ) {
+      const iqb = params.insertQueueBefore.trim().toLowerCase();
+      if (iqb === "first" || iqb === "bottom") {
+        commandParams.push(`=insert-queue-before=${iqb}`);
       }
     }
 
@@ -289,23 +293,20 @@ export async function syncProfileToRouter(
     }
 
     if (existing?.[".id"]) {
-      // Jika parent-queue dikosongkan pada form tapi ada di router sebelumnya, unset parent-queue & insert-queue-before
+      // Jika parent-queue dikosongkan pada form tapi ada di router sebelumnya, unset parent-queue
       if (!params.parentQueue?.trim() && existing["parent-queue"]) {
         try {
           await conn.write("/ppp/profile/unset", [
             `=.id=${existing[".id"]}`,
             "=value-name=parent-queue",
           ]);
-          await conn.write("/ppp/profile/unset", [
-            `=.id=${existing[".id"]}`,
-            "=value-name=insert-queue-before",
-          ]);
         } catch {}
-      } else if (
-        params.parentQueue?.trim() &&
-        existing["insert-queue-before"] &&
+      }
+      // Jika insert-queue-before dikosongkan pada form tapi ada di router sebelumnya, unset insert-queue-before
+      if (
         (!params.insertQueueBefore?.trim() ||
-          params.insertQueueBefore.trim().toLowerCase() === "none")
+          params.insertQueueBefore.trim().toLowerCase() === "none") &&
+        existing["insert-queue-before"]
       ) {
         try {
           await conn.write("/ppp/profile/unset", [
