@@ -1,5 +1,5 @@
 /**
- * Sinkronisasi PPP & Hotspot Profile ke Router MikroTik via API Port 8728.
+ * Sinkronisasi Profil (PPP & Hotspot) ke Router MikroTik via API Port 8728.
  * Menjamin sifat IDEMPOTENT saat tambah, edit (update/rename), maupun hapus.
  */
 import { connectRouterOS, type MikrotikConn } from "./mikrotik-client";
@@ -67,7 +67,7 @@ async function syncMikrotikIpPool(
 /**
  * Buat atau update Profile (PPP atau Hotspot) di router MikroTik secara idempotent via API.
  */
-export async function syncPppProfileToRouter(
+export async function syncProfileToRouter(
   params: SyncProfileRouterParams,
 ): Promise<{ success: boolean; message: string }> {
   const router = await prisma.nasRouter.findUnique({
@@ -357,10 +357,13 @@ export async function syncPppProfileToRouter(
   }
 }
 
+// Alias for backward compatibility
+export const syncPppProfileToRouter = syncProfileToRouter;
+
 /**
  * Hapus Profile dari router MikroTik secara idempotent via API.
  */
-export async function removePppProfileFromRouter(
+export async function removeProfileFromRouter(
   nasId: string,
   profileName: string,
   serviceType: "PPP" | "HOTSPOT" | string = "PPP",
@@ -448,6 +451,9 @@ export async function removePppProfileFromRouter(
   }
 }
 
+// Alias for backward compatibility
+export const removePppProfileFromRouter = removeProfileFromRouter;
+
 /**
  * Sinkronkan 1 profil ke seluruh router NAS yang tergabung dalam Area Group profil tersebut.
  */
@@ -489,7 +495,7 @@ export async function syncSingleProfileToRouters(
       continue;
     }
 
-    const res = await syncPppProfileToRouter({
+    const res = await syncProfileToRouter({
       nasId: router.id,
       name: profile.name,
       serviceType: profile.serviceType || profile.areaGroup.serviceType,
@@ -549,7 +555,7 @@ export async function syncAreaGroupToRouters(
     }
 
     for (const profile of area.pppProfiles) {
-      const res = await syncPppProfileToRouter({
+      const res = await syncProfileToRouter({
         nasId: router.id,
         name: profile.name,
         serviceType: profile.serviceType || area.serviceType,

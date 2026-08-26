@@ -92,8 +92,8 @@ const serviceNavItems: NavItem[] = [
     permission: "profile.read",
   },
   {
-    title: "PPP Profile",
-    href: "/ppp-profiles",
+    title: "Profiles",
+    href: "/profiles",
     icon: Radio,
     permission: "profile.read",
   },

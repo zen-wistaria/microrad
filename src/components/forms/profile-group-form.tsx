@@ -521,7 +521,7 @@ export function ProfileGroupForm({
                 Bersihkan
               </Button>
               <Link
-                href="/ppp-profiles/new"
+                href="/profiles/new"
                 className="text-xs text-blue-600 hover:underline ml-1"
               >
                 + Buat Profil
@@ -545,7 +545,7 @@ export function ProfileGroupForm({
                 .
               </p>
               <Button variant="outline" size="sm" asChild>
-                <Link href="/ppp-profiles/new">+ Buat Profil Baru</Link>
+                <Link href="/profiles/new">+ Buat Profil Baru</Link>
               </Button>
             </div>
           ) : (

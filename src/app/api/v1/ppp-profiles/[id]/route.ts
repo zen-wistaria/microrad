@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import {
-  removePppProfileFromRouter,
+  removeProfileFromRouter,
   syncSingleProfileToRouters,
-} from "@/lib/mikrotik-ppp-profile";
+} from "@/lib/mikrotik-profile";
 import { prisma } from "@/lib/prisma";
 import {
   cleanupPppProfileIpPool,
@@ -162,7 +162,7 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
       for (const r of oldArea.routers) {
         if (r.status !== "offline") {
           try {
-            await removePppProfileFromRouter(
+            await removeProfileFromRouter(
               r.id,
               existingProfile.name,
               existingProfile.serviceType,
@@ -213,7 +213,7 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
   if (existingProfile?.areaGroup?.routers && existingProfile.name) {
     for (const router of existingProfile.areaGroup.routers) {
       try {
-        await removePppProfileFromRouter(
+        await removeProfileFromRouter(
           router.id,
           existingProfile.name,
           existingProfile.serviceType,

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
 import {
-  removePppProfileFromRouter,
+  removeProfileFromRouter,
   syncAreaGroupToRouters,
-} from "@/lib/mikrotik-ppp-profile";
+} from "@/lib/mikrotik-profile";
 import { prisma } from "@/lib/prisma";
 import { syncAreaGroupRadiusBulk } from "@/lib/radsync";
 
@@ -162,7 +162,7 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
       for (const r of existingAreaGroup.routers) {
         if (r.status !== "offline") {
           try {
-            const delRes = await removePppProfileFromRouter(
+            const delRes = await removeProfileFromRouter(
               r.id,
               p.name,
               p.serviceType || existingAreaGroup.serviceType,
@@ -188,7 +188,7 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
       if (r.status !== "offline") {
         for (const p of existingAreaGroup.pppProfiles) {
           try {
-            const delRes = await removePppProfileFromRouter(
+            const delRes = await removeProfileFromRouter(
               r.id,
               p.name,
               p.serviceType || existingAreaGroup.serviceType,
@@ -271,7 +271,7 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
       if (r.status !== "offline") {
         for (const p of existingAreaGroup.pppProfiles) {
           try {
-            await removePppProfileFromRouter(
+            await removeProfileFromRouter(
               r.id,
               p.name,
               p.serviceType || existingAreaGroup.serviceType,

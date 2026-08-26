@@ -1,5 +1,11 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { ProfileForm } from "@/components/forms/profile-form";
 
 export default function NewProfilePage() {
-  redirect("/ppp-profiles/new");
+  return (
+    <div className="space-y-6">
+      <ProfileForm />
+    </div>
+  );
 }

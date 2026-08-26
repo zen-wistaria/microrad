@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { asyncApi, requirePermission } from "@/lib/api-auth";
-import { syncSingleProfileToRouters } from "@/lib/mikrotik-ppp-profile";
+import { syncSingleProfileToRouters } from "@/lib/mikrotik-profile";
 import { prisma } from "@/lib/prisma";
 import { syncAreaGroupRadiusBulk, syncPppProfileIpPool } from "@/lib/radsync";
 

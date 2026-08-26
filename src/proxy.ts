@@ -20,7 +20,6 @@ const KNOWN_ROUTES = [
   "/internet-profiles",
   "/bandwidths",
   "/profile-groups",
-  "/ppp-profiles",
   "/profiles",
   "/routers",
   "/sessions",
