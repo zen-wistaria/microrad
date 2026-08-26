@@ -3,8 +3,8 @@ import type { GetInvoicesParams } from "./billing";
 import type { GetCustomersParams } from "./customers";
 import type { GetInternetProfilesParams } from "./internet-profiles";
 import type { GetLogsParams } from "./logs";
-import type { GetPppProfilesParams } from "./ppp-profiles";
 import type { GetProfileGroupsParams } from "./profile-groups";
+import type { GetProfilesParams } from "./profiles";
 import type { GetRoutersParams } from "./routers";
 import type { GetSessionsParams } from "./sessions";
 import type { GetUsersParams } from "./users";
@@ -58,20 +58,20 @@ export const queryKeys = {
     detail: (id: string) => ["internet-profiles", "detail", id] as const,
   },
 
-  // PPP Profiles (Node MikroTik)
-  pppProfiles: {
-    all: ["ppp-profiles"] as const,
-    list: (params?: GetPppProfilesParams) =>
-      ["ppp-profiles", "list", ...(params ? [params] : [])] as const,
-    detail: (id: string) => ["ppp-profiles", "detail", id] as const,
+  // Profiles (Node MikroTik - PPP & Hotspot)
+  profiles: {
+    all: ["profiles"] as const,
+    list: (params?: GetProfilesParams) =>
+      ["profiles", "list", ...(params ? [params] : [])] as const,
+    detail: (id: string) => ["profiles", "detail", id] as const,
   },
 
-  // Legacy Profiles (alias)
-  profiles: {
-    all: ["internet-profiles"] as const,
-    list: (params?: GetInternetProfilesParams) =>
-      ["internet-profiles", "list", ...(params ? [params] : [])] as const,
-    detail: (id: string) => ["internet-profiles", "detail", id] as const,
+  // PPP Profiles (alias)
+  pppProfiles: {
+    all: ["profiles"] as const,
+    list: (params?: GetProfilesParams) =>
+      ["profiles", "list", ...(params ? [params] : [])] as const,
+    detail: (id: string) => ["profiles", "detail", id] as const,
   },
 
   // NAS Routers

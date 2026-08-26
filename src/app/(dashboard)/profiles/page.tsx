@@ -32,10 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  useDeletePppProfileMutation,
-  usePppProfilesQuery,
-} from "@/lib/api/hooks";
+import { useDeleteProfileMutation, useProfilesQuery } from "@/lib/api/hooks";
 import type { PppProfile } from "@/lib/types";
 import { useDebounce } from "@/lib/use-debounce";
 import { getErrorMessage } from "@/lib/utils";
@@ -58,11 +55,11 @@ export default function ProfilesPage() {
 
   const filterParams = useMemo(
     () => ({
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       page: safePage,
       limit: safeLimit,
     }),
-    [search, safePage, safeLimit],
+    [debouncedSearch, safePage, safeLimit],
   );
 
   const {
@@ -70,8 +67,8 @@ export default function ProfilesPage() {
     isLoading,
     refetch,
     isFetching,
-  } = usePppProfilesQuery(filterParams);
-  const deleteMutation = useDeletePppProfileMutation();
+  } = useProfilesQuery(filterParams);
+  const deleteMutation = useDeleteProfileMutation();
 
   const profiles = profilesRes?.data || [];
   const totalCount = profilesRes?.total || 0;

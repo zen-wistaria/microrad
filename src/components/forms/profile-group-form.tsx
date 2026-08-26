@@ -8,6 +8,7 @@ import {
   Loader2,
   Network,
   Radio,
+  Search,
   Server,
 } from "lucide-react";
 import Link from "next/link";
@@ -30,11 +31,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   useCreateProfileGroupMutation,
-  usePppProfilesQuery,
+  useProfilesQuery,
   useRoutersQuery,
   useUpdateProfileGroupMutation,
 } from "@/lib/api/hooks";
 import type { AreaGroup } from "@/lib/types";
+import { useDebounce } from "@/lib/use-debounce";
 import { getErrorMessage } from "@/lib/utils";
 
 const areaGroupSchema = z.object({
@@ -57,16 +59,6 @@ export function ProfileGroupForm({
   const createMutation = useCreateProfileGroupMutation();
   const updateMutation = useUpdateProfileGroupMutation();
 
-  const { data: routersRes, isLoading: loadingRouters } = useRoutersQuery({
-    limit: 100,
-  });
-  const allRouters = routersRes?.data || [];
-
-  const { data: pppRes, isLoading: loadingPpp } = usePppProfilesQuery({
-    limit: 1000,
-  });
-  const allProfiles = pppRes?.data || [];
-
   // Track selected Service Types: "PPP" | "HOTSPOT" (bisa multiple)
   const [selectedServiceTypes, setSelectedServiceTypes] = useState<
     ("PPP" | "HOTSPOT")[]
@@ -81,7 +73,7 @@ export function ProfileGroupForm({
     return ["PPP"];
   });
 
-  // Track checked Router NAS IDs
+  // Track checked Router NAS IDs across pagination
   const [selectedNasIds, setSelectedNasIds] = useState<string[]>(() => {
     if (initialData?.routers) {
       return initialData.routers.map((r) => r.id);
@@ -89,13 +81,65 @@ export function ProfileGroupForm({
     return [];
   });
 
-  // Track checked Profile IDs
+  // Track checked Profile IDs across pagination
   const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>(() => {
     if (initialData?.pppProfiles) {
       return initialData.pppProfiles.map((p) => p.id);
     }
     return [];
   });
+
+  // Router NAS Server-side Search & Pagination
+  const [routerSearch, setRouterSearch] = useState("");
+  const debouncedRouterSearch = useDebounce(routerSearch, 350);
+  const [routerPage, setRouterPage] = useState(1);
+  const routerLimit = 6;
+
+  const { data: routersRes, isLoading: loadingRouters } = useRoutersQuery({
+    search: debouncedRouterSearch.trim() || undefined,
+    page: routerPage,
+    limit: routerLimit,
+  });
+  const routers = routersRes?.data || [];
+  const totalRouters = routersRes?.total || 0;
+  const totalRouterPages = Math.ceil(totalRouters / routerLimit) || 1;
+  useEffect(() => {
+    if (debouncedRouterSearch !== undefined) {
+      setRouterPage(1);
+    }
+  }, [debouncedRouterSearch]);
+
+  // Profiles Server-side Search & Pagination
+  const [profileSearch, setProfileSearch] = useState("");
+  const debouncedProfileSearch = useDebounce(profileSearch, 350);
+  const [profilePage, setProfilePage] = useState(1);
+  const profileLimit = 6;
+
+  const serviceTypeQuery =
+    selectedServiceTypes.length === 1
+      ? selectedServiceTypes[0]
+      : selectedServiceTypes.length > 1
+        ? selectedServiceTypes.join(",")
+        : undefined;
+
+  const { data: pppRes, isLoading: loadingPpp } = useProfilesQuery({
+    search: debouncedProfileSearch.trim() || undefined,
+    serviceType: serviceTypeQuery,
+    page: profilePage,
+    limit: profileLimit,
+  });
+  const profiles = pppRes?.data || [];
+  const totalProfiles = pppRes?.total || 0;
+  const totalProfilePages = Math.ceil(totalProfiles / profileLimit) || 1;
+
+  useEffect(() => {
+    if (
+      debouncedProfileSearch !== undefined ||
+      selectedServiceTypes.length >= 0
+    ) {
+      setProfilePage(1);
+    }
+  }, [debouncedProfileSearch, selectedServiceTypes]);
 
   useEffect(() => {
     if (initialData?.serviceType) {
@@ -137,17 +181,6 @@ export function ProfileGroupForm({
       } else {
         next = [...prev, type];
       }
-
-      // Otomatis uncheck profil dari layanan yang tidak lagi dipilih
-      setSelectedProfileIds((currentSelectedIds) => {
-        return currentSelectedIds.filter((pId) => {
-          const prof = allProfiles.find((p) => p.id === pId);
-          if (!prof) return true;
-          const pType = prof.serviceType === "HOTSPOT" ? "HOTSPOT" : "PPP";
-          return next.includes(pType);
-        });
-      });
-
       return next;
     });
   };
@@ -162,6 +195,26 @@ export function ProfileGroupForm({
     setSelectedProfileIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
     );
+  };
+
+  const selectAllRoutersCurrentPage = () => {
+    const idsToAdd = routers.map((r) => r.id);
+    setSelectedNasIds((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+  };
+
+  const clearRouters = () => {
+    setSelectedNasIds([]);
+  };
+
+  const selectAllProfilesCurrentPage = () => {
+    const idsToAdd = profiles.map((p) => p.id);
+    setSelectedProfileIds((prev) =>
+      Array.from(new Set([...prev, ...idsToAdd])),
+    );
+  };
+
+  const clearProfiles = () => {
+    setSelectedProfileIds([]);
   };
 
   const onSubmit = async (values: AreaGroupFormValues) => {
@@ -232,25 +285,6 @@ export function ProfileGroupForm({
 
   const isPending =
     isSubmitting || createMutation.isPending || updateMutation.isPending;
-
-  const filteredProfiles = allProfiles.filter((p) => {
-    const profileService = p.serviceType === "HOTSPOT" ? "HOTSPOT" : "PPP";
-    return selectedServiceTypes.includes(profileService);
-  });
-
-  const selectAllProfiles = () => {
-    const profileIdsToAdd = filteredProfiles.map((p) => p.id);
-    setSelectedProfileIds((prev) =>
-      Array.from(new Set([...prev, ...profileIdsToAdd])),
-    );
-  };
-
-  const clearProfiles = () => {
-    const profileIdsToRemove = new Set(filteredProfiles.map((p) => p.id));
-    setSelectedProfileIds((prev) =>
-      prev.filter((id) => !profileIdsToRemove.has(id)),
-    );
-  };
 
   const serviceTypeLabel = selectedServiceTypes.join(" & ");
 
@@ -383,243 +417,388 @@ export function ProfileGroupForm({
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Card 2: Pemilihan Multi-Router NAS */}
-        <Card className="h-full flex flex-col">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Server className="h-4 w-4 text-indigo-600" />
-                  Pilih Router NAS di Wilayah Ini
-                </CardTitle>
-                <CardDescription>
-                  Pilih router node yang melayani wilayah ini untuk failover.
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => setSelectedNasIds(allRouters.map((r) => r.id))}
+        <Card className="h-full flex flex-col justify-between">
+          <div>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Server className="h-4 w-4 text-indigo-600" />
+                    Pilih Router NAS di Wilayah Ini
+                  </CardTitle>
+                  <CardDescription>
+                    Pilih router node yang melayani wilayah ini untuk failover.
+                  </CardDescription>
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="text-xs font-mono text-indigo-600"
                 >
-                  Pilih Semua
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-7 text-slate-500"
-                  onClick={() => setSelectedNasIds([])}
-                >
-                  Bersihkan
-                </Button>
+                  {selectedNasIds.length} dipilih
+                </Badge>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1">
-            {loadingRouters ? (
-              <div className="space-y-2 py-2">
-                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-              </div>
-            ) : allRouters.length === 0 ? (
-              <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs">
-                Belum ada Router NAS terdaftar. Tambahkan Router di menu Router
-                terlebih dahulu.
-              </div>
-            ) : (
-              <div className="grid gap-2.5">
-                {allRouters.map((r) => {
-                  const isChecked = selectedNasIds.includes(r.id);
-                  return (
-                    <label
-                      key={r.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                        isChecked
-                          ? "border-indigo-500 bg-indigo-50/40 dark:border-indigo-700 dark:bg-indigo-950/20"
-                          : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleRouterNas(r.id)}
-                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
-                            {r.name}
-                          </p>
-                          <Badge
-                            variant={
-                              r.status === "online" ? "default" : "secondary"
-                            }
-                            className={`text-[10px] ${
-                              r.status === "online"
-                                ? "bg-emerald-500 text-white"
-                                : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                            }`}
-                          >
-                            {r.status || "unknown"}
-                          </Badge>
-                        </div>
-                        <p className="font-mono text-xs text-slate-500 truncate mt-0.5">
-                          {r.ipAddress}
-                        </p>
-                        {r.location && (
-                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                            {r.location}
-                          </p>
-                        )}
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Card 3: Profil yang ingin di-apply */}
-        <Card className="h-full flex flex-col">
-          <CardHeader>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-emerald-600" />
-                  Profil Layanan ({serviceTypeLabel})
-                </CardTitle>
-                <CardDescription>
-                  Profil terpilih otomatis dibuatkan di router target.
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={selectAllProfiles}
-                  disabled={filteredProfiles.length === 0}
-                >
-                  Pilih Semua
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-7 text-slate-500"
-                  onClick={clearProfiles}
-                  disabled={filteredProfiles.length === 0}
-                >
-                  Bersihkan
-                </Button>
-                <Link
-                  href="/profiles/new"
-                  className="text-xs text-blue-600 hover:underline ml-1"
-                >
-                  + Buat Profil
-                </Link>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1">
-            {loadingPpp ? (
-              <div className="space-y-2 py-2">
-                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-              </div>
-            ) : filteredProfiles.length === 0 ? (
-              <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs space-y-2">
-                <p>
-                  Belum ada Profil dengan tipe layanan{" "}
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">
-                    {serviceTypeLabel}
-                  </span>
-                  .
-                </p>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/profiles/new">+ Buat Profil Baru</Link>
-                </Button>
-              </div>
-            ) : (
-              <div className="grid gap-2.5">
-                {filteredProfiles.map((p) => {
-                  const isChecked = selectedProfileIds.includes(p.id);
-                  return (
-                    <label
-                      key={p.id}
-                      className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
-                        isChecked
-                          ? "border-emerald-500 bg-emerald-50/40 dark:border-emerald-700 dark:bg-emerald-950/20"
-                          : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
-                      }`}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Input
+                    placeholder="Cari router (nama, IP, lokasi)..."
+                    value={routerSearch}
+                    onChange={(e) => setRouterSearch(e.target.value)}
+                    className="pl-8 h-8 text-xs bg-white dark:bg-slate-900"
+                  />
+                  {routerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setRouterSearch("")}
+                      className="absolute right-2.5 top-1.5 text-xs text-slate-400 hover:text-slate-600"
                     >
-                      <div className="flex items-center gap-3">
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-8"
+                    onClick={selectAllRoutersCurrentPage}
+                    disabled={routers.length === 0}
+                  >
+                    Pilih Hal Ini
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-8 text-slate-500"
+                    onClick={clearRouters}
+                    disabled={selectedNasIds.length === 0}
+                  >
+                    Bersihkan
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingRouters ? (
+                <div className="space-y-2 py-2">
+                  <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                  <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                  <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                </div>
+              ) : routers.length === 0 ? (
+                <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs">
+                  {routerSearch
+                    ? "Tidak ada Router NAS yang cocok dengan pencarian."
+                    : "Belum ada Router NAS terdaftar. Tambahkan Router di menu Router terlebih dahulu."}
+                </div>
+              ) : (
+                <div className="grid gap-2.5">
+                  {routers.map((r) => {
+                    const isChecked = selectedNasIds.includes(r.id);
+                    return (
+                      <label
+                        key={r.id}
+                        className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          isChecked
+                            ? "border-indigo-500 bg-indigo-50/40 dark:border-indigo-700 dark:bg-indigo-950/20"
+                            : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
+                        }`}
+                      >
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => toggleProfile(p.id)}
-                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          onChange={() => toggleRouterNas(r.id)}
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-                              {p.name}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
+                              {r.name}
                             </p>
                             <Badge
-                              variant="outline"
-                              className={`text-[10px] uppercase font-mono ${
-                                p.serviceType === "HOTSPOT"
-                                  ? "border-amber-300 text-amber-700 dark:text-amber-300"
-                                  : "border-blue-300 text-blue-700 dark:text-blue-300"
+                              variant={
+                                r.status === "online" ? "default" : "secondary"
+                              }
+                              className={`text-[10px] ${
+                                r.status === "online"
+                                  ? "bg-emerald-500 text-white"
+                                  : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                               }`}
                             >
-                              {p.serviceType || "PPP"}
+                              {r.status || "unknown"}
                             </Badge>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                            <span className="font-mono">
-                              Modul:{" "}
-                              {p.ipModule === "sql"
-                                ? "SQL IP Pool"
-                                : "MikroTik Pool"}
-                            </span>
-                            {p.localAddress && (
-                              <>
-                                <span>•</span>
-                                <span className="font-mono">
-                                  GW: {p.localAddress}
-                                </span>
-                              </>
-                            )}
-                            {p.rangeIpStart && p.rangeIpEnd && (
-                              <>
-                                <span>•</span>
-                                <span className="font-mono">
-                                  Pool: {p.rangeIpStart} - {p.rangeIpEnd}
-                                </span>
-                              </>
-                            )}
+                          <p className="font-mono text-xs text-slate-500 truncate mt-0.5">
+                            {r.ipAddress}
+                          </p>
+                          {r.location && (
+                            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                              {r.location}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </div>
+
+          {/* Pagination Footer Router NAS */}
+          {!loadingRouters && totalRouters > 0 && (
+            <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 px-6 py-3 text-xs text-slate-500">
+              <span>
+                Total:{" "}
+                <strong className="text-slate-900 dark:text-slate-100">
+                  {totalRouters}
+                </strong>{" "}
+                router
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setRouterPage((p) => Math.max(1, p - 1))}
+                  disabled={routerPage <= 1 || loadingRouters}
+                >
+                  Sebelumnya
+                </Button>
+                <span className="font-medium">
+                  Hal {routerPage} dari {totalRouterPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() =>
+                    setRouterPage((p) => Math.min(totalRouterPages, p + 1))
+                  }
+                  disabled={routerPage >= totalRouterPages || loadingRouters}
+                >
+                  Selanjutnya
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* Card 3: Profil yang ingin di-apply */}
+        <Card className="h-full flex flex-col justify-between">
+          <div>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-emerald-600" />
+                    Profil Layanan ({serviceTypeLabel})
+                  </CardTitle>
+                  <CardDescription>
+                    Profil terpilih otomatis dibuatkan di router target.
+                  </CardDescription>
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="text-xs font-mono text-emerald-600"
+                >
+                  {selectedProfileIds.length} dipilih
+                </Badge>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Input
+                    placeholder="Cari profil (nama, gateway, pool)..."
+                    value={profileSearch}
+                    onChange={(e) => setProfileSearch(e.target.value)}
+                    className="pl-8 h-8 text-xs bg-white dark:bg-slate-900"
+                  />
+                  {profileSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setProfileSearch("")}
+                      className="absolute right-2.5 top-1.5 text-xs text-slate-400 hover:text-slate-600"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-8"
+                    onClick={selectAllProfilesCurrentPage}
+                    disabled={profiles.length === 0}
+                  >
+                    Pilih Hal Ini
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-8 text-slate-500"
+                    onClick={clearProfiles}
+                    disabled={selectedProfileIds.length === 0}
+                  >
+                    Bersihkan
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-blue-600"
+                    asChild
+                  >
+                    <Link href="/profiles/new">+ Buat</Link>
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingPpp ? (
+                <div className="space-y-2 py-2">
+                  <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                  <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                  <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                </div>
+              ) : profiles.length === 0 ? (
+                <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs space-y-2">
+                  <p>
+                    {profileSearch
+                      ? "Tidak ada Profil Layanan yang cocok dengan pencarian."
+                      : `Belum ada Profil dengan tipe layanan ${serviceTypeLabel}.`}
+                  </p>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/profiles/new">+ Buat Profil Baru</Link>
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-2.5">
+                  {profiles.map((p) => {
+                    const isChecked = selectedProfileIds.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                          isChecked
+                            ? "border-emerald-500 bg-emerald-50/40 dark:border-emerald-700 dark:bg-emerald-950/20"
+                            : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleProfile(p.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">
+                                {p.name}
+                              </p>
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] uppercase font-mono ${
+                                  p.serviceType === "HOTSPOT"
+                                    ? "border-amber-300 text-amber-700 dark:text-amber-300"
+                                    : "border-blue-300 text-blue-700 dark:text-blue-300"
+                                }`}
+                              >
+                                {p.serviceType || "PPP"}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
+                              <span className="font-mono">
+                                Modul:{" "}
+                                {p.ipModule === "sql"
+                                  ? "SQL IP Pool"
+                                  : "MikroTik Pool"}
+                              </span>
+                              {p.localAddress && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono">
+                                    GW: {p.localAddress}
+                                  </span>
+                                </>
+                              )}
+                              {p.rangeIpStart && p.rangeIpEnd && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono">
+                                    Pool: {p.rangeIpStart} - {p.rangeIpEnd}
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      {isChecked && (
-                        <Badge
-                          variant="secondary"
-                          className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[11px]"
-                        >
-                          Terapkan
-                        </Badge>
-                      )}
-                    </label>
-                  );
-                })}
+                        {isChecked && (
+                          <Badge
+                            variant="secondary"
+                            className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[11px]"
+                          >
+                            Terapkan
+                          </Badge>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </div>
+
+          {/* Pagination Footer Profil Layanan */}
+          {!loadingPpp && totalProfiles > 0 && (
+            <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 px-6 py-3 text-xs text-slate-500">
+              <span>
+                Total:{" "}
+                <strong className="text-slate-900 dark:text-slate-100">
+                  {totalProfiles}
+                </strong>{" "}
+                profil
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setProfilePage((p) => Math.max(1, p - 1))}
+                  disabled={profilePage <= 1 || loadingPpp}
+                >
+                  Sebelumnya
+                </Button>
+                <span className="font-medium">
+                  Hal {profilePage} dari {totalProfilePages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() =>
+                    setProfilePage((p) => Math.min(totalProfilePages, p + 1))
+                  }
+                  disabled={profilePage >= totalProfilePages || loadingPpp}
+                >
+                  Selanjutnya
+                </Button>
               </div>
-            )}
-          </CardContent>
+            </div>
+          )}
         </Card>
       </div>
 

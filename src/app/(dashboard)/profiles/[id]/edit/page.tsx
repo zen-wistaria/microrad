@@ -3,7 +3,7 @@
 import { AlertCircle, Loader2 } from "lucide-react";
 import { use } from "react";
 import { ProfileForm } from "@/components/forms/profile-form";
-import { usePppProfileQuery } from "@/lib/api/hooks";
+import { useProfileQuery } from "@/lib/api/hooks";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -11,7 +11,7 @@ interface PageProps {
 
 export default function EditProfilePage({ params }: PageProps) {
   const { id } = use(params);
-  const { data: res, isLoading, error } = usePppProfileQuery(id);
+  const { data: res, isLoading, error } = useProfileQuery(id);
   const profile = res?.data;
 
   if (isLoading) {

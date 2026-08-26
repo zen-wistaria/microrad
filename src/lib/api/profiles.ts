@@ -1,43 +1,71 @@
-import type { BandwidthProfile } from "@/lib/types";
-import { apiFetch } from "./client";
+import type { PppProfile } from "../types";
+import { apiFetch, paginated } from "./client";
 
-export type GetProfilesParams = Record<string, unknown>;
+export interface GetProfilesParams {
+  search?: string;
+  serviceType?: string;
+  page?: number;
+  limit?: number;
+}
 
-export async function getProfiles(): Promise<BandwidthProfile[]> {
-  return apiFetch<{ data: BandwidthProfile[] }>("/profiles").then(
-    (r) => r.data,
-  );
+export async function getProfilesPaginated(
+  params?: GetProfilesParams,
+): Promise<{ data: PppProfile[]; total: number }> {
+  return paginated<PppProfile>("/profiles", {
+    search: params?.search,
+    serviceType: params?.serviceType,
+    page: params?.page,
+    limit: params?.limit ?? 10,
+  });
+}
+
+export async function getProfiles(
+  params?: GetProfilesParams,
+): Promise<{ data: PppProfile[]; total: number }> {
+  return getProfilesPaginated(params);
 }
 
 export async function getProfileById(
   id: string,
-): Promise<BandwidthProfile | null> {
-  return apiFetch<{ data: BandwidthProfile | null }>(`/profiles/${id}`).then(
-    (r) => r.data,
-  );
+): Promise<{ data: PppProfile }> {
+  return apiFetch<{ data: PppProfile }>(`/profiles/${id}`);
 }
 
 export async function createProfile(
-  data: Omit<BandwidthProfile, "id" | "customerCount">,
-): Promise<BandwidthProfile> {
-  return apiFetch<{ data: BandwidthProfile }>("/profiles", {
+  data: Partial<PppProfile>,
+): Promise<{ data: PppProfile }> {
+  return apiFetch<{ data: PppProfile }>("/profiles", {
     method: "POST",
     body: JSON.stringify(data),
-  }).then((r) => r.data);
+  });
 }
 
 export async function updateProfile(
   id: string,
-  updates: Partial<BandwidthProfile>,
-): Promise<BandwidthProfile> {
-  return apiFetch<{ data: BandwidthProfile }>(`/profiles/${id}`, {
+  data: Partial<PppProfile>,
+): Promise<{ data: PppProfile }> {
+  return apiFetch<{ data: PppProfile }>(`/profiles/${id}`, {
     method: "PUT",
-    body: JSON.stringify(updates),
-  }).then((r) => r.data);
-}
-
-export async function deleteProfile(id: string): Promise<{ success: boolean }> {
-  return apiFetch<{ success: boolean }>(`/profiles/${id}`, {
-    method: "DELETE",
+    body: JSON.stringify(data),
   });
 }
+
+export async function deleteProfile(
+  id: string,
+): Promise<{ data: { id: string; deleted: boolean } }> {
+  return apiFetch<{ data: { id: string; deleted: boolean } }>(
+    `/profiles/${id}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+// Backward compatibility aliases
+export type GetPppProfilesParams = GetProfilesParams;
+export const getPppProfilesPaginated = getProfilesPaginated;
+export const getPppProfiles = getProfiles;
+export const getPppProfileById = getProfileById;
+export const createPppProfile = createProfile;
+export const updatePppProfile = updateProfile;
+export const deletePppProfile = deleteProfile;

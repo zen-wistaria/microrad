@@ -5,7 +5,6 @@ export * from "./use-dashboard";
 export * from "./use-internet-profiles";
 export * from "./use-logs";
 export * from "./use-portal";
-export * from "./use-ppp-profiles";
 export * from "./use-profile-groups";
 export * from "./use-profiles";
 export * from "./use-routers";

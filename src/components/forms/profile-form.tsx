@@ -35,9 +35,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  useCreatePppProfileMutation,
+  useCreateProfileMutation,
   useProfileGroupsQuery,
-  useUpdatePppProfileMutation,
+  useUpdateProfileMutation,
 } from "@/lib/api/hooks";
 import type {
   AreaGroup,
@@ -164,8 +164,8 @@ interface ProfileFormProps {
 
 export function ProfileForm({ initialData, isEditing }: ProfileFormProps) {
   const router = useRouter();
-  const createMutation = useCreatePppProfileMutation();
-  const updateMutation = useUpdatePppProfileMutation();
+  const createMutation = useCreateProfileMutation();
+  const updateMutation = useUpdateProfileMutation();
 
   const { data: groupsRes, isLoading: loadingGroups } = useProfileGroupsQuery({
     limit: 100,

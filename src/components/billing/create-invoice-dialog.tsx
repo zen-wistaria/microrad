@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { getDueDateFromPeriod } from "@/lib/api/billing";
 import { useCreateInvoiceMutation } from "@/lib/api/hooks";
-import type { BandwidthProfile, Customer, Invoice } from "@/lib/types";
+import type { Customer, InternetProfile, Invoice } from "@/lib/types";
 import { formatRupiah, getErrorMessage } from "@/lib/utils";
 
 export interface InvoiceFormValues {
@@ -52,7 +52,7 @@ export interface InvoiceFormValues {
 
 interface CreateInvoiceDialogProps {
   customers: Customer[];
-  profiles: BandwidthProfile[];
+  profiles: InternetProfile[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: (invoice: Invoice, values: InvoiceFormValues) => void;

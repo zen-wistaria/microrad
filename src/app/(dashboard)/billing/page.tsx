@@ -53,9 +53,9 @@ import {
   useBillingSummaryQuery,
   useCustomersQuery,
   useDeleteInvoiceMutation,
+  useInternetProfilesQuery,
   useInvoicesQuery,
   usePaymentsQuery,
-  useProfilesQuery,
 } from "@/lib/api/hooks";
 import { hasPermission } from "@/lib/rbac";
 import type { Invoice } from "@/lib/types";
@@ -138,7 +138,8 @@ function BillingContent() {
   } = usePaymentsQuery(payParams);
 
   const { data: custRes } = useCustomersQuery({ limit: 1000 });
-  const { data: profiles = [] } = useProfilesQuery();
+  const { data: ipRes } = useInternetProfilesQuery({ limit: 1000 });
+  const profiles = ipRes?.data || [];
   const { data: summary = null } = useBillingSummaryQuery();
 
   const deleteInvoiceMutation = useDeleteInvoiceMutation();
