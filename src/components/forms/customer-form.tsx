@@ -141,10 +141,10 @@ export function CustomerForm({
       profileGroupId: initialData?.profileGroupId || groups[0]?.id || "",
       staticIp: initialData?.staticIp || "",
       nasId: initialData?.nasId || "",
-      bindOnNas: initialData?.bindOnNas ?? false,
+      bindOnNas: false,
       sessionMode: initialData?.sessionMode || "single",
       maxSimultaneous: initialData?.maxSimultaneous || 1,
-      allowedNasIps: initialData?.allowedNasIps || [],
+      allowedNasIps: [],
       status: initialData?.status || "active",
     },
   });
@@ -152,7 +152,6 @@ export function CustomerForm({
   const selectedProfileId = watch("profileId");
   const selectedGroupId = watch("profileGroupId");
   const selectedStatus = watch("status");
-  const bindOnNas = watch("bindOnNas");
   const sessionMode = watch("sessionMode");
   const maxSimultaneous = watch("maxSimultaneous");
 
@@ -175,10 +174,6 @@ export function CustomerForm({
     try {
       const cleanEmail = data.email?.trim() || undefined;
       const cleanPortalPassword = data.portalPassword?.trim() || undefined;
-
-      const groupNasIps = (selectedGroup?.routers || [])
-        .map((r) => r.ipAddress)
-        .filter((ip): ip is string => Boolean(ip));
       const groupFirstNasId = selectedGroup?.routers?.[0]?.id;
 
       if (isEditing && initialData) {
@@ -197,10 +192,10 @@ export function CustomerForm({
             profileGroupId: data.profileGroupId,
             staticIp: data.staticIp?.trim() || undefined,
             nasId: groupFirstNasId || data.nasId || undefined,
-            bindOnNas: data.bindOnNas,
+            bindOnNas: false,
             sessionMode: data.sessionMode,
             maxSimultaneous: Number(data.maxSimultaneous) || 1,
-            allowedNasIps: data.bindOnNas ? groupNasIps : [],
+            allowedNasIps: [],
             status: data.status as CustomerStatus,
           },
         });
@@ -219,10 +214,10 @@ export function CustomerForm({
           profileGroupId: data.profileGroupId,
           staticIp: data.staticIp?.trim() || undefined,
           nasId: groupFirstNasId || data.nasId || undefined,
-          bindOnNas: data.bindOnNas,
+          bindOnNas: false,
           sessionMode: data.sessionMode,
           maxSimultaneous: Number(data.maxSimultaneous) || 1,
-          allowedNasIps: data.bindOnNas ? groupNasIps : [],
+          allowedNasIps: [],
           status: data.status as CustomerStatus,
         });
         toast.success(
@@ -598,18 +593,18 @@ export function CustomerForm({
           </CardContent>
         </Card>
 
-        {/* Section 3: Network & MikroTik NAS Binding */}
+        {/* Section 3: Network Settings */}
         <Card className="md:col-span-2">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
               <Network className="h-5 w-5" />
               <CardTitle className="text-base">
-                Pengaturan Jaringan & Kunci Router NAS
+                Pengaturan Jaringan & Router Wilayah
               </CardTitle>
             </div>
             <CardDescription>
               Konfigurasi IP Statis (<code>Framed-IP-Address</code>) dan
-              keamanan pembatasan router NAS (NAS Binding).
+              informasi router node wilayah layanan.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -623,8 +618,8 @@ export function CustomerForm({
                   className={errors.staticIp ? "border-rose-500" : ""}
                 />
                 <p className="text-[11px] text-slate-500">
-                  Jika diisi, router MikroTik akan selalu memberikan IP ini ke
-                  pelanggan.
+                  Jika diisi, router MikroTik akan selalu memberikan IP statis
+                  ini ke pelanggan.
                 </p>
                 {errors.staticIp && (
                   <p className="text-xs text-rose-500">
@@ -653,44 +648,10 @@ export function CustomerForm({
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   {groupRouters.length > 0
-                    ? `Zona Failover Otomatis: Pelanggan dapat tersambung ke ${groupRouters.length} router di wilayah ini.`
-                    : "Pilih Wilayah (Area Group) di atas."}
+                    ? `Otomatis Terkunci & Failover: Pelanggan dial melalui ${groupRouters.length} router di wilayah ini.`
+                    : "Pilih Wilayah (Area Group) di atas untuk menghubungkan router node."}
                 </p>
               </div>
-            </div>
-
-            {/* Bind on NAS Single Toggle */}
-            <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800 space-y-2">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={bindOnNas}
-                  onChange={(e) =>
-                    setValue("bindOnNas", e.target.checked, {
-                      shouldValidate: true,
-                    })
-                  }
-                  className="mt-1 h-4 w-4 accent-indigo-600 rounded"
-                />
-                <div className="space-y-0.5">
-                  <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    Kunci Login ke Wilayah Ini Saja (NAS Binding)
-                    {bindOnNas && (
-                      <Badge
-                        variant="outline"
-                        className="text-indigo-600 border-indigo-300 text-[10px]"
-                      >
-                        Terkunci ke {selectedGroup?.name || "Wilayah"}
-                      </Badge>
-                    )}
-                  </span>
-                  <span className="block text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    {bindOnNas
-                      ? `🔒 Zero-Touch Failover: Pelanggan HANYA diizinkan dial PPPoE melalui router yang terdaftar di ${selectedGroup?.name || "wilayah ini"} (${groupRouters.map((r) => r.name).join(", ") || "semua node"}). Jika 1 router mati, pelanggan otomatis dial ke router lain dalam wilayah yang sama.`
-                      : "🔓 Mode Bebas / Global Failover (Default): Pelanggan dapat dial melalui router NAS mana pun di seluruh jaringan ISP."}
-                  </span>
-                </div>
-              </label>
             </div>
           </CardContent>
         </Card>

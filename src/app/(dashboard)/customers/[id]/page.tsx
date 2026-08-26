@@ -659,22 +659,22 @@ export default function CustomerDetailPage({
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">Router NAS (Binding):</span>
+                  <span className="text-slate-500">Router Node (Wilayah):</span>
                   <div className="text-right">
-                    {customer.bindOnNas ? (
+                    {profileGroup ? (
                       <Badge
                         variant="outline"
                         className="text-indigo-600 border-indigo-200 text-[11px]"
                       >
-                        🔒 Terkunci ke {profileGroup?.name || "Wilayah"} (
-                        {profileGroup?.pppProfiles?.length || 1} Node)
+                        {profileGroup.name} ({profileGroup.routers?.length || 1}{" "}
+                        Router)
                       </Badge>
                     ) : (
                       <Badge
                         variant="secondary"
-                        className="text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 text-[11px]"
+                        className="text-slate-500 text-[11px]"
                       >
-                        🔓 Bebas / Global Failover
+                        Bebas / Tanpa Wilayah
                       </Badge>
                     )}
                   </div>
