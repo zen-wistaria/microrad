@@ -78,65 +78,69 @@ function capAtMost(
 }
 
 /**
- * Format nilai Mikrotik-Rate-Limit RouterOS:
- *   rx-rate[/tx-rate] [rx-burst-rate[/tx-burst-rate]
- *   [rx-burst-threshold[/tx-burst-threshold] [rx-burst-time[/tx-burst-time]
- *   [priority] [rx-rate-min[/tx-rate-min]]]]
- * (RouterOS menerima bentuk parsial; nilai kosong membiarkan default.)
+ * Format nilai Mikrotik-Rate-Limit RouterOS (6 Posisi Posisional Baku):
+ *   1. rx-rate/tx-rate (Rate normal / max-limit)
+ *   2. rx-burst-rate/tx-burst-rate (Burst limit) -> 0/0 jika tidak diisi
+ *   3. rx-burst-threshold/tx-burst-threshold (Burst threshold) -> 0/0 jika tidak diisi
+ *   4. rx-burst-time/tx-burst-time (Burst time) -> 0/0 jika tidak diisi
+ *   5. priority (Prioritas queue 1..8) -> default 8
+ *   6. rx-rate-min/tx-rate-min (Limit-at / Guaranteed rate) -> 0/0 jika tidak diisi
  *
- * Contoh lengkap: "1M/1M  1500k/1500k  512k/512k  12/12  8  64k/64k"
+ * Contoh lengkap: "1m/1m 1100k/1100k 512k/512k 10/10 8 1m/1m"
+ * Contoh max + CIR: "1m/1m 0/0 0/0 0/0 8 500k/500k"
+ * Contoh hanya max: "1m/1m 0/0 0/0 0/0 8 0/0"
  */
 export function rateLimitValue(cfg: RateLimitConfig): string {
   // Catatan arah: di RouterOS rx = client DOWNLOAD, tx = client UPLOAD.
   // Field "Download" aplikasi = rx (position 1), "Upload" = tx (position 2).
-  //
-  // Aturan RouterOS (ketat):
-  //  - rx-rate wajib; tx default = rx.
-  //  - burst-rate BUKAN boleh lebih kecil dari max-limit (error
-  //    "could not add queue: download-burst-limit less than ..."). Karena
-  //    itu bila burst < max, kita CLAMP ke max (tidak drop).
-  //  - burst-threshold default = max-rate bila diomis.
-  //  - burst-time default 1s. Priority hanya sah bila burst-time hadir
-  //    (parse posisional).
-  //  - limit-at (rate-min) default = max-rate; tidak boleh > max-rate.
-  const parts: string[] = [];
 
-  // 1) rx-rate/tx-rate Wajib
+  // 1) rx-rate/tx-rate (Wajib)
   const rx = normKbps(cfg.maxDownload);
-  const tx = normKbps(cfg.maxUpload);
+  const tx = normKbps(cfg.maxUpload) ?? rx;
   if (!rx) throw new Error("Download rate wajib diisi.");
-  parts.push(`${rx}/${tx ?? rx}`);
+  const pos1 = `${rx}/${tx}`;
 
-  // 2) rx-burst-rate/tx-burst-rate (opsional; harus >= max)
-  const brx = clampAtLeast(normKbps(cfg.burstDownload), rx);
-  const btx = clampAtLeast(normKbps(cfg.burstUpload), tx ?? rx);
-  if (brx || btx) parts.push(`${brx ?? rx}/${btx ?? rx}`);
+  // Cek apakah seluruh field burst terisi lengkap
+  const hasBurst = Boolean(
+    cfg.burstDownload &&
+      cfg.burstUpload &&
+      cfg.burstThresholdDownload &&
+      cfg.burstThresholdUp &&
+      cfg.burstTimeSeconds &&
+      cfg.burstTimeSeconds > 0,
+  );
 
-  // 3) rx-burst-threshold/tx-burst-threshold (opsional; default = max).
-  //    Threshold TIDAK boleh > max-rate (dibatasi atas), tapi BOLEH lebih
-  //    kecil dari burst-rate (memang itu gunanya: burst mati setelah
-  //    melewati threshold).
-  const trx = capAtMost(normKbps(cfg.burstThresholdDownload), rx);
-  const ttx = capAtMost(normKbps(cfg.burstThresholdUp), tx ?? rx);
-  if (trx || ttx) parts.push(`${trx ?? rx}/${ttx ?? rx}`);
+  let pos2 = "0/0";
+  let pos3 = "0/0";
+  let pos4 = "0/0";
 
-  // 4) rx-burst-time/tx-burst-time (opsional; pasangan)
-  const bt = cfg.burstTimeSeconds;
-  if (bt) parts.push(`${bt}/${bt}`);
+  if (hasBurst) {
+    const brx = clampAtLeast(normKbps(cfg.burstDownload), rx) ?? rx;
+    const btx = clampAtLeast(normKbps(cfg.burstUpload), tx) ?? tx;
+    const trx = capAtMost(normKbps(cfg.burstThresholdDownload), rx) ?? rx;
+    const ttx = capAtMost(normKbps(cfg.burstThresholdUp), tx) ?? tx;
+    const bt = cfg.burstTimeSeconds;
 
-  // 5) priority (opsional; parse posisional — hanya bila burst-time hadir)
-  const prio = cfg.priority;
-  if (prio) parts.push(String(prio));
-
-  // 6) rx-rate-min/tx-rate-min = limit-at (opsional; default = max; tidak
-  //    boleh > max-rate). Hanya ditulis bila salah satu sisi diisi.
-  const lrx = capAtMost(normKbps(cfg.limitAtDownload), rx);
-  const ltx = capAtMost(normKbps(cfg.limitAtUp), tx ?? rx);
-  if (lrx || ltx) {
-    parts.push(`${lrx ?? rx}/${ltx ?? tx ?? rx}`);
+    pos2 = `${brx}/${btx}`;
+    pos3 = `${trx}/${ttx}`;
+    pos4 = `${bt}/${bt}`;
   }
 
-  return parts.join(" ");
+  // 5) priority (1..8, default 8)
+  const prio = cfg.priority ? Math.min(Math.max(cfg.priority, 1), 8) : 8;
+  const pos5 = String(prio);
+
+  // 6) rx-rate-min/tx-rate-min = limit-at (CIR)
+  let pos6 = "0/0";
+  if (cfg.limitAtDownload || cfg.limitAtUp) {
+    const lrx = capAtMost(normKbps(cfg.limitAtDownload), rx);
+    const ltx = capAtMost(normKbps(cfg.limitAtUp), tx);
+    if (lrx || ltx) {
+      pos6 = `${lrx ?? ltx}/${ltx ?? lrx}`;
+    }
+  }
+
+  return `${pos1} ${pos2} ${pos3} ${pos4} ${pos5} ${pos6}`;
 }
 
 export interface BandwidthRateInput {
@@ -164,7 +168,7 @@ function unitVal(
   unit?: string | null,
 ): string | undefined {
   if (val === undefined || val === null || val <= 0) return undefined;
-  const u = (unit ?? "Mbps").toLowerCase().startsWith("k") ? "k" : "M";
+  const u = (unit ?? "Mbps").toLowerCase().startsWith("k") ? "k" : "m";
   return `${val}${u}`;
 }
 
@@ -172,7 +176,7 @@ export function formatBandwidthRateLimit(
   bw: BandwidthRateInput,
   priority = 8,
 ): string {
-  const maxDown = unitVal(bw.maxDownload, bw.maxDownloadUnit) || "1M";
+  const maxDown = unitVal(bw.maxDownload, bw.maxDownloadUnit) || "1m";
   const maxUp = unitVal(bw.maxUpload, bw.maxUploadUnit) || maxDown;
 
   const hasBurst = Boolean(
@@ -208,8 +212,8 @@ export function formatBandwidthRateLimit(
 // Keep backward-compat callers (radsync) working
 export function rateLimitValueOld(downMbps: number, upMbps: number): string {
   return rateLimitValue({
-    maxDownload: `${downMbps}M`,
-    maxUpload: `${upMbps}M`,
+    maxDownload: `${downMbps}m`,
+    maxUpload: `${upMbps}m`,
   });
 }
 export { rateLimitValue as rateLimitValueNew };

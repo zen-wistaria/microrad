@@ -32,6 +32,11 @@ import { formatBandwidthRateLimit } from "@/lib/radius-format";
 import type { Bandwidth, RateUnit } from "@/lib/types";
 import { getErrorMessage } from "@/lib/utils";
 
+function toKbps(val: number, unit?: string | null): number {
+  const isMbps = (unit ?? "Mbps").toLowerCase().startsWith("m");
+  return isMbps ? val * 1000 : val;
+}
+
 const bandwidthSchema = z
   .object({
     name: z.string().min(3, "Nama bandwidth minimal 3 karakter"),
@@ -54,6 +59,44 @@ const bandwidthSchema = z
     burstTime: z.number().int().min(1).max(600).nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    // 1) Validasi Limit-At (Garansi Min / CIR): Tidak boleh melebihi Max limit
+    if (
+      data.minDownload &&
+      data.minDownload > 0 &&
+      data.maxDownload &&
+      data.maxDownload > 0
+    ) {
+      const minDownKbps = toKbps(data.minDownload, data.minDownloadUnit);
+      const maxDownKbps = toKbps(data.maxDownload, data.maxDownloadUnit);
+      if (minDownKbps > maxDownKbps) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["minDownload"],
+          message:
+            "Garansi Min (Limit-at) Download tidak boleh melebihi Max Download",
+        });
+      }
+    }
+
+    if (
+      data.minUpload &&
+      data.minUpload > 0 &&
+      data.maxUpload &&
+      data.maxUpload > 0
+    ) {
+      const minUpKbps = toKbps(data.minUpload, data.minUploadUnit);
+      const maxUpKbps = toKbps(data.maxUpload, data.maxUploadUnit);
+      if (minUpKbps > maxUpKbps) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["minUpload"],
+          message:
+            "Garansi Min (Limit-at) Upload tidak boleh melebihi Max Upload",
+        });
+      }
+    }
+
+    // 2) Validasi Burst (QoS): Burst limit harus lebih besar dari Max (di atas max)
     const hasAnyBurst = Boolean(
       (data.burstLimitDownload && data.burstLimitDownload > 0) ||
         (data.burstLimitUpload && data.burstLimitUpload > 0) ||
@@ -69,28 +112,92 @@ const bandwidthSchema = z
           path: ["burstLimitDownload"],
           message: "Burst limit download wajib diisi jika burst diaktifkan",
         });
+      } else if (data.maxDownload && data.maxDownload > 0) {
+        const burstDownKbps = toKbps(
+          data.burstLimitDownload,
+          data.burstLimitDownloadUnit,
+        );
+        const maxDownKbps = toKbps(data.maxDownload, data.maxDownloadUnit);
+        if (burstDownKbps <= maxDownKbps) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["burstLimitDownload"],
+            message: "Burst Limit Download harus lebih besar dari Max Download",
+          });
+        }
       }
+
       if (!data.burstLimitUpload || data.burstLimitUpload <= 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["burstLimitUpload"],
           message: "Burst limit upload wajib diisi jika burst diaktifkan",
         });
+      } else if (data.maxUpload && data.maxUpload > 0) {
+        const burstUpKbps = toKbps(
+          data.burstLimitUpload,
+          data.burstLimitUploadUnit,
+        );
+        const maxUpKbps = toKbps(data.maxUpload, data.maxUploadUnit);
+        if (burstUpKbps <= maxUpKbps) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["burstLimitUpload"],
+            message: "Burst Limit Upload harus lebih besar dari Max Upload",
+          });
+        }
       }
+
       if (!data.burstThresholdDownload || data.burstThresholdDownload <= 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["burstThresholdDownload"],
           message: "Burst threshold download wajib diisi jika burst diaktifkan",
         });
+      } else if (data.burstLimitDownload && data.burstLimitDownload > 0) {
+        const threshDownKbps = toKbps(
+          data.burstThresholdDownload,
+          data.burstThresholdDownloadUnit,
+        );
+        const burstDownKbps = toKbps(
+          data.burstLimitDownload,
+          data.burstLimitDownloadUnit,
+        );
+        if (threshDownKbps > burstDownKbps) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["burstThresholdDownload"],
+            message:
+              "Burst Threshold Download tidak boleh melebihi Burst Limit Download",
+          });
+        }
       }
+
       if (!data.burstThresholdUpload || data.burstThresholdUpload <= 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["burstThresholdUpload"],
           message: "Burst threshold upload wajib diisi jika burst diaktifkan",
         });
+      } else if (data.burstLimitUpload && data.burstLimitUpload > 0) {
+        const threshUpKbps = toKbps(
+          data.burstThresholdUpload,
+          data.burstThresholdUploadUnit,
+        );
+        const burstUpKbps = toKbps(
+          data.burstLimitUpload,
+          data.burstLimitUploadUnit,
+        );
+        if (threshUpKbps > burstUpKbps) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["burstThresholdUpload"],
+            message:
+              "Burst Threshold Upload tidak boleh melebihi Burst Limit Upload",
+          });
+        }
       }
+
       if (!data.burstTime || data.burstTime <= 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -367,6 +474,11 @@ export function BandwidthForm({
                       </SelectContent>
                     </Select>
                   </div>
+                  {errors.minDownload && (
+                    <p className="text-xs text-red-500 mt-1">
+                      {errors.minDownload.message}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -397,6 +509,11 @@ export function BandwidthForm({
                       </SelectContent>
                     </Select>
                   </div>
+                  {errors.minUpload && (
+                    <p className="text-xs text-red-500 mt-1">
+                      {errors.minUpload.message}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>

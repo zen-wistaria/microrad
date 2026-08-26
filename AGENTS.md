@@ -184,9 +184,11 @@ Semua operasi mutasi data yang mempengaruhi otentikasi/otorisasi RADIUS dijalank
 - **Router NAS**: Menulis/memperbarui baris pada tabel `nas` untuk dibaca oleh FreeRADIUS (`read_clients = yes`).
 
 ### B. Format MikroTik QoS Rate-Limit (`src/lib/radius-format.ts`)
-Atribut `Mikrotik-Rate-Limit` disusun dengan format baku RouterOS:
+Atribut `Mikrotik-Rate-Limit` disusun dengan format baku posisional 6 parameter RouterOS (parameter yang tidak diisi menggunakan placeholder `0/0`):
 $$\text{RateLimit} = \text{rx/tx [burst-limit] [burst-threshold] [burst-time] [priority] [limit-at (CIR)]}$$
-Contoh: `10M/10M 15M/15M 8M/8M 10/10 8 5M/5M` (Download/Upload).
+- **Contoh Lengkap (All filled)**: `1m/1m 1100k/1100k 512k/512k 10/10 8 1m/1m`
+- **Contoh Max + CIR (Tanpa Burst)**: `1m/1m 0/0 0/0 0/0 8 500k/500k`
+- **Contoh Hanya Max**: `1m/1m 0/0 0/0 0/0 8 0/0`
 
 ### C. Client API MikroTik Native & Auto-Sync Profile (`src/lib/mikrotik-client.ts` & `src/lib/mikrotik-ppp-profile.ts`)
 - Menggunakan implementasi protokol binari API RouterOS mandiri melalui koneksi raw TCP Socket (port 8728), mendukung RouterOS v6 dan v7 (termasuk penanganan respon `!empty` dan MD5 challenge/plaintext login).
