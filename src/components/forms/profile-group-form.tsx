@@ -255,7 +255,7 @@ export function ProfileGroupForm({
   const serviceTypeLabel = selectedServiceTypes.join(" & ");
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-3xl">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 w-full">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
@@ -381,250 +381,247 @@ export function ProfileGroupForm({
         </CardContent>
       </Card>
 
-      {/* Card 2: Pemilihan Multi-Router NAS */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Server className="h-4 w-4 text-indigo-600" />
-                Pilih Router NAS di Wilayah Ini
-              </CardTitle>
-              <CardDescription>
-                Pilih router node yang melayani wilayah ini untuk Zero-Touch
-                Multi-Router Failover.
-              </CardDescription>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Card 2: Pemilihan Multi-Router NAS */}
+        <Card className="h-full flex flex-col">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Server className="h-4 w-4 text-indigo-600" />
+                  Pilih Router NAS di Wilayah Ini
+                </CardTitle>
+                <CardDescription>
+                  Pilih router node yang melayani wilayah ini untuk failover.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={() => setSelectedNasIds(allRouters.map((r) => r.id))}
+                >
+                  Pilih Semua
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7 text-slate-500"
+                  onClick={() => setSelectedNasIds([])}
+                >
+                  Bersihkan
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs h-7"
-                onClick={() => setSelectedNasIds(allRouters.map((r) => r.id))}
-              >
-                Pilih Semua
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-slate-500"
-                onClick={() => setSelectedNasIds([])}
-              >
-                Bersihkan
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loadingRouters ? (
-            <div className="space-y-2 py-2">
-              <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-              <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-            </div>
-          ) : allRouters.length === 0 ? (
-            <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs">
-              Belum ada Router NAS terdaftar. Tambahkan Router di menu Router
-              terlebih dahulu.
-            </div>
-          ) : (
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              {allRouters.map((r) => {
-                const isChecked = selectedNasIds.includes(r.id);
-                return (
-                  <label
-                    key={r.id}
-                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                      isChecked
-                        ? "border-indigo-500 bg-indigo-50/40 dark:border-indigo-700 dark:bg-indigo-950/20"
-                        : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggleRouterNas(r.id)}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
-                          {r.name}
-                        </p>
-                        <Badge
-                          variant={
-                            r.status === "online" ? "default" : "secondary"
-                          }
-                          className={`text-[10px] ${
-                            r.status === "online"
-                              ? "bg-emerald-500 text-white"
-                              : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                          }`}
-                        >
-                          {r.status || "unknown"}
-                        </Badge>
-                      </div>
-                      <p className="font-mono text-xs text-slate-500 truncate mt-0.5">
-                        {r.ipAddress}
-                      </p>
-                      {r.location && (
-                        <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                          {r.location}
-                        </p>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Card 3: Profil yang ingin di-apply */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Layers className="h-4 w-4 text-emerald-600" />
-                Pilih Profil Layanan ({serviceTypeLabel}) yang Ingin di-Apply
-              </CardTitle>
-              <CardDescription>
-                Menampilkan profil bertipe{" "}
-                <strong className="text-slate-700 dark:text-slate-200">
-                  {serviceTypeLabel}
-                </strong>
-                . Profil terpilih akan otomatis dibuatkan di router target.
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs h-7"
-                onClick={selectAllProfiles}
-                disabled={filteredProfiles.length === 0}
-              >
-                Pilih Semua
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-slate-500"
-                onClick={clearProfiles}
-                disabled={filteredProfiles.length === 0}
-              >
-                Bersihkan
-              </Button>
-              <Link
-                href="/profiles/new"
-                className="text-xs text-blue-600 hover:underline ml-1"
-              >
-                + Buat Profil
-              </Link>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loadingPpp ? (
-            <div className="space-y-2 py-2">
-              <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-              <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
-            </div>
-          ) : filteredProfiles.length === 0 ? (
-            <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs space-y-2">
-              <p>
-                Belum ada Profil dengan tipe layanan{" "}
-                <span className="font-semibold text-slate-700 dark:text-slate-300">
-                  {serviceTypeLabel}
-                </span>
-                .
-              </p>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/profiles/new">+ Buat Profil Baru</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-2.5">
-              {filteredProfiles.map((p) => {
-                const isChecked = selectedProfileIds.includes(p.id);
-                return (
-                  <label
-                    key={p.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
-                      isChecked
-                        ? "border-emerald-500 bg-emerald-50/40 dark:border-emerald-700 dark:bg-emerald-950/20"
-                        : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
+          </CardHeader>
+          <CardContent className="flex-1">
+            {loadingRouters ? (
+              <div className="space-y-2 py-2">
+                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+              </div>
+            ) : allRouters.length === 0 ? (
+              <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs">
+                Belum ada Router NAS terdaftar. Tambahkan Router di menu Router
+                terlebih dahulu.
+              </div>
+            ) : (
+              <div className="grid gap-2.5">
+                {allRouters.map((r) => {
+                  const isChecked = selectedNasIds.includes(r.id);
+                  return (
+                    <label
+                      key={r.id}
+                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        isChecked
+                          ? "border-indigo-500 bg-indigo-50/40 dark:border-indigo-700 dark:bg-indigo-950/20"
+                          : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
+                      }`}
+                    >
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        onChange={() => toggleProfile(p.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        onChange={() => toggleRouterNas(r.id)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-                            {p.name}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
+                            {r.name}
                           </p>
                           <Badge
-                            variant="outline"
-                            className={`text-[10px] uppercase font-mono ${
-                              p.serviceType === "HOTSPOT"
-                                ? "border-amber-300 text-amber-700 dark:text-amber-300"
-                                : "border-blue-300 text-blue-700 dark:text-blue-300"
+                            variant={
+                              r.status === "online" ? "default" : "secondary"
+                            }
+                            className={`text-[10px] ${
+                              r.status === "online"
+                                ? "bg-emerald-500 text-white"
+                                : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                             }`}
                           >
-                            {p.serviceType || "PPP"}
+                            {r.status || "unknown"}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                          <span className="font-mono">
-                            Modul:{" "}
-                            {p.ipModule === "sql"
-                              ? "SQL IP Pool"
-                              : "MikroTik Pool"}
-                          </span>
-                          {p.localAddress && (
-                            <>
-                              <span>•</span>
-                              <span className="font-mono">
-                                GW: {p.localAddress}
-                              </span>
-                            </>
-                          )}
-                          {p.rangeIpStart && p.rangeIpEnd && (
-                            <>
-                              <span>•</span>
-                              <span className="font-mono">
-                                Pool: {p.rangeIpStart} - {p.rangeIpEnd}
-                              </span>
-                            </>
-                          )}
+                        <p className="font-mono text-xs text-slate-500 truncate mt-0.5">
+                          {r.ipAddress}
+                        </p>
+                        {r.location && (
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                            {r.location}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Card 3: Profil yang ingin di-apply */}
+        <Card className="h-full flex flex-col">
+          <CardHeader>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-emerald-600" />
+                  Profil Layanan ({serviceTypeLabel})
+                </CardTitle>
+                <CardDescription>
+                  Profil terpilih otomatis dibuatkan di router target.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={selectAllProfiles}
+                  disabled={filteredProfiles.length === 0}
+                >
+                  Pilih Semua
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7 text-slate-500"
+                  onClick={clearProfiles}
+                  disabled={filteredProfiles.length === 0}
+                >
+                  Bersihkan
+                </Button>
+                <Link
+                  href="/profiles/new"
+                  className="text-xs text-blue-600 hover:underline ml-1"
+                >
+                  + Buat Profil
+                </Link>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1">
+            {loadingPpp ? (
+              <div className="space-y-2 py-2">
+                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+                <div className="h-12 w-full bg-slate-100 dark:bg-slate-800 animate-pulse rounded-lg" />
+              </div>
+            ) : filteredProfiles.length === 0 ? (
+              <div className="p-6 text-center border border-dashed rounded-lg text-slate-500 text-xs space-y-2">
+                <p>
+                  Belum ada Profil dengan tipe layanan{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {serviceTypeLabel}
+                  </span>
+                  .
+                </p>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/profiles/new">+ Buat Profil Baru</Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-2.5">
+                {filteredProfiles.map((p) => {
+                  const isChecked = selectedProfileIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                        isChecked
+                          ? "border-emerald-500 bg-emerald-50/40 dark:border-emerald-700 dark:bg-emerald-950/20"
+                          : "border-slate-200 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleProfile(p.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">
+                              {p.name}
+                            </p>
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] uppercase font-mono ${
+                                p.serviceType === "HOTSPOT"
+                                  ? "border-amber-300 text-amber-700 dark:text-amber-300"
+                                  : "border-blue-300 text-blue-700 dark:text-blue-300"
+                              }`}
+                            >
+                              {p.serviceType || "PPP"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
+                            <span className="font-mono">
+                              Modul:{" "}
+                              {p.ipModule === "sql"
+                                ? "SQL IP Pool"
+                                : "MikroTik Pool"}
+                            </span>
+                            {p.localAddress && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono">
+                                  GW: {p.localAddress}
+                                </span>
+                              </>
+                            )}
+                            {p.rangeIpStart && p.rangeIpEnd && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono">
+                                  Pool: {p.rangeIpStart} - {p.rangeIpEnd}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    {isChecked && (
-                      <Badge
-                        variant="secondary"
-                        className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[11px]"
-                      >
-                        Terapkan
-                      </Badge>
-                    )}
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      {isChecked && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 text-[11px]"
+                        >
+                          Terapkan
+                        </Badge>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="flex items-center justify-end gap-3">
         <Button variant="outline" type="button" asChild>

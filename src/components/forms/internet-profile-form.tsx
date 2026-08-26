@@ -106,7 +106,7 @@ export function InternetProfileForm({
     isSubmitting || createMutation.isPending || updateMutation.isPending;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-w-3xl">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 w-full">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
@@ -127,146 +127,158 @@ export function InternetProfileForm({
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Package className="h-4 w-4 text-blue-600" />
-            Informasi Paket
-          </CardTitle>
-          <CardDescription>
-            Tentukan nama produk paket layanan dan tarif bulanan yang akan
-            ditagihkan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="name">Nama Paket Internet *</Label>
-            <Input
-              id="name"
-              placeholder="Contoh: Paket Hemat 5 Mbps, Home 10M, Gamer 50M"
-              {...register("name")}
-            />
-            {errors.name && (
-              <p className="text-xs text-rose-500">{errors.name.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="price">Harga Berlangganan Bulanan (IDR) *</Label>
-            <Input
-              id="price"
-              type="number"
-              min={0}
-              step={1000}
-              placeholder="150000"
-              {...register("price", { valueAsNumber: true })}
-            />
-            <p className="text-[11px] text-slate-400">
-              Nominal yang otomatis dicantumkan saat pembuatan tagihan invoice
-              pelanggan.
-            </p>
-            {errors.price && (
-              <p className="text-xs text-rose-500">{errors.price.message}</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4 text-amber-600" />
-            Bandwidth & Antrean MikroTik (QoS)
-          </CardTitle>
-          <CardDescription>
-            Pilih batas kecepatan upload/download dan prioritas queue antrean.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="bandwidthId">Konfigurasi Bandwidth *</Label>
-              <Link
-                href="/bandwidths"
-                className="text-xs text-blue-600 hover:underline"
-              >
-                + Kelola Bandwidth
-              </Link>
-            </div>
-            <Select
-              value={selectedBwId}
-              onValueChange={(val) =>
-                setValue("bandwidthId", val, { shouldValidate: true })
-              }
-              disabled={loadingBw}
-            >
-              <SelectTrigger id="bandwidthId">
-                <SelectValue placeholder="-- Pilih Konfigurasi Bandwidth --" />
-              </SelectTrigger>
-              <SelectContent>
-                {bandwidths.map((bw) => (
-                  <SelectItem key={bw.id} value={bw.id}>
-                    {bw.name} (↓{bw.maxDownload} {bw.maxDownloadUnit} / ↑
-                    {bw.maxUpload} {bw.maxUploadUnit})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.bandwidthId && (
-              <p className="text-xs text-rose-500">
-                {errors.bandwidthId.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="priority">
-              Priority Antrean RouterOS (Queue Priority) *
-            </Label>
-            <Select
-              value={String(selectedPriority)}
-              onValueChange={(val) =>
-                setValue("priority", Number(val), { shouldValidate: true })
-              }
-            >
-              <SelectTrigger id="priority">
-                <SelectValue placeholder="Pilih Priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Priority 1 (Tertinggi / VIP)</SelectItem>
-                <SelectItem value="2">Priority 2 (Tinggi)</SelectItem>
-                <SelectItem value="3">Priority 3</SelectItem>
-                <SelectItem value="4">Priority 4 (Menengah Atas)</SelectItem>
-                <SelectItem value="5">Priority 5</SelectItem>
-                <SelectItem value="6">Priority 6 (Menengah Bawah)</SelectItem>
-                <SelectItem value="7">Priority 7 (Rendah)</SelectItem>
-                <SelectItem value="8">
-                  Priority 8 (Default / Standar)
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-slate-400">
-              Angka 1 adalah prioritas tertinggi, angka 8 adalah prioritas
-              standar MikroTik.
-            </p>
-            {errors.priority && (
-              <p className="text-xs text-rose-500">{errors.priority.message}</p>
-            )}
-          </div>
-
-          {rateLimitPreview && (
-            <div className="p-3.5 rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20 text-xs space-y-1">
-              <div className="font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-blue-600" />
-                Mikrotik-Rate-Limit RADIUS Atribut:
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="h-full flex flex-col justify-between">
+          <div>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Package className="h-4 w-4 text-blue-600" />
+                Informasi Paket & Tarif
+              </CardTitle>
+              <CardDescription>
+                Tentukan nama produk paket layanan dan tarif bulanan yang akan
+                ditagihkan.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="name">Nama Paket Internet *</Label>
+                <Input
+                  id="name"
+                  placeholder="Contoh: Paket Hemat 5 Mbps, Home 10M, Gamer 50M"
+                  {...register("name")}
+                />
+                {errors.name && (
+                  <p className="text-xs text-rose-500">{errors.name.message}</p>
+                )}
               </div>
-              <p className="font-mono text-blue-800 dark:text-blue-300 font-bold break-all">
-                {rateLimitPreview}
-              </p>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="price">
+                  Harga Berlangganan Bulanan (IDR) *
+                </Label>
+                <Input
+                  id="price"
+                  type="number"
+                  min={0}
+                  step={1000}
+                  placeholder="150000"
+                  {...register("price", { valueAsNumber: true })}
+                />
+                <p className="text-[11px] text-slate-400">
+                  Nominal yang otomatis dicantumkan saat pembuatan tagihan
+                  invoice pelanggan.
+                </p>
+                {errors.price && (
+                  <p className="text-xs text-rose-500">
+                    {errors.price.message}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </div>
+        </Card>
+
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Zap className="h-4 w-4 text-amber-600" />
+              Bandwidth & Antrean MikroTik (QoS)
+            </CardTitle>
+            <CardDescription>
+              Pilih batas kecepatan upload/download dan prioritas queue antrean.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="bandwidthId">Konfigurasi Bandwidth *</Label>
+                <Link
+                  href="/bandwidths"
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  + Kelola Bandwidth
+                </Link>
+              </div>
+              <Select
+                value={selectedBwId}
+                onValueChange={(val) =>
+                  setValue("bandwidthId", val, { shouldValidate: true })
+                }
+                disabled={loadingBw}
+              >
+                <SelectTrigger id="bandwidthId">
+                  <SelectValue placeholder="-- Pilih Konfigurasi Bandwidth --" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bandwidths.map((bw) => (
+                    <SelectItem key={bw.id} value={bw.id}>
+                      {bw.name} (↓{bw.maxDownload} {bw.maxDownloadUnit} / ↑
+                      {bw.maxUpload} {bw.maxUploadUnit})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.bandwidthId && (
+                <p className="text-xs text-rose-500">
+                  {errors.bandwidthId.message}
+                </p>
+              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="priority">
+                Priority Antrean RouterOS (Queue Priority) *
+              </Label>
+              <Select
+                value={String(selectedPriority)}
+                onValueChange={(val) =>
+                  setValue("priority", Number(val), { shouldValidate: true })
+                }
+              >
+                <SelectTrigger id="priority">
+                  <SelectValue placeholder="Pilih Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">
+                    Priority 1 (Tertinggi / VIP)
+                  </SelectItem>
+                  <SelectItem value="2">Priority 2 (Tinggi)</SelectItem>
+                  <SelectItem value="3">Priority 3</SelectItem>
+                  <SelectItem value="4">Priority 4 (Menengah Atas)</SelectItem>
+                  <SelectItem value="5">Priority 5</SelectItem>
+                  <SelectItem value="6">Priority 6 (Menengah Bawah)</SelectItem>
+                  <SelectItem value="7">Priority 7 (Rendah)</SelectItem>
+                  <SelectItem value="8">
+                    Priority 8 (Default / Standar)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-slate-400">
+                Angka 1 adalah prioritas tertinggi, angka 8 adalah prioritas
+                standar MikroTik.
+              </p>
+              {errors.priority && (
+                <p className="text-xs text-rose-500">
+                  {errors.priority.message}
+                </p>
+              )}
+            </div>
+
+            {rateLimitPreview && (
+              <div className="p-3.5 rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20 text-xs space-y-1">
+                <div className="font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                  Mikrotik-Rate-Limit RADIUS Atribut:
+                </div>
+                <p className="font-mono text-blue-800 dark:text-blue-300 font-bold break-all">
+                  {rateLimitPreview}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="flex items-center justify-end gap-3">
         <Button variant="outline" type="button" asChild>
