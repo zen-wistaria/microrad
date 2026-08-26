@@ -37,36 +37,17 @@ export async function cleanupZombieSessions(
   const thresholdDate = new Date(now - thresholdMinutes * 60 * 1000);
 
   try {
-    // 1. Update sesi zombie di radacct menjadi terminated
+    // 1. Update sesi zombie di radacct menjadi terminated (> thresholdMinutes tidak ada update)
     const closedCount = await prisma.$executeRaw`
       UPDATE radacct
       SET 
-        acctstoptime = CASE
-          WHEN acctupdatetime IS NOT NULL AND acctupdatetime <= NOW() THEN acctupdatetime
-          WHEN acctstarttime IS NOT NULL AND acctstarttime <= NOW() THEN acctstarttime + INTERVAL '1 minute'
-          ELSE NOW()
-        END,
+        acctstoptime = COALESCE(acctupdatetime, acctstarttime + INTERVAL '1 minute', NOW()),
         acctterminatecause = 'Lost-Carrier',
-        acctsessiontime = GREATEST(
-          COALESCE(acctsessiontime, 1),
-          1,
-          EXTRACT(EPOCH FROM (
-            (CASE
-              WHEN acctupdatetime IS NOT NULL AND acctupdatetime <= NOW() THEN acctupdatetime
-              WHEN acctstarttime IS NOT NULL AND acctstarttime <= NOW() THEN acctstarttime + INTERVAL '1 minute'
-              ELSE NOW()
-            END) - 
-            (CASE
-              WHEN acctstarttime IS NOT NULL AND acctstarttime <= NOW() THEN acctstarttime
-              ELSE NOW() - INTERVAL '1 minute'
-            END)
-          ))::bigint
-        )
+        acctsessiontime = GREATEST(1, EXTRACT(EPOCH FROM (COALESCE(acctupdatetime, acctstarttime + INTERVAL '1 minute', NOW()) - acctstarttime)))::bigint
       WHERE acctstoptime IS NULL
         AND (
-          acctupdatetime < ${thresholdDate}
-          OR acctupdatetime > NOW() + INTERVAL '1 minute'
-          OR (acctupdatetime IS NULL AND (acctstarttime < ${thresholdDate} OR acctstarttime > NOW() + INTERVAL '1 minute'))
+          (acctupdatetime IS NOT NULL AND acctupdatetime < ${thresholdDate})
+          OR (acctupdatetime IS NULL AND acctstarttime < ${thresholdDate})
         )
     `;
 
@@ -79,7 +60,7 @@ export async function cleanupZombieSessions(
 
     if (closedCount > 0) {
       console.log(
-        `[radacct-cleanup] Berhasil membersihkan ${closedCount} sesi zombie di radacct (> ${thresholdMinutes}m tanpa update / anomali jam).`,
+        `[radacct-cleanup] Berhasil membersihkan ${closedCount} sesi zombie di radacct (> ${thresholdMinutes}m tanpa update).`,
       );
     }
 
@@ -110,33 +91,14 @@ export async function cleanupCustomerZombieSessions(
     const closedCount = await prisma.$executeRaw`
       UPDATE radacct
       SET 
-        acctstoptime = CASE
-          WHEN acctupdatetime IS NOT NULL AND acctupdatetime <= NOW() THEN acctupdatetime
-          WHEN acctstarttime IS NOT NULL AND acctstarttime <= NOW() THEN acctstarttime + INTERVAL '1 minute'
-          ELSE NOW()
-        END,
+        acctstoptime = COALESCE(acctupdatetime, acctstarttime + INTERVAL '1 minute', NOW()),
         acctterminatecause = 'Lost-Carrier',
-        acctsessiontime = GREATEST(
-          COALESCE(acctsessiontime, 1),
-          1,
-          EXTRACT(EPOCH FROM (
-            (CASE
-              WHEN acctupdatetime IS NOT NULL AND acctupdatetime <= NOW() THEN acctupdatetime
-              WHEN acctstarttime IS NOT NULL AND acctstarttime <= NOW() THEN acctstarttime + INTERVAL '1 minute'
-              ELSE NOW()
-            END) - 
-            (CASE
-              WHEN acctstarttime IS NOT NULL AND acctstarttime <= NOW() THEN acctstarttime
-              ELSE NOW() - INTERVAL '1 minute'
-            END)
-          ))::bigint
-        )
+        acctsessiontime = GREATEST(1, EXTRACT(EPOCH FROM (COALESCE(acctupdatetime, acctstarttime + INTERVAL '1 minute', NOW()) - acctstarttime)))::bigint
       WHERE username = ${username}
         AND acctstoptime IS NULL
         AND (
-          acctupdatetime < ${thresholdDate}
-          OR acctupdatetime > NOW() + INTERVAL '1 minute'
-          OR (acctupdatetime IS NULL AND (acctstarttime < ${thresholdDate} OR acctstarttime > NOW() + INTERVAL '1 minute'))
+          (acctupdatetime IS NOT NULL AND acctupdatetime < ${thresholdDate})
+          OR (acctupdatetime IS NULL AND acctstarttime < ${thresholdDate})
         )
     `;
     return Number(closedCount);

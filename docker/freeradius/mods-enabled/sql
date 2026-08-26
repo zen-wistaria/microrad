@@ -86,11 +86,6 @@ sql {
 	# start/update/stop, postauth).
 	$INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
 
-	# Gunakan waktu penerimaan paket di FreeRADIUS (%l) alih-alih Event-Timestamp dari NAS
-	# untuk mencegah distorsi timestamp jika clock/timezone router MikroTik berbeda
-	event_timestamp_epoch = "%l"
-	event_timestamp = "TO_TIMESTAMP(%l)"
-
 	# Override simul_count_query & simul_verify_query agar mengabaikan sesi zombie (> 3 menit tanpa update)
 	simul_count_query = "\
 		SELECT COUNT(*) \
