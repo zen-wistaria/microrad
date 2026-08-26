@@ -14,23 +14,20 @@ interface LiveCounterProps {
   showIcon?: boolean;
 }
 
-/** Hitung durasi: basis server + selisih sejak reference; fallback start. */
 function computeDuration(
   startedAt: string,
   baseSeconds?: number,
   baseUpdatedAt?: string,
 ): number {
-  const fallback = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000),
-  );
+  const nowMs = Date.now();
+  const startMs = new Date(startedAt).getTime();
+  const fallback = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+
   if (baseSeconds !== undefined && baseSeconds > 0) {
     if (baseUpdatedAt) {
       const ref = new Date(baseUpdatedAt).getTime();
-      return Math.max(
-        fallback,
-        Math.round(baseSeconds + (Date.now() - ref) / 1000),
-      );
+      const elapsedSinceRef = Math.max(0, Math.round((nowMs - ref) / 1000));
+      return Math.max(fallback, baseSeconds + elapsedSinceRef);
     }
     return Math.max(fallback, baseSeconds);
   }
