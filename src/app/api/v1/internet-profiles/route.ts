@@ -66,17 +66,24 @@ export const POST = asyncApi(async (req: Request) => {
     throw new Error("Priority harus berada di antara 1 dan 8.");
   }
 
-  const created = await prisma.internetProfile.create({
-    data: {
-      id: `net-${Date.now()}`,
-      name,
-      price,
-      bandwidthId,
-      priority,
-    },
-    include: {
-      bandwidth: true,
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    const res = await tx.internetProfile.create({
+      data: {
+        id: `net-${Date.now()}`,
+        name,
+        price,
+        bandwidthId,
+        priority,
+      },
+      include: {
+        bandwidth: true,
+      },
+    });
+
+    const { syncInternetProfileRadiusBulk } = await import("@/lib/radsync");
+    await syncInternetProfileRadiusBulk(tx, res.id);
+
+    return res;
   });
 
   return NextResponse.json(

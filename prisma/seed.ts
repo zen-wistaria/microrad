@@ -251,8 +251,11 @@ async function main() {
   );
 
   // ── 6. Internet Profiles (Produk Paket Layanan & Harga) ──
+  const { syncInternetProfileRadiusBulk, syncCustomerRadius } = await import(
+    "@/lib/radsync"
+  );
   for (const p of initialProfiles) {
-    await prisma.internetProfile.create({
+    const createdProf = await prisma.internetProfile.create({
       data: {
         id: p.id,
         name: p.name,
@@ -261,8 +264,9 @@ async function main() {
         priority: p.priority || 8,
       },
     });
+    await syncInternetProfileRadiusBulk(prisma, createdProf.id);
   }
-  console.log(`✓ ${initialProfiles.length} Paket Internet`);
+  console.log(`✓ ${initialProfiles.length} Paket Internet (+ radgroupreply)`);
 
   // ── 7. Customers (tanggal dire-resolve) ──
   for (const c of initialCustomers) {
@@ -290,92 +294,48 @@ async function main() {
   }
   console.log(`✓ ${initialCustomers.length} pelanggan`);
 
-  // radsync: radcheck (Cleartext-Password) + radreply (Framed-IP-Address, Mikrotik-Rate-Limit)
-  const internetProfiles = await prisma.internetProfile.findMany({
-    include: { bandwidth: true },
+  // radsync: radcheck, radnasallow, radusergroup, radreply (IP statis)
+  const allCust = await prisma.customer.findMany({
+    include: {
+      areaGroup: {
+        include: { routers: true, pppProfiles: true },
+      },
+      profile: {
+        include: { bandwidth: true },
+      },
+    },
   });
-  const profileMap = new Map(internetProfiles.map((p) => [p.id, p]));
-  let radCount = 0;
-  for (const c of await prisma.customer.findMany()) {
+
+  for (const c of allCust) {
     const mock = initialCustomers.find((m) => m.id === c.id);
     if (!mock) continue;
     const password =
       mock.username === "budi_santoso" ? "pass123" : "password123";
-    if (c.status === "active") {
-      await prisma.radCheck.upsert({
-        where: {
-          username_attribute: {
-            username: c.username,
-            attribute: "Cleartext-Password",
-          },
-        },
-        update: { value: password, op: ":=" },
-        create: {
-          username: c.username,
-          attribute: "Cleartext-Password",
-          op: ":=",
-          value: password,
-        },
-      });
-      radCount += 1;
-    }
-    if (c.staticIp) {
-      await prisma.radReply.upsert({
-        where: {
-          username_attribute: {
-            username: c.username,
-            attribute: "Framed-IP-Address",
-          },
-        },
-        update: { value: c.staticIp, op: ":=" },
-        create: {
-          username: c.username,
-          attribute: "Framed-IP-Address",
-          op: ":=",
-          value: c.staticIp,
-        },
-      });
-      radCount += 1;
-    } else {
-      await prisma.radReply.upsert({
-        where: {
-          username_attribute: {
-            username: c.username,
-            attribute: "Framed-Pool",
-          },
-        },
-        update: { value: "profile-node-a1", op: ":=" },
-        create: {
-          username: c.username,
-          attribute: "Framed-Pool",
-          op: ":=",
-          value: "profile-node-a1",
-        },
-      });
-      radCount += 1;
-    }
-    const prof = c.profileId ? profileMap.get(c.profileId) : null;
-    if (prof?.bandwidth) {
-      const rate = `${prof.bandwidth.maxDownload}M/${prof.bandwidth.maxUpload}M`;
-      await prisma.radReply.upsert({
-        where: {
-          username_attribute: {
-            username: c.username,
-            attribute: "Mikrotik-Rate-Limit",
-          },
-        },
-        update: { value: rate },
-        create: {
-          username: c.username,
-          attribute: "Mikrotik-Rate-Limit",
-          op: ":=",
-          value: rate,
-        },
-      });
-      radCount += 1;
-    }
+    const sqlNode =
+      c.areaGroup?.pppProfiles.find((p) => p.ipModule === "sql") ??
+      c.areaGroup?.pppProfiles[0];
+    const poolName = sqlNode?.ipModule === "sql" ? sqlNode.name : null;
+    const nasIp = c.areaGroup?.routers[0]?.ipAddress ?? null;
+
+    await syncCustomerRadius(
+      prisma,
+      { ...c, poolName },
+      c.profile
+        ? {
+            name: c.profile.name,
+            bandwidth: c.profile.bandwidth,
+            priority: c.profile.priority,
+            dnsServers: sqlNode?.dnsServers,
+            poolName,
+          }
+        : null,
+      password,
+      nasIp,
+    );
   }
-  console.log(`✓ ${radCount} baris RADIUS (radcheck/radreply)`);
+  console.log(
+    "✓ Sinkronisasi RADIUS pelanggan (radcheck/radusergroup/radnasallow)",
+  );
 
   // ── 6. App Users (sistem) — didefinisikan EKSPLISIT (bukan dari mock) ──
   // Semua akun: password default "password123" (hash scrypt Better Auth).

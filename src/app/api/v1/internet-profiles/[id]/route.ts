@@ -62,6 +62,9 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
     throw new Error("Priority harus berada di antara 1 dan 8.");
   }
 
+  const existing = await prisma.internetProfile.findUnique({ where: { id } });
+  if (!existing) throw new Error("Paket Internet tidak ditemukan.");
+
   const updated = await prisma.$transaction(async (tx) => {
     const res = await tx.internetProfile.update({
       where: { id },
@@ -80,7 +83,7 @@ export const PUT = asyncApi(async (req: Request, { params }: Params) => {
     });
 
     // Bulk sync RADIUS ke seluruh pelanggan yang memakai Paket Internet ini
-    await syncInternetProfileRadiusBulk(tx, id);
+    await syncInternetProfileRadiusBulk(tx, id, existing.name);
 
     return res;
   });
@@ -99,6 +102,9 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
   await requirePermission("profile.delete");
   const { id } = await params;
 
+  const existing = await prisma.internetProfile.findUnique({ where: { id } });
+  if (!existing) throw new Error("Paket Internet tidak ditemukan.");
+
   const count = await prisma.customer.count({
     where: { profileId: id },
   });
@@ -108,7 +114,12 @@ export const DELETE = asyncApi(async (_req: Request, { params }: Params) => {
     );
   }
 
-  await prisma.internetProfile.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.radGroupReply.deleteMany({
+      where: { groupname: existing.name.trim() },
+    });
+    await tx.internetProfile.delete({ where: { id } });
+  });
 
   return NextResponse.json({ data: { id, deleted: true } });
 });

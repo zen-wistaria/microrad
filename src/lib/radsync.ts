@@ -221,51 +221,58 @@ async function syncCustomerRadiusRows(
     });
   }
 
-  // Bersihkan atribut redundant dari radreply agar menggunakan Group Attributes (radgroupreply)
+  // ── radusergroup & radgroupreply (Profil Bandwidth Grup) ──
+  // Hapus redundant Mikrotik-Rate-Limit dari radreply agar mengandalkan radgroupreply
   await tx.radReply.deleteMany({
-    where: {
-      username: u,
-      attribute: {
-        in: [
-          "Mikrotik-Rate-Limit",
-          "Mikrotik-Group",
-          "MS-Primary-DNS-Server",
-          "MS-Secondary-DNS-Server",
-          "Session-Timeout",
-          "Idle-Timeout",
-          "Framed-Pool",
-        ],
-      },
-    },
+    where: { username: u, attribute: "Mikrotik-Rate-Limit" },
   });
 
-  // Hubungkan user ke group di radusergroup
-  if (profile) {
-    let groupName = "";
-    if (profile.bandwidth) {
-      // Jika profile adalah InternetProfile, gunakan nama grupnya
-      groupName = (profile as { name?: string }).name?.trim() || "";
-    }
+  if (profile?.name) {
+    const groupName = profile.name.trim();
+    await tx.radUserGroup.deleteMany({ where: { username: u } });
+    await tx.radUserGroup.create({
+      data: {
+        username: u,
+        groupname: groupName,
+        priority: 1,
+      },
+    });
 
-    if (groupName) {
-      await tx.radUserGroup.deleteMany({ where: { username: u } });
-      await tx.radUserGroup.create({
-        data: {
-          username: u,
-          groupname: groupName,
-          priority: 1,
-        },
-      });
+    // Pastikan grup tersebut sudah terdaftar di radgroupreply
+    if (profile.bandwidth) {
+      const rate = formatBandwidthRateLimit(
+        profile.bandwidth,
+        profile.priority ?? undefined,
+      );
+      if (rate) {
+        await tx.radGroupReply.deleteMany({
+          where: {
+            groupname: groupName,
+            attribute: "Mikrotik-Rate-Limit",
+          },
+        });
+        await tx.radGroupReply.create({
+          data: {
+            groupname: groupName,
+            attribute: "Mikrotik-Rate-Limit",
+            op: ":=",
+            value: rate,
+          },
+        });
+      }
     }
+  } else {
+    await tx.radUserGroup.deleteMany({ where: { username: u } });
   }
 }
 
 /**
- * Sinkronisasi Group Reply attributes (radgroupreply) untuk suatu Paket Internet (InternetProfile)
+ * Sinkronisasi radgroupreply & radusergroup untuk suatu Paket Internet (InternetProfile)
  */
 export async function syncInternetProfileRadiusBulk(
   tx: Prisma.TransactionClient,
   profileId: string,
+  oldName?: string | null,
 ) {
   const profile = await tx.internetProfile.findUnique({
     where: { id: profileId },
@@ -274,35 +281,42 @@ export async function syncInternetProfileRadiusBulk(
   if (!profile || !profile.bandwidth) return;
 
   const groupName = profile.name.trim();
-  const rate = formatBandwidthRateLimit(profile.bandwidth, profile.priority);
+  const rate = formatBandwidthRateLimit(
+    profile.bandwidth,
+    profile.priority ?? undefined,
+  );
 
-  // Hapus baris lama di radgroupreply untuk groupName ini
+  // Jika nama paket internet diubah, bersihkan baris group lama
+  if (oldName && oldName.trim() !== groupName) {
+    await tx.radGroupReply.deleteMany({
+      where: { groupname: oldName.trim() },
+    });
+    await tx.radUserGroup.updateMany({
+      where: { groupname: oldName.trim() },
+      data: { groupname: groupName },
+    });
+  }
+
+  // Upsert group reply attribute (Mikrotik-Rate-Limit)
   await tx.radGroupReply.deleteMany({
     where: {
       groupname: groupName,
-      attribute: { in: ["Mikrotik-Rate-Limit", "Mikrotik-Group"] },
+      attribute: "Mikrotik-Rate-Limit",
     },
   });
 
-  // Tambahkan attribute group reply baru
-  await tx.radGroupReply.createMany({
-    data: [
-      {
+  if (rate) {
+    await tx.radGroupReply.create({
+      data: {
         groupname: groupName,
         attribute: "Mikrotik-Rate-Limit",
         op: ":=",
         value: rate,
       },
-      {
-        groupname: groupName,
-        attribute: "Mikrotik-Group",
-        op: ":=",
-        value: groupName,
-      },
-    ],
-  });
+    });
+  }
 
-  // Update radusergroup untuk semua pelanggan yang menggunakan profile ini
+  // Update radusergroup untuk seluruh pelanggan yang berlangganan profile ini
   const customers = await tx.customer.findMany({
     where: { profileId },
     select: { username: true },
@@ -319,6 +333,14 @@ export async function syncInternetProfileRadiusBulk(
         groupname: groupName,
         priority: 1,
       })),
+    });
+
+    // Bersihkan sisa Mikrotik-Rate-Limit di radreply agar murni memakai radgroupreply
+    await tx.radReply.deleteMany({
+      where: {
+        username: { in: usernames },
+        attribute: "Mikrotik-Rate-Limit",
+      },
     });
   }
 }
