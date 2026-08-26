@@ -8,9 +8,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# MicroRAD PPPoE Manager — Arsitektur & Spesifikasi Sistem
+# MicroRAD PPPoE & Hotspot Manager — Arsitektur & Spesifikasi Sistem
 
-MicroRAD adalah sistem manajemen ISP / PPPoE terpadu full-stack yang mengintegrasikan **Next.js 16 App Router** (React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui + Biome), **PostgreSQL 16** via **Prisma ORM 7**, **Better-Auth** (dual-instance auth), **FreeRADIUS v3** (modul `rlm_sql` PostgreSQL), dan **MikroTik RouterOS** (protokol binari API + RADIUS CoA RFC 5176).
+MicroRAD adalah sistem manajemen ISP / PPPoE & Hotspot terpadu full-stack yang mengintegrasikan **Next.js 16 App Router** (React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui + Biome), **PostgreSQL 16** via **Prisma ORM 7**, **Better-Auth** (dual-instance auth), **FreeRADIUS v3** (modul `rlm_sql` PostgreSQL), dan **MikroTik RouterOS** (protokol binari API + RADIUS CoA RFC 5176).
 
 Dokumen ini adalah **sumber kebenaran tunggal** (Single Source of Truth) untuk arsitektur, skema database, logika bisnis, integrasi jaringan, kontrak REST API, RBAC, dan konvensi pengembangan aplikasi.
 
@@ -36,19 +36,19 @@ Dokumen ini adalah **sumber kebenaran tunggal** (Single Source of Truth) untuk a
         ▼                                                              ▼
 ┌──────────────────────────────────────────────┐            ┌─────────────────────────────┐
 │ Next.js 16 Backend & Web App (Host/Server)   │            │ MikroTik RouterOS           │
-│  - REST API `/api/v1/*`                      │ API TCP    │ (PPPoE Server / NAS Client) │
-│  - Better-Auth (App & Portal Instances)      ├───────────►│  - `/ppp/active/print`      │
-│  - Background Poller (`instrumentation.ts`)  │ Port 8728  │  - `/system/identity/print` │
+│  - REST API `/api/v1/*`                      │ API TCP    │ (PPPoE / Hotspot Server)    │
+│  - Better-Auth (App & Portal Instances)      ├───────────►│  - `/ppp/profile/*`         │
+│  - Background Poller (`instrumentation.ts`)  │ Port 8728  │  - `/ip/hotspot/user/profile`│
 │  - Atomic `radsync` ke FreeRADIUS            │            │  - CoA Kick (UDP 3799)      │
 └──────────────────────────────────────────────┘            └─────────────────────────────┘
 ```
 
-### Siklus Alur Data PPPoE & Accounting
-1. **Autentikasi PPPoE**: Pelanggan dial PPPoE ke MikroTik $\rightarrow$ MikroTik kirim `Access-Request` (port 1812 UDP) ke FreeRADIUS $\rightarrow$ FreeRADIUS membaca tabel `radcheck` (`Cleartext-Password`, `Auth-Type := Reject`, `NAS-IP-Address`) dan `radreply` (`Framed-IP-Address`, `Mikrotik-Rate-Limit`).
+### Siklus Alur Data PPPoE, Hotspot & Accounting
+1. **Autentikasi PPPoE & Hotspot**: Pelanggan dial PPPoE / login Captive Portal Hotspot ke MikroTik $\rightarrow$ MikroTik kirim `Access-Request` (port 1812 UDP) ke FreeRADIUS $\rightarrow$ FreeRADIUS membaca tabel `radcheck` (`Cleartext-Password`, `Auth-Type := Reject`, `NAS-IP-Address`) dan `radreply` (`Framed-IP-Address`, `Mikrotik-Rate-Limit`, `Mikrotik-Group`).
 2. **Accounting Live (`radacct`)**: MikroTik mengirim paket `Acct-Status-Type` (`Start`, `Interim-Update` per 1 menit, `Stop`) ke FreeRADIUS (port 1813 UDP) $\rightarrow$ FreeRADIUS menulis langsung ke tabel `radacct`.
 3. **Live Session & Traffic Stats**: Aplikasi membaca sesi aktif langsung dari tabel `radacct` (`acctStopTime IS NULL`), melakukan inflasi real-time durasi dan byte berdasarkan selisih waktu `acctUpdateTime`.
 4. **Heartbeat Poller Router**: Poller background (`src/lib/mikrotik-sync.ts`) dijalankan via `src/instrumentation.ts` setiap 30 detik (`MIKROTIK_SYNC_INTERVAL_MS`), memverifikasi koneksi ping (ICMP / TCP fallback) ke router dan memperbarui status router (`online`/`offline`) secara otomatis tanpa mewajibkan kredensial API.
-5. **Disconnect / Kick Session**: Admin memutuskan sesi melalui UI $\rightarrow$ aplikasi memicu Disconnect-Request RADIUS CoA (RFC 5176) ke port 3799 UDP atau fallback memanggil API RouterOS `/ppp/active/remove`.
+5. **Disconnect / Kick Session**: Admin memutuskan sesi melalui UI $\rightarrow$ aplikasi memicu Disconnect-Request RADIUS CoA (RFC 5176) ke port 3799 UDP atau fallback memanggil API RouterOS `/ppp/active/remove` / `/ip/hotspot/active/remove`.
 6. **Sinkronisasi Atomik (`radsync`)**: Setiap mutasi pelanggan, profil bandwidth, dan router NAS di database dieksekusi bersamaan dengan pembaruan tabel FreeRADIUS (`radcheck`, `radreply`, `nas`) dalam satu transaksi database (`Prisma.TransactionClient`).
 
 ---
@@ -82,25 +82,28 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
    - `id` (String PK, format `bw-<timestamp>`), `name` (String)
    - Parameter Dasar (CIR / MIR): `minDownload`, `minDownloadUnit` (`Kbps` | `Mbps`), `minUpload`, `minUploadUnit` (`Kbps` | `Mbps`), `maxDownload` (Int), `maxDownloadUnit` (`Kbps` | `Mbps`), `maxUpload` (Int), `maxUploadUnit` (`Kbps` | `Mbps`)
    - Parameter QoS MikroTik Burst (All-or-Nothing Rule): `burstLimitDownload`, `burstLimitDownloadUnit`, `burstLimitUpload`, `burstLimitUploadUnit`, `burstThresholdDownload`, `burstThresholdDownloadUnit`, `burstThresholdUpload`, `burstThresholdUploadUnit`, `burstTime` (detik 1-600)
-   - `pppProfileCount` (Derived di API dari jumlah `InternetProfile` terkait)
+   - `internetProfileCount` (Derived di API dari jumlah `InternetProfile` terkait)
 
-2. **`PppProfile` (`ppp_profile`) — Konfigurasi Node Router MikroTik**:
-   - `id` (String PK, format `ppp-<timestamp>`), `name` (String)
-   - `nasId` (FK $\rightarrow$ `NasRouter.id` — Router MikroTik target node)
-   - `type` (`"PPP"`), `ipModule` (`"sql"` | `"mikrotik_pool"`)
+2. **`PppProfile` (`ppp_profile`) — Konfigurasi Profil Layanan Node Router MikroTik (PPP & Hotspot)**:
+   - `id` (String PK, format `ppp-<timestamp>`), `name` (String — nama profil di RouterOS)
+   - `serviceType` (`"PPP"` | `"HOTSPOT"`)
+   - `ipModule` (`"sql"` | `"mikrotik_pool"`)
    - `localAddress` (String IPv4 Gateway PPP MikroTik — divalidasi tidak boleh berada di antara `rangeIpStart` s.d `rangeIpEnd`)
    - `rangeIpStart` (String IPv4), `rangeIpEnd` (String IPv4)
    - `dnsServers` (String — default `"8.8.8.8,8.8.4.4"`)
-   - `parentQueue` (String?)
-   - `profileGroupId` (FK $\rightarrow$ `ProfileGroup.id`? — Wilayah/Failover Group tempat node ini tergabung)
+   - Parameter Queue & Timeout: `sessionTimeout` (Int?), `idleTimeout` (Int?), `parentQueue` (String?), `insertQueueBefore` (`"first"` | `"bottom"`?)
+   - Parameter Khusus Hotspot: `keepaliveTimeout` (String?), `addMacCookie` (Boolean, default `false`), `macCookieTimeout` (String?)
+   - `areaGroupId` (FK $\rightarrow$ `AreaGroup.id`? — Wilayah tempat profil ini di-apply)
 
-3. **`ProfileGroup` (`profile_group`) — Pengelompokan Wilayah / Zona Failover**:
+3. **`AreaGroup` / `ProfileGroup` (`profile_group`) — Pengelompokan Wilayah / Zona Failover**:
    - `id` (String PK, format `grp-<timestamp>`), `name` (String)
+   - `serviceType` (`"PPP"` | `"HOTSPOT"` | `"PPP,HOTSPOT"` — multi-service selection)
    - `description` (String?)
-   - `pppProfiles` (Relasi 1-to-many ke `PppProfile` node yang berada dalam satu wilayah geografis)
+   - `routers` (Relasi many-to-many ke `NasRouter` — kumpulan router NAS yang melayani area ini)
+   - `pppProfiles` (Relasi 1-to-many ke `PppProfile` yang otomatis di-apply ke seluruh router di area ini)
    - `customerCount` (Derived di API dari jumlah `Customer` terkait)
 
-4. **`InternetProfile` (`internet_profile`) — Produk Paket Layanan & Tarif**:
+4. **`InternetProfile` (`internet_profile`) — Produk Paket Layanan & Tarif Bulanan**:
    - `id` (String PK, format `prof-<timestamp>`), `name` (String), `price` (Int IDR/bulan)
    - `bandwidthId` (FK $\rightarrow$ `Bandwidth.id`)
    - `priority` (Int 1–8, default 8)
@@ -115,8 +118,6 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
    - `profileId` (FK $\rightarrow$ `InternetProfile.id` — Paket Layanan: Kecepatan & Tarif Bulanan)
    - `profileGroupId` (FK $\rightarrow$ `ProfileGroup.id` — Wilayah Layanan: Kumpulan Node Router Failover)
    - `staticIp` (String? — IP statis pelanggan / `Framed-IP-Address`)
-   - `nasId` (FK $\rightarrow$ `NasRouter.id`?)
-   - `bindOnNas` (Boolean, default `false` — kunci dial login hanya ke router-router yang terdaftar pada `profileGroup` pelanggan)
    - `createdAt`, `updatedAt`, `lastSeenAt` (DateTime)
    - `portalUser` (Relasi 1-to-1 ke `PortalUser` untuk login Customer Self-Care)
 
@@ -130,7 +131,7 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 - **`Invoice` (`invoice`)**:
   - `id` (String PK, format `inv-<timestamp>`), `invoiceNumber` (String Unique, `INV/YYYY/MM/SEQ`)
   - `customerId` (FK $\rightarrow$ `Customer`), Snapshot Pelanggan: `customerUsername`, `customerFullName`, `customerPhone`, `customerAddress`
-  - `profileId`, `profileName` (Snapshot profil)
+  - `profileId`, `profileName` (Snapshot profil paket internet)
   - Periode: `periodMonth` (1–12), `periodYear` (Int)
   - Kalkulasi (IDR): `subtotal`, `taxPercent` (0–100), `tax`, `discount`, `adminFee` (default 2500), `installationFee`, `totalAmount`
   - `status` (`"paid"` | `"unpaid"` | `"overdue"` | `"cancelled"`)
@@ -160,9 +161,13 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 - **`RadCheck` (`radcheck`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
   - Record: `Cleartext-Password` (password pelanggan), `Auth-Type := Reject` (pelanggan suspended/disabled), `Simultaneous-Use := 1` (Single Session) / `Simultaneous-Use := N` (Multi Session).
 - **`RadNasAllow` (`radnasallow`)**: `id` (Serial PK), `username`, `nasipaddress`
-  - Whitelist router NAS per user: dibaca oleh policy unlang FreeRADIUS `check_nas_binding` saat `bindOnNas = true`. Jika wilayah memiliki 3 router NAS, FreeRADIUS akan memiliki 3 baris di tabel `radnasallow` untuk user tersebut (Zero-Touch Multi-Router Failover).
+  - Whitelist router NAS per user: dibaca oleh policy unlang FreeRADIUS `check_nas_binding` saat dial-in. Jika wilayah memiliki 3 router NAS, FreeRADIUS akan memiliki 3 baris di tabel `radnasallow` untuk user tersebut (Zero-Touch Multi-Router Failover).
+- **`RadUserGroup` (`radusergroup`)**: `id` (Serial PK), `username`, `groupname`, `priority`
+  - Memetakan username pelanggan ke nama Paket Internet (`InternetProfile.name`) tempat pelanggan bernaung.
+- **`RadGroupReply` (`radgroupreply`)**: `id` (Serial PK), `groupname`, `attribute`, `op` (`:=`), `value`
+  - Record: `Mikrotik-Rate-Limit` (QoS string format MikroTik posisional 6 parameter yang berlaku terpusat untuk seluruh pelanggan dalam paket tersebut).
 - **`RadReply` (`radreply`)**: `id` (Serial PK), `username`, `attribute`, `op` (`:=`), `value`
-  - Record: `Framed-IP-Address` (IP statis/dinamis yang dialokasikan), `Framed-Pool` (nama pool IP dinamis SQL), `Mikrotik-Group` (nama PPP Profile target pada MikroTik untuk binding Local Address Gateway), `Mikrotik-Rate-Limit` (QoS string format MikroTik), `MS-Primary-DNS-Server`, `MS-Secondary-DNS-Server`.
+  - Record: Atribut unik spesifik per-user seperti `Framed-IP-Address` (IP statis pelanggan jika dialokasikan).
 - **`RadIpPool` (`radippool`)**: Pool IP dinamis SQL terpusat yang dikelola modul `sqlippool` FreeRADIUS. Kolom: `id, pool_name, framedipaddress, nasipaddress, calledstationid, callingstationid, expiry_time, username, pool_key`.
 - **`RadAcct` (`radacct`)**: Dikelola langsung oleh FreeRADIUS saat menerima Accounting packet. Kolom: `radacctid`, `acctsessionid`, `acctuniqueid`, `username`, `nasipaddress`, `framedipaddress`, `acctstarttime`, `acctupdatetime`, `acctstoptime`, `acctsessiontime`, `acctinputoctets`, `acctoutputoctets`, `acctterminatecause`, dll.
 - **`RadPostAuth` (`radpostauth`)**: Riwayat respon auth (`Access-Accept`/`Access-Reject`).
@@ -174,13 +179,13 @@ Generator Prisma ORM 7 dikonfigurasi ke output `../src/generated/prisma` menggun
 
 ### A. Sinkronisasi Data Atomik (`src/lib/radsync.ts`)
 Semua operasi mutasi data yang mempengaruhi otentikasi/otorisasi RADIUS dijalankan dalam transaksi Prisma bersama data master:
-- **Pelanggan Aktif**: Menulis `radcheck` (`Cleartext-Password`), menghapus `Auth-Type := Reject`.
+- **Pelanggan Aktif**: Menulis `radcheck` (`Cleartext-Password`), menghapus `Auth-Type := Reject`, dan menghubungkan username ke `radusergroup` sesuai Paket Internet yang dipilih.
 - **Pelanggan Suspended / Disabled**: Menulis `radcheck` (`Auth-Type := Reject`), password lama tetap disimpan agar ketika diaktifkan kembali tidak perlu reset password.
 - **Session Control (`Simultaneous-Use`)**: Menulis `radcheck` `Simultaneous-Use` := `1` (Single Session) atau `maxSimultaneous` (Multi Session).
-- **NAS Whitelist Binding & Failover (`radnasallow`)**: Saat `bindOnNas = true`, menulis baris seluruh router IP yang tergabung dalam `profileGroup` pelanggan ke tabel `radnasallow`. FreeRADIUS mengevaluasi policy `check_nas_binding` untuk memastikan dial-in hanya dari router yang diizinkan di wilayah tersebut. Jika salah satu router padam, dial PPPoE otomatis beralih ke router lain di wilayah yang sama tanpa intervensi admin. Jika `bindOnNas = false`, baris di `radnasallow` dihapus sehingga bebas login dari router mana pun.
+- **NAS Whitelist Binding & Failover (`radnasallow`)**: Otomatis menulis baris seluruh router IP yang tergabung dalam `profileGroup` pelanggan ke tabel `radnasallow`. FreeRADIUS mengevaluasi policy `check_nas_binding` untuk memastikan dial-in hanya dari router yang diizinkan di wilayah tersebut. Jika salah satu router padam, dial PPPoE otomatis beralih ke router lain di wilayah yang sama tanpa intervensi admin.
 - **SQL IP Pool Sync (`radippool`)**: Saat `PppProfile` dengan `ipModule = "sql"` dibuat/diupdate, `syncPppProfileIpPool` otomatis menghitung rentang IPv4 (`rangeIpStart` s.d `rangeIpEnd`) dan menulis baris IP ke tabel `radippool`. Saat dial PPPoE, `sqlippool` mengalokasikan IP dan menyematkan `Framed-IP-Address` dinamis, serta melepaskannya kembali saat `Accounting-Stop`.
-- **Profil Bandwidth & DNS**: Menulis `radreply` `Mikrotik-Rate-Limit`, `MS-Primary-DNS-Server` / `MS-Secondary-DNS-Server`, dan `Framed-Pool`.
-- **Bulk Internet Profile Sync**: Saat konfigurasi bandwidth atau Internet Profile diedit, `syncInternetProfileRadiusBulk` memperbarui atribut `Mikrotik-Rate-Limit` di `radreply` untuk semua pelanggan yang menggunakan paket tersebut.
+- **Profil Bandwidth Terpusat (`radgroupreply`)**: Menulis atribut `Mikrotik-Rate-Limit` ke tabel `radgroupreply` berdasarkan nama Paket Internet (`InternetProfile`).
+- **Bulk Internet Profile Sync**: Saat konfigurasi bandwidth atau Internet Profile diedit/di-rename, `syncInternetProfileRadiusBulk` memperbarui atribut `Mikrotik-Rate-Limit` di `radgroupreply` secara terpusat dan menyelaraskan `radusergroup` seluruh pelanggan terkait.
 - **Router NAS**: Menulis/memperbarui baris pada tabel `nas` untuk dibaca oleh FreeRADIUS (`read_clients = yes`).
 
 ### B. Format MikroTik QoS Rate-Limit (`src/lib/radius-format.ts`)
@@ -190,15 +195,24 @@ $$\text{RateLimit} = \text{rx/tx [burst-limit] [burst-threshold] [burst-time] [p
 - **Contoh Max + CIR (Tanpa Burst)**: `1m/1m 0/0 0/0 0/0 8 500k/500k`
 - **Contoh Hanya Max**: `1m/1m 0/0 0/0 0/0 8 0/0`
 
-### C. Client API MikroTik Native & Auto-Sync Profile (`src/lib/mikrotik-client.ts` & `src/lib/mikrotik-ppp-profile.ts`)
+### C. Client API MikroTik Native & Auto-Sync Profile (`src/lib/mikrotik-client.ts` & `src/lib/mikrotik-profile.ts`)
 - Menggunakan implementasi protokol binari API RouterOS mandiri melalui koneksi raw TCP Socket (port 8728), mendukung RouterOS v6 dan v7 (termasuk penanganan respon `!empty` dan MD5 challenge/plaintext login).
-- **Auto-Sync PPP Profile (Idempotent)**: Setiap operasi tambah, edit (update/rename), dan hapus PPP Profile di aplikasi secara otomatis disinkronkan ke router MikroTik target (`/ppp/profile/add`, `/ppp/profile/set`, `/ppp/profile/remove`). Parameter yang dipasang meliputi: `name`, `local-address`, `remote-address="none"`, `dns-server`, dan `parent-queue`.
-- **Dynamic Profile Binding via RADIUS**: FreeRADIUS mengirimkan atribut `Mikrotik-Group` yang otomatis mencocokkan sesi PPPoE login ke PPP Profile di router MikroTik.
+- **Auto-Sync Service Profile (Idempotent)**:
+  - Untuk **PPP (PPPoE)**: Sinkronisasi ke `/ppp/profile` (`name`, `local-address`, `remote-address="none"`, `dns-server`, `session-timeout`, `idle-timeout`, `parent-queue`, `insert-queue-before`).
+  - Untuk **Hotspot**: Sinkronisasi ke `/ip/hotspot/user/profile` (`name`, `address-pool`, `session-timeout`, `idle-timeout`, `keepalive-timeout`, `parent-queue`, `insert-queue-before`, `mac-cookie-timeout`, `shared-users`).
+  - **Pencegahan Timeout & Skiping Offline**: Setiap pemanggilan sinkronisasi ke router menggunakan timeout 10 detik dan otomatis melewati (skip) router berstatus offline tanpa membuat antrean stuck.
+  - **Pembersihan Bersih (Clean Removal)**: Saat profil dihapus atau wilayah di-uncheck dari router/profil, profil pada router target otomatis dihapus via API RouterOS agar router NAS tetap bersih.
+- **Dynamic Profile Binding via RADIUS**: FreeRADIUS mengirimkan atribut `Mikrotik-Group` yang otomatis mencocokkan sesi PPPoE login ke Profile di router MikroTik.
 
-### D. Live Sesi & History Accounting (`src/lib/radacct-sessions.ts` & `src/lib/usage-real.ts`)
-- Sesi aktif dibaca dari `radacct` (`acctStopTime IS NULL`).
-- Durasi real-time dan estimasi pertumbuhan byte upload/download dihitung dari `acctUpdateTime` terakhir.
-- Riwayat statistik penggunaan 30 hari harian dan 12 bulan bulanan dihitung secara presisi dari data `radacct` tanpa menggunakan data sintetik.
+### D. Live Sesi, History Accounting & Pembersihan Sesi Zombie (`src/lib/radacct-sessions.ts`, `src/lib/radacct-cleanup.ts`, `src/lib/usage-real.ts`)
+- **Pembacaan Sesi Aktif Presisi**: Sesi aktif dibaca langsung dari tabel `radacct` (`acctStopTime IS NULL`). Durasi real-time dan estimasi pertumbuhan byte upload/download dihitung dari `acctUpdateTime` terakhir secara deklaratif tanpa layout shift.
+- **Server Reception Timestamping FreeRADIUS (`%l`)**: Modul SQL FreeRADIUS dikonfigurasikan dengan `event_timestamp_epoch = "%l"` dan `event_timestamp = "TO_TIMESTAMP(%l)"` agar seluruh timestamping sesi di database (`acctstarttime`, `acctupdatetime`, `acctstoptime`) murni menggunakan jam server aplikasi, mencegah distorsi timestamp akibat perbedaan timezone atau jam internal router MikroTik.
+- **Pembersihan Otomatis Sesi Zombie Terjadwal (`cleanupZombieSessions`)**:
+  - Poller background (`src/lib/mikrotik-sync.ts`) dijalankan setiap 30 detik via `instrumentation.ts` dan otomatis mengeksekusi `cleanupZombieSessions(3)`.
+  - Sesi yang tidak menerima `Interim-Update` > 3 menit otomatis ditutup dengan status `acctterminatecause = 'Lost-Carrier'` dan `acctstoptime` dinormalisasi ke waktu nyata.
+  - Alokasi IP dinamis yang kadaluarsa pada tabel `radippool` otomatis dibersihkan dan dilepaskan kembali ke pool.
+- **Proteksi `Simultaneous-Use` Bebas Macet**: Query `simul_count_query` dan `simul_verify_query` di FreeRADIUS otomatis mengabaikan sesi menggantung (> 3 menit tanpa update) sehingga pelanggan yang mati lampu atau restart router dapat langsung dial-in ulang dengan sukses tanpa terhalang error limit sesi aktif.
+- **Riwayat Statistik Presisi**: Riwayat grafik 30 hari harian dan 12 bulan bulanan dihitung secara presisi dari data agregasi byte `radacct` tanpa data sintetik.
 
 ---
 
@@ -211,10 +225,10 @@ $$\text{RateLimit} = \text{rx/tx [burst-limit] [burst-threshold] [burst-time] [p
 | **Autentikasi** | `/login` | `/portal/login` | Login user sistem / login self-care portal |
 | **Dashboard** | `/dashboard` | `/portal` | Ringkasan statistik operasional / status langganan |
 | **Pelanggan** | `/customers`, `/customers/new`, `/customers/[id]`, `/customers/[id]/edit` | — | Manajemen data teknis & PPPoE pelanggan |
+| **Paket & Layanan: Profil Layanan** | `/profiles`, `/profiles/new`, `/profiles/[id]/edit` | — | Profil node MikroTik PPP & Hotspot (Gateway IP, Pool IP, Queue & Timeout) |
 | **Paket & Layanan: Paket Internet** | `/internet-profiles`, `/internet-profiles/new`, `/internet-profiles/[id]/edit` | — | Produk paket internet, harga bulanan, bandwidth & priority |
-| **Paket & Layanan: PPP Profile** | `/ppp-profiles`, `/ppp-profiles/new`, `/ppp-profiles/[id]/edit` | — | Node gateway MikroTik, pool IP & parent queue |
 | **Paket & Layanan: Bandwidth** | `/bandwidths`, `/bandwidths/new`, `/bandwidths/[id]/edit` | — | Konfigurasi kecepatan (MIR/CIR) & Burst QoS |
-| **Paket & Layanan: Profile Group** | `/profile-groups`, `/profile-groups/new`, `/profile-groups/[id]/edit` | — | Pengelompokan wilayah & zona failover multi-router |
+| **Paket & Layanan: Wilayah (Area Group)** | `/profile-groups`, `/profile-groups/new`, `/profile-groups/[id]/edit` | — | Pengelompokan wilayah & zona failover multi-router (server-side search & pagination) |
 | **Router NAS** | `/routers`, `/routers/new`, `/routers/[id]/edit` | — | Konfigurasi MikroTik & status sync |
 | **Sesi PPPoE** | `/sessions` | `/portal/usage`, `/portal/logs` | Monitoring sesi live & riwayat pemakaian |
 | **Billing** | `/billing`, `/billing/[id]` | `/portal/billing`, `/portal/payments` | Invoicing, tagihan, cetak nota, & histori bayar |
@@ -231,7 +245,7 @@ Semua filter, pencarian, dan pagination tabel tersinkronisasi di URL query strin
 |---|---|---|---|
 | `page` | `parseAsInteger.withDefault(1)` | Halaman aktif (1-indexed, clamp $\ge 1$) | Semua tabel |
 | `limit` | `parseAsInteger.withDefault(10)` | Baris per halaman (pilihan: 10, 25, 50) | Semua tabel |
-| `search` | `parseAsString.withDefault("")` | Keyword pencarian teks | customers, sessions, billing, users, logs |
+| `search` | `parseAsString.withDefault("")` | Keyword pencarian teks | customers, sessions, billing, users, logs, profiles |
 | `status` | `parseAsString.withDefault("all")` | Filter status entitas | customers, billing, users, logs (source) |
 | `profile` | `parseAsString.withDefault("all")` | Filter berdasarkan `profileId` | customers |
 | `router` | `parseAsString.withDefault("all")` | Filter berdasarkan IP Router / NAS ID | sessions, customers |
@@ -258,17 +272,17 @@ PUT    /api/v1/customers/:id                 -> Update pelanggan (+ atomic radsy
 DELETE /api/v1/customers/:id                 -> Hapus pelanggan (+ radsync cleanup + terminate sesi)
 POST   /api/v1/customers/:id/disconnect      -> Putus koneksi PPPoE aktif pelanggan
 
+GET    /api/v1/profiles                      -> List Profil Layanan Node (PPP / Hotspot, search, serviceType, page, limit)
+POST   /api/v1/profiles                      -> Tambah Profil Layanan (+ IP Pool + auto-sync ke RouterOS)
+GET    /api/v1/profiles/:id                  -> Detail Profil Layanan Node
+PUT    /api/v1/profiles/:id                  -> Update Profil Layanan (+ auto-sync update/rename ke RouterOS)
+DELETE /api/v1/profiles/:id                  -> Hapus Profil Layanan (+ cleanup IP Pool & remove dari RouterOS)
+
 GET    /api/v1/internet-profiles             -> List Paket Internet (+ customerCount)
 POST   /api/v1/internet-profiles             -> Tambah Paket Internet (Bandwidth + Harga + Priority)
 GET    /api/v1/internet-profiles/:id         -> Detail Paket Internet
 PUT    /api/v1/internet-profiles/:id         -> Update Paket Internet (+ bulk radsync ke pelanggan)
 DELETE /api/v1/internet-profiles/:id         -> Hapus Paket Internet (ditolak jika masih dipakai pelanggan)
-
-GET    /api/v1/ppp-profiles                  -> List PPP Profile Node Router
-POST   /api/v1/ppp-profiles                  -> Tambah PPP Profile Node (Gateway IP + Pool IP + Router NAS)
-GET    /api/v1/ppp-profiles/:id              -> Detail PPP Profile Node
-PUT    /api/v1/ppp-profiles/:id              -> Update PPP Profile Node
-DELETE /api/v1/ppp-profiles/:id              -> Hapus PPP Profile Node (ditolak jika masih tergabung dalam grup aktif)
 
 GET    /api/v1/bandwidths                    -> List konfigurasi bandwidth (+ internetProfileCount)
 POST   /api/v1/bandwidths                    -> Tambah bandwidth baru (CIR/MIR + all-or-nothing Burst QoS)
@@ -276,17 +290,11 @@ GET    /api/v1/bandwidths/:id                -> Detail bandwidth
 PUT    /api/v1/bandwidths/:id                -> Update bandwidth (+ bulk radsync ke seluruh Paket Internet terkait)
 DELETE /api/v1/bandwidths/:id                -> Hapus bandwidth (ditolak jika masih digunakan Paket Internet)
 
-GET    /api/v1/profile-groups                -> List profile groups / wilayah (+ list pppProfiles node)
-POST   /api/v1/profile-groups                -> Tambah profile group wilayah (+ multi-node router linking)
-GET    /api/v1/profile-groups/:id            -> Detail profile group
-PUT    /api/v1/profile-groups/:id            -> Update profile group
-DELETE /api/v1/profile-groups/:id            -> Hapus profile group (ditolak jika masih ada pelanggan terdaftar)
-
-GET    /api/v1/ppp-profiles                  -> List PPP profiles (+ customerCount)
-POST   /api/v1/ppp-profiles                  -> Tambah PPP profile baru
-GET    /api/v1/ppp-profiles/:id              -> Detail PPP profile
-PUT    /api/v1/ppp-profiles/:id              -> Update PPP profile (+ bulk radsync ke seluruh pelanggan terkait)
-DELETE /api/v1/ppp-profiles/:id              -> Hapus PPP profile (ditolak jika masih digunakan pelanggan)
+GET    /api/v1/profile-groups                -> List wilayah / area group (+ list routers & profiles)
+POST   /api/v1/profile-groups                -> Tambah wilayah (+ multi-router & multi-profile linking + auto-sync)
+GET    /api/v1/profile-groups/:id            -> Detail wilayah (Area Group)
+PUT    /api/v1/profile-groups/:id            -> Update wilayah (+ auto-sync & auto-cleanup router/profil yang di-uncheck)
+DELETE /api/v1/profile-groups/:id            -> Hapus wilayah (ditolak jika masih ada pelanggan terdaftar)
 
 GET    /api/v1/routers                       -> List router NAS (+ activeSessionCount derived)
 POST   /api/v1/routers                       -> Tambah router (+ insert row nas FreeRADIUS)
@@ -378,11 +386,13 @@ Sistem mengimplementasikan **Role-Based Access Control (RBAC)** ketat di sisi se
 
 ## 9. Konvensi & Standar Kode
 
-- **Formatting & Linting**: Biome (`bunx biome check --write .`). Jangan gunakan ESLint/Prettier.
-- **Type Checking**: `bunx tsc --noEmit`.
-- **UI Components**: shadcn/ui + Radix UI + Lucide React.
+- **Formatting & Linting**: Biome (`bun run lint:fix` / `bunx biome check --write .`). Jangan gunakan ESLint/Prettier.
+- **Type Checking**: `bun run typecheck` (`bunx tsc --noEmit`).
+- **Database Migration**: Gunakan `bunx prisma migrate dev` (DILARANG menggunakan `db push`).
+- **UI Layout Standard**: Semua form tambah/edit menggunakan layout `w-full` dengan responsive multi-column grid (`lg:grid-cols-2`).
+- **UI Components**: shadcn/ui + Radix UI + Lucide React + Sonner (toast).
 - **Format Mata Uang & Angka**: `formatRupiah()`, `formatBytes()`, `formatDuration()`, `formatDate()` di `@/lib/utils`.
-- **ID Generator**: Konsisten menggunakan prefix domain: `cust-<ts>`, `prof-<ts>`, `nas-<ts>`, `inv-<ts>`, `pay-<ts>`, `usr-<ts>`, `role-<ts>`.
+- **ID Generator**: Konsisten menggunakan prefix domain: `cust-<ts>`, `prof-<ts>`, `ppp-<ts>`, `grp-<ts>`, `nas-<ts>`, `inv-<ts>`, `pay-<ts>`, `usr-<ts>`, `role-<ts>`.
 
 ---
 
@@ -406,35 +416,75 @@ export const queryKeys = {
   dashboard: ["dashboard"] as const,
   customers: {
     all: ["customers"] as const,
-    list: (filters) => ["customers", "list", filters] as const,
+    list: (params) => ["customers", "list", ...(params ? [params] : [])] as const,
     detail: (id) => ["customers", "detail", id] as const,
-    activeSession: (id) => ["customers", "activeSession", id] as const,
-    sessions: (id, params) => ["customers", "sessions", id, params] as const,
-    usageHistory: (id, days) => ["customers", "usageHistory", id, days] as const,
-    monthlyUsage: (id, year) => ["customers", "monthlyUsage", id, year] as const,
+    activeSession: (id) => ["customers", "active-session", id] as const,
+    sessions: (id, filter) => ["customers", "sessions", id, ...(filter ? [filter] : [])] as const,
   },
-  profiles: { all: ["profiles"] as const, detail: (id) => ["profiles", "detail", id] as const },
-  routers: { all: ["routers"] as const, detail: (id) => ["routers", "detail", id] as const },
-  sessions: { all: ["sessions"] as const, list: (filters) => ["sessions", "list", filters] as const },
+  bandwidths: {
+    all: ["bandwidths"] as const,
+    list: (params) => ["bandwidths", "list", ...(params ? [params] : [])] as const,
+    detail: (id) => ["bandwidths", "detail", id] as const,
+  },
+  profileGroups: {
+    all: ["profile-groups"] as const,
+    list: (params) => ["profile-groups", "list", ...(params ? [params] : [])] as const,
+    detail: (id) => ["profile-groups", "detail", id] as const,
+  },
+  internetProfiles: {
+    all: ["internet-profiles"] as const,
+    list: (params) => ["internet-profiles", "list", ...(params ? [params] : [])] as const,
+    detail: (id) => ["internet-profiles", "detail", id] as const,
+  },
+  profiles: {
+    all: ["profiles"] as const,
+    list: (params) => ["profiles", "list", ...(params ? [params] : [])] as const,
+    detail: (id) => ["profiles", "detail", id] as const,
+  },
+  routers: {
+    all: ["routers"] as const,
+    list: (params) => ["routers", "list", ...(params ? [params] : [])] as const,
+    detail: (id) => ["routers", "detail", id] as const,
+  },
+  sessions: {
+    all: ["sessions"] as const,
+    list: (params) => ["sessions", "list", ...(params ? [params] : [])] as const,
+  },
   billing: {
     all: ["billing"] as const,
-    invoices: (filters) => ["billing", "invoices", filters] as const,
-    payments: (filters) => ["billing", "payments", filters] as const,
+    invoices: (params) => ["billing", "invoices", ...(params ? [params] : [])] as const,
+    payments: (params) => ["billing", "payments", ...(params ? [params] : [])] as const,
     detail: (id) => ["billing", "detail", id] as const,
     summary: ["billing", "summary"] as const,
     months: ["billing", "months"] as const,
   },
-  users: { all: ["users"] as const, list: (filters) => ["users", "list", filters] as const, detail: (id) => ["users", "detail", id] as const },
-  roles: { all: ["roles"] as const, detail: (id) => ["roles", "detail", id] as const },
-  logs: { all: ["logs"] as const, list: (filters) => ["logs", "list", filters] as const },
-  settings: { company: ["settings", "company"] as const, waTemplate: ["settings", "waTemplate"] as const },
-  portal: { me: ["portal", "me"] as const },
+  users: {
+    all: ["users"] as const,
+    list: (params) => ["users", "list", ...(params ? [params] : [])] as const,
+    detail: (id) => ["users", "detail", id] as const,
+  },
+  roles: {
+    all: ["roles"] as const,
+    detail: (id) => ["roles", "detail", id] as const,
+  },
+  logs: {
+    all: ["logs"] as const,
+    list: (params) => ["logs", "list", ...(params ? [params] : [])] as const,
+  },
+  settings: {
+    company: ["settings", "company"] as const,
+    waTemplate: ["settings", "waTemplate"] as const,
+  },
+  portal: {
+    me: ["portal", "me"] as const,
+  },
 };
 ```
 
 ### C. Aturan Invalidation & Flicker-Free Mutasi (`src/lib/api/hooks/*`)
 - **Mutasi Customer**: Meng-invalidate `queryKeys.customers.all`, `queryKeys.dashboard`, `queryKeys.profiles.all`, dan `queryKeys.routers.all`.
-- **Mutasi Profile**: Meng-invalidate `queryKeys.profiles.all`, `queryKeys.customers.all`, dan `queryKeys.dashboard`.
+- **Mutasi Profile (Node PPP & Hotspot)**: Meng-invalidate `queryKeys.profiles.all`, `queryKeys.customers.all`, dan `queryKeys.dashboard`.
+- **Mutasi Internet Profile (Paket Internet)**: Meng-invalidate `queryKeys.internetProfiles.all`, `queryKeys.customers.all`, dan `queryKeys.billing.all`.
 - **Mutasi Router**: Meng-invalidate `queryKeys.routers.all`, `queryKeys.sessions.all`, dan `queryKeys.dashboard`.
 - **Mutasi Billing**: Meng-invalidate `queryKeys.billing.all`, `queryKeys.dashboard`, dan `queryKeys.customers.all`.
 - **Mutasi User & Role**: Meng-invalidate `queryKeys.users.all` dan `queryKeys.roles.all`.
@@ -449,16 +499,15 @@ export const queryKeys = {
 docker compose up -d --build
 
 # 2. Migrasi Database & Seeding
-bun run db:migrate
+bunx prisma migrate dev
 bun run db:seed
 
 # 3. Jalankan Aplikasi Next.js Development Server
 bun dev
 
-# 4. Verifikasi & Perbaikan Kode
+# 4. Verifikasi & Perbaikan Kode (Wajib jalankan sebelum submit)
 bun run lint:fix
-bun run format
-bunx tsc --noEmit
+bun run typecheck
 
 # 5. Uji Otentikasi RADIUS via Container
 docker exec microrad-freeradius sh -c \
