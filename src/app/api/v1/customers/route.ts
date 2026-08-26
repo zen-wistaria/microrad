@@ -136,7 +136,7 @@ export const POST = asyncApi(async (req: Request) => {
   await requirePermission("customer.create");
   const body = await req.json();
 
-  let username = body.username?.trim();
+  let username = typeof body.username === "string" ? body.username.trim() : "";
   if (!username) {
     username = await generateServerUniquePppoeUsername();
   }
@@ -156,14 +156,15 @@ export const POST = asyncApi(async (req: Request) => {
   }
 
   // 2. Password PPPoE: auto-generate jika kosong
-  let password = body.password?.trim();
+  let password = typeof body.password === "string" ? body.password.trim() : "";
   if (!password) {
     const { generatePppoePassword } = await import("@/lib/generators");
     password = generatePppoePassword();
   }
 
   // 3. Email (Portal Pelanggan): opsional, jika ada harus unik
-  const email = body.email?.trim() || null;
+  const email =
+    typeof body.email === "string" ? body.email.trim() || null : null;
   if (email) {
     const [dupEmailCustomer, dupEmailPortal] = await Promise.all([
       prisma.customer.findFirst({
@@ -179,7 +180,11 @@ export const POST = asyncApi(async (req: Request) => {
   }
 
   const areaGroupId =
-    body.areaGroupId?.trim() || body.profileGroupId?.trim() || null;
+    typeof body.areaGroupId === "string" && body.areaGroupId.trim()
+      ? body.areaGroupId.trim()
+      : typeof body.profileGroupId === "string" && body.profileGroupId.trim()
+        ? body.profileGroupId.trim()
+        : null;
 
   const customer = await prisma.$transaction(async (tx) => {
     const customerId = username;
@@ -215,15 +220,23 @@ export const POST = asyncApi(async (req: Request) => {
         id: customerId,
         username,
         password,
-        fullName: body.fullName?.trim() || undefined,
-        email: email || undefined,
-        phone: body.phone?.trim() || undefined,
-        address: body.address,
+        fullName:
+          typeof body.fullName === "string"
+            ? body.fullName.trim() || null
+            : null,
+        email: email || null,
+        phone:
+          typeof body.phone === "string" ? body.phone.trim() || null : null,
+        address:
+          typeof body.address === "string" ? body.address.trim() || null : null,
         status: body.status ?? "active",
-        profileId: body.profileId ?? undefined,
+        profileId: body.profileId ?? null,
         areaGroupId,
-        staticIp: body.staticIp?.trim() || undefined,
-        nasId,
+        staticIp:
+          typeof body.staticIp === "string"
+            ? body.staticIp.trim() || null
+            : null,
+        nasId: nasId ?? null,
         bindOnNas: body.bindOnNas ?? false,
         sessionMode: body.sessionMode || "single",
         maxSimultaneous: Number(body.maxSimultaneous) || 1,
@@ -232,7 +245,8 @@ export const POST = asyncApi(async (req: Request) => {
     });
 
     // Buat akun Portal Pelanggan terhubung ke Customer
-    let portalPassword = body.portalPassword?.trim();
+    let portalPassword =
+      typeof body.portalPassword === "string" ? body.portalPassword.trim() : "";
     if (!portalPassword) {
       const { generatePppoePassword } = await import("@/lib/generators");
       portalPassword = generatePppoePassword(8);

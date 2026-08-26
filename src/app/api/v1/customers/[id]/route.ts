@@ -79,23 +79,23 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
   await requirePermission("customer.update");
   const { id } = await ctx.params;
   const body = (await req.json()) as {
-    username?: string;
-    fullName?: string;
-    email?: string;
-    phone?: string;
-    address?: string;
-    status?: string;
+    username?: string | null;
+    fullName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    status?: string | null;
     profileId?: string | null;
     profileGroupId?: string | null;
     areaGroupId?: string | null;
-    staticIp?: string;
+    staticIp?: string | null;
     nasId?: string | null;
     bindOnNas?: boolean;
     sessionMode?: "single" | "multi" | string;
     maxSimultaneous?: number;
     allowedNasIps?: string[];
-    password?: string;
-    portalPassword?: string;
+    password?: string | null;
+    portalPassword?: string | null;
   };
 
   const existing = await prisma.customer.findUnique({
@@ -105,7 +105,8 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
   if (!existing) throw new Error("Pelanggan tidak ditemukan.");
 
   if (body.username !== undefined) {
-    const username = body.username.trim();
+    const username =
+      typeof body.username === "string" ? body.username.trim() : "";
     if (!username) throw new Error("Username PPPoE tidak boleh kosong.");
     const [dupCustomer, dupRad] = await Promise.all([
       prisma.customer.findFirst({
@@ -126,7 +127,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     }
   }
 
-  if (body.email?.trim()) {
+  if (body.email && typeof body.email === "string" && body.email.trim()) {
     const email = body.email.trim();
     const [dupCustEmail, dupPortalEmail] = await Promise.all([
       prisma.customer.findFirst({
@@ -148,7 +149,9 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
   }
 
   const usernameChanged =
-    body.username !== undefined && body.username.trim() !== existing.username;
+    body.username !== undefined &&
+    typeof body.username === "string" &&
+    body.username.trim() !== existing.username;
 
   const customer = await prisma.$transaction(async (tx) => {
     const targetProfileId =
@@ -190,47 +193,78 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
     const updated = await tx.customer.update({
       where: { id },
       data: {
-        ...(body.username !== undefined
+        ...(body.username !== undefined && typeof body.username === "string"
           ? { username: body.username.trim() }
           : {}),
-        ...(body.fullName !== undefined
-          ? { fullName: body.fullName.trim() || undefined }
+        ...("fullName" in body
+          ? {
+              fullName:
+                typeof body.fullName === "string"
+                  ? body.fullName.trim() || null
+                  : null,
+            }
           : {}),
-        ...(body.email !== undefined
-          ? { email: body.email.trim() || null }
+        ...("email" in body
+          ? {
+              email:
+                typeof body.email === "string"
+                  ? body.email.trim() || null
+                  : null,
+            }
           : {}),
-        ...(body.phone !== undefined
-          ? { phone: body.phone.trim() || undefined }
+        ...("phone" in body
+          ? {
+              phone:
+                typeof body.phone === "string"
+                  ? body.phone.trim() || null
+                  : null,
+            }
           : {}),
-        ...(body.address !== undefined
-          ? { address: body.address || undefined }
+        ...("address" in body
+          ? {
+              address:
+                typeof body.address === "string"
+                  ? body.address.trim() || null
+                  : null,
+            }
           : {}),
-        ...(body.status !== undefined ? { status: body.status } : {}),
+        ...("status" in body && body.status ? { status: body.status } : {}),
         ...("profileId" in body ? { profileId: body.profileId ?? null } : {}),
         ...("areaGroupId" in body || "profileGroupId" in body
           ? { areaGroupId: targetGroupId }
           : {}),
-        ...(body.staticIp !== undefined
-          ? { staticIp: body.staticIp.trim() || undefined }
+        ...("staticIp" in body
+          ? {
+              staticIp:
+                typeof body.staticIp === "string"
+                  ? body.staticIp.trim() || null
+                  : null,
+            }
           : {}),
         nasId,
         bindOnNas,
-        ...(body.sessionMode !== undefined
-          ? { sessionMode: body.sessionMode }
+        ...("sessionMode" in body && body.sessionMode
+          ? { sessionMode: body.sessionMode as "single" | "multi" }
           : {}),
-        ...(body.maxSimultaneous !== undefined
+        ...("maxSimultaneous" in body
           ? { maxSimultaneous: Number(body.maxSimultaneous) || 1 }
           : {}),
         allowedNasIps,
-        ...(body.password !== undefined
-          ? { password: body.password || undefined }
+        ...("password" in body &&
+        typeof body.password === "string" &&
+        body.password.trim()
+          ? { password: body.password.trim() }
           : {}),
       },
     });
 
     // ── Update / Create Akun Portal Pelanggan ──
     const targetEmail =
-      body.email !== undefined ? body.email.trim() || null : existing.email;
+      "email" in body
+        ? typeof body.email === "string"
+          ? body.email.trim() || null
+          : null
+        : existing.email;
     const { hashPassword } = await import("@better-auth/utils/password");
 
     if (existing.portalUser) {
@@ -242,7 +276,11 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           name: updated.fullName || updated.username,
         },
       });
-      if (body.portalPassword?.trim()) {
+      if (
+        body.portalPassword &&
+        typeof body.portalPassword === "string" &&
+        body.portalPassword.trim()
+      ) {
         const hashedPassword = await hashPassword(body.portalPassword.trim());
         await tx.portalAccount.updateMany({
           where: { userId: existing.portalUser.id },
@@ -253,7 +291,10 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
         });
       }
     } else {
-      let portalPassword = body.portalPassword?.trim();
+      let portalPassword =
+        typeof body.portalPassword === "string"
+          ? body.portalPassword.trim()
+          : "";
       if (!portalPassword) {
         const { generatePppoePassword } = await import("@/lib/generators");
         portalPassword = generatePppoePassword(8);
@@ -265,7 +306,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
           id: portalUserId,
           name: updated.fullName || updated.username,
           username: updated.username,
-          email: targetEmail || undefined,
+          email: targetEmail,
           customerId: updated.id,
           accounts: {
             create: {
@@ -316,9 +357,7 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
             poolName,
           }
         : null,
-      body.password !== undefined
-        ? body.password
-        : (existing.password ?? undefined),
+      body.password ?? existing.password ?? undefined,
       nasIp,
     );
     return updated;

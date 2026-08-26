@@ -172,7 +172,7 @@ export function CustomerForm({
 
   const onSubmit = async (data: CustomerFormValues) => {
     try {
-      const cleanEmail = data.email?.trim() || undefined;
+      const cleanEmail = data.email?.trim() || null;
       const cleanPortalPassword = data.portalPassword?.trim() || undefined;
       const groupFirstNasId = selectedGroup?.routers?.[0]?.id;
 
@@ -185,13 +185,13 @@ export function CustomerForm({
               : {}),
             email: cleanEmail,
             portalPassword: cleanPortalPassword,
-            fullName: data.fullName?.trim() || undefined,
-            phone: data.phone?.trim() || undefined,
-            address: data.address?.trim() || undefined,
+            fullName: data.fullName?.trim() || null,
+            phone: data.phone?.trim() || null,
+            address: data.address?.trim() || null,
             profileId: data.profileId,
-            profileGroupId: data.profileGroupId,
-            staticIp: data.staticIp?.trim() || undefined,
-            nasId: groupFirstNasId || data.nasId || undefined,
+            profileGroupId: data.profileGroupId || null,
+            staticIp: data.staticIp?.trim() || null,
+            nasId: groupFirstNasId || data.nasId || null,
             bindOnNas: false,
             sessionMode: data.sessionMode,
             maxSimultaneous: Number(data.maxSimultaneous) || 1,
@@ -207,13 +207,13 @@ export function CustomerForm({
         const created = await createCustomerMutation.mutateAsync({
           email: cleanEmail,
           portalPassword: cleanPortalPassword,
-          fullName: data.fullName?.trim() || undefined,
-          phone: data.phone?.trim() || undefined,
-          address: data.address?.trim() || undefined,
+          fullName: data.fullName?.trim() || null,
+          phone: data.phone?.trim() || null,
+          address: data.address?.trim() || null,
           profileId: data.profileId,
-          profileGroupId: data.profileGroupId,
-          staticIp: data.staticIp?.trim() || undefined,
-          nasId: groupFirstNasId || data.nasId || undefined,
+          profileGroupId: data.profileGroupId || null,
+          staticIp: data.staticIp?.trim() || null,
+          nasId: groupFirstNasId || data.nasId || null,
           bindOnNas: false,
           sessionMode: data.sessionMode,
           maxSimultaneous: Number(data.maxSimultaneous) || 1,

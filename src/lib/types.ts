@@ -101,11 +101,11 @@ export type BandwidthProfile = InternetProfile;
 export interface Customer {
   id: string;
   username: string; // radcheck.username (login PPPoE)
-  password?: string; // radcheck password (virtual / transient for update)
-  fullName?: string; // metadata tambahan
-  email?: string; // akun login portal pelanggan
-  phone?: string;
-  address?: string;
+  password?: string | null; // radcheck password (virtual / transient for update)
+  fullName?: string | null; // metadata tambahan
+  email?: string | null; // akun login portal pelanggan
+  phone?: string | null;
+  address?: string | null;
   status: CustomerStatus;
   profileId: string; // relasi ke InternetProfile (Paket Internet)
   profile?: InternetProfile | null;
@@ -114,8 +114,8 @@ export interface Customer {
   // alias for backward compatibility
   profileGroupId?: string | null;
   profileGroup?: ProfileGroup | null;
-  staticIp?: string; // radreply: Framed-IP-Address
-  nasId?: string; // NAS router ID (terakhir/default)
+  staticIp?: string | null; // radreply: Framed-IP-Address
+  nasId?: string | null; // NAS router ID (terakhir/default)
   nasRouter?: {
     id: string;
     name: string;
@@ -128,7 +128,7 @@ export interface Customer {
   createdAt: string;
   updatedAt: string;
   isOnline?: boolean;
-  lastSeenAt?: string; // dari radacct terakhir
+  lastSeenAt?: string | null; // dari radacct terakhir
   portalUser?: {
     id: string;
     name?: string;
@@ -136,7 +136,7 @@ export interface Customer {
     email?: string | null;
     createdAt?: string;
   } | null;
-  portalPassword?: string;
+  portalPassword?: string | null;
 }
 
 export type InvoiceStatus = "paid" | "unpaid" | "overdue" | "cancelled";

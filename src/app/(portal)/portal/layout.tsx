@@ -64,7 +64,7 @@ export default function PortalLayout({
         {/* Sidebar Portal (desktop) */}
         <div className="hidden lg:block h-full shrink-0 print:hidden">
           <PortalSidebar
-            customerName={portalData?.customer?.fullName}
+            customerName={portalData?.customer?.fullName ?? undefined}
             online={portalData?.summary?.onlineNow ?? false}
           />
         </div>
@@ -74,7 +74,7 @@ export default function PortalLayout({
           <PortalMobileNav
             open={mobileNavOpen}
             onOpenChange={setMobileNavOpen}
-            customerName={portalData?.customer?.fullName}
+            customerName={portalData?.customer?.fullName ?? undefined}
             online={portalData?.summary?.onlineNow ?? false}
           />
         </div>
