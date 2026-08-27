@@ -79,6 +79,13 @@ export const PUT = asyncApi(async (req: Request, ctx: { params: Params }) => {
       },
     });
 
+    // Jika status diubah menjadi disabled, batalkan/hapus seluruh sesi login user yang sedang aktif
+    if (updated.status === "disabled") {
+      await tx.appSession.deleteMany({
+        where: { userId: id },
+      });
+    }
+
     if (hashedPassword) {
       const existingAccount = await tx.appAccount.findFirst({
         where: { userId: id, providerId: "credential" },

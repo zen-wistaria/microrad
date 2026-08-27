@@ -28,13 +28,17 @@ export default function EditRouterPage({ params }: EditRouterPageProps) {
         </p>
       </div>
 
-      {isLoading || !routerData ? (
+      {isLoading && !routerData ? (
         <Card>
           <CardContent className="p-8 space-y-4">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </CardContent>
         </Card>
+      ) : !routerData ? (
+        <div className="p-8 text-center text-slate-500">
+          Router NAS tidak ditemukan.
+        </div>
       ) : (
         <RouterForm initialData={routerData} isEditing={true} />
       )}

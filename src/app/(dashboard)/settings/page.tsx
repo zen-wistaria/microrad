@@ -14,7 +14,7 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -80,8 +80,10 @@ export default function SettingsPage() {
     },
   });
 
+  const isLoadedRef = useRef(false);
   useEffect(() => {
-    if (profile) {
+    if (profile && !isLoadedRef.current) {
+      isLoadedRef.current = true;
       reset(profile);
     }
   }, [profile, reset]);

@@ -28,13 +28,17 @@ export default function EditUserPage({ params }: EditUserPageProps) {
         </p>
       </div>
 
-      {isLoading || !userData ? (
+      {isLoading && !userData ? (
         <Card>
           <CardContent className="p-8 space-y-4">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </CardContent>
         </Card>
+      ) : !userData ? (
+        <div className="p-8 text-center text-slate-500">
+          Pengguna tidak ditemukan.
+        </div>
       ) : (
         <AppUserForm initialData={userData} isEditing={true} />
       )}

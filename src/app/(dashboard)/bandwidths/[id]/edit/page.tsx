@@ -14,7 +14,7 @@ export default function EditBandwidthPage({ params }: PageProps) {
   const { data: res, isLoading, error } = useBandwidthQuery(id);
   const bandwidth = res?.data;
 
-  if (isLoading) {
+  if (isLoading && !bandwidth) {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -22,7 +22,7 @@ export default function EditBandwidthPage({ params }: PageProps) {
     );
   }
 
-  if (error || !bandwidth) {
+  if (error || (!isLoading && !bandwidth)) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2 text-slate-500">
         <AlertCircle className="h-8 w-8 text-red-500" />

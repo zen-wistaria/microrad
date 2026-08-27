@@ -52,7 +52,6 @@ export function useAuth() {
   const { data: portalSession, isPending: portalLoading } =
     portalAuthClient.useSession();
 
-  const isLoading = appLoading || portalLoading;
   const appUser = toAppUser(appSession?.user);
   const portalUser = toAppUser(portalSession?.user);
 
@@ -64,6 +63,12 @@ export function useAuth() {
   const isAuthenticated = Boolean(appUser || portalUser);
   const isAdmin =
     currentUser?.roleId === "role-admin" || currentUser?.role === "admin";
+
+  // isLoading HANYA bernilai true pada initial check ketika belum ada user terdeteksi.
+  // Jika user sudah teridentifikasi (status active), background revalidation
+  // (misal saat tab focus / window focus) TIDAK memicu isLoading = true
+  // agar layout tidak berkedip dan form yang sedang diedit tidak ter-unmount.
+  const isLoading = !isAuthenticated && (appLoading || portalLoading);
 
   const login = useCallback(
     async (emailOrUsername: string, password: string) => {

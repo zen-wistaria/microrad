@@ -16,36 +16,46 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { currentUser, isAuthenticated, isLoading } = useAuth();
+  const { currentUser, isAuthenticated, isLoading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  // RBAC: jika belum login → /login; jika role tidak berhak akses halaman ini
-  // → redirect ke halaman awal yang diizinkan.
+  // RBAC & Session status guard:
+  // 1. Jika status user diubah menjadi 'disabled' saat sedang online → otomatis logout
+  // 2. Jika belum login → redirect ke /login
+  // 3. Jika role tidak berhak akses halaman ini → redirect ke /dashboard
   useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated) {
       router.push("/login");
       return;
     }
+    if (currentUser?.status === "disabled") {
+      logout();
+      return;
+    }
     if (!canAccessRoute(currentUser, pathname)) {
       router.push("/dashboard");
     }
-  }, [isAuthenticated, isLoading, pathname, router, currentUser]);
+  }, [isAuthenticated, isLoading, pathname, router, currentUser, logout]);
 
-  if (isLoading || !isAuthenticated) {
+  // Hanya tampilkan full-screen loader pada initial load saat user belum ada
+  if (isLoading && !currentUser) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
           <p className="text-sm font-medium text-slate-500">
-            {isLoading
-              ? "Memuat MicroRAD PPPoE Manager..."
-              : "Mengalihkan ke halaman login..."}
+            Memuat MicroRAD PPPoE Manager...
           </p>
         </div>
       </div>
     );
+  }
+
+  // Jika tidak terautentikasi dan selesai loading, jangan render layout dashboard (sedang redirect ke /login)
+  if (!isAuthenticated && !isLoading) {
+    return null;
   }
 
   return (

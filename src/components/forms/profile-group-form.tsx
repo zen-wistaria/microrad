@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -141,19 +141,23 @@ export function ProfileGroupForm({
     }
   }, [debouncedProfileSearch, selectedServiceTypes]);
 
+  const initialIdRef = useRef(initialData?.id);
   useEffect(() => {
-    if (initialData?.serviceType) {
-      const types: ("PPP" | "HOTSPOT")[] = [];
-      const stUpper = initialData.serviceType.toUpperCase();
-      if (stUpper.includes("PPP")) types.push("PPP");
-      if (stUpper.includes("HOTSPOT")) types.push("HOTSPOT");
-      if (types.length > 0) setSelectedServiceTypes(types);
-    }
-    if (initialData?.routers) {
-      setSelectedNasIds(initialData.routers.map((r) => r.id));
-    }
-    if (initialData?.pppProfiles) {
-      setSelectedProfileIds(initialData.pppProfiles.map((p) => p.id));
+    if (initialData && initialData.id !== initialIdRef.current) {
+      initialIdRef.current = initialData.id;
+      if (initialData.serviceType) {
+        const types: ("PPP" | "HOTSPOT")[] = [];
+        const stUpper = initialData.serviceType.toUpperCase();
+        if (stUpper.includes("PPP")) types.push("PPP");
+        if (stUpper.includes("HOTSPOT")) types.push("HOTSPOT");
+        if (types.length > 0) setSelectedServiceTypes(types);
+      }
+      if (initialData.routers) {
+        setSelectedNasIds(initialData.routers.map((r) => r.id));
+      }
+      if (initialData.pppProfiles) {
+        setSelectedProfileIds(initialData.pppProfiles.map((p) => p.id));
+      }
     }
   }, [initialData]);
 

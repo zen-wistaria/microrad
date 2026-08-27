@@ -13,9 +13,10 @@ export default function EditInternetProfilePage({
   params,
 }: EditInternetProfilePageProps) {
   const { id } = use(params);
-  const { data, isLoading } = useInternetProfileQuery(id);
+  const { data: res, isLoading } = useInternetProfileQuery(id);
+  const profile = res?.data;
 
-  if (isLoading) {
+  if (isLoading && !profile) {
     return (
       <div className="space-y-6 max-w-3xl">
         <Skeleton className="h-10 w-48" />
@@ -25,7 +26,7 @@ export default function EditInternetProfilePage({
     );
   }
 
-  if (!data?.data) {
+  if (!profile) {
     return (
       <div className="p-8 text-center text-slate-500">
         Paket Internet tidak ditemukan.
@@ -35,7 +36,7 @@ export default function EditInternetProfilePage({
 
   return (
     <div className="space-y-6">
-      <InternetProfileForm initialData={data.data} isEdit />
+      <InternetProfileForm initialData={profile} isEdit />
     </div>
   );
 }
