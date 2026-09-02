@@ -21,6 +21,7 @@ interface PortalSidebarProps {
   online?: boolean;
   onItemClick?: () => void;
   className?: string;
+  appName?: string;
 }
 
 const NAV_ITEMS = [
@@ -36,6 +37,7 @@ export function PortalSidebar({
   online = false,
   onItemClick,
   className = "",
+  appName,
 }: PortalSidebarProps) {
   const pathname = usePathname();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
@@ -62,7 +64,7 @@ export function PortalSidebar({
         </div>
         <div>
           <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
-            <span>MicroRAD</span>
+            <span>{appName}</span>
             <span className="rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
               Portal
             </span>

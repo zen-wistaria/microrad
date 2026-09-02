@@ -20,6 +20,7 @@ import { ThemeToggle } from "../common/theme-toggle";
 
 interface TopbarProps {
   onOpenMobileNav: () => void;
+  appName?: string;
 }
 
 const routeTitles: Record<string, string> = {
@@ -39,7 +40,7 @@ const routeTitles: Record<string, string> = {
   edit: "Edit Data",
 };
 
-export function Topbar({ onOpenMobileNav }: TopbarProps) {
+export function Topbar({ onOpenMobileNav, appName = "MicroRAD" }: TopbarProps) {
   const pathname = usePathname();
   const { currentUser, logout } = useAuth();
   const [logoutDialogOpen, setLogoutDialogOpen] = React.useState(false);
@@ -66,7 +67,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             href="/dashboard"
             className="font-semibold text-slate-700 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 transition-colors"
           >
-            MicroRAD
+            {appName}
           </Link>
 
           {pathSegments.map((segment, index) => {

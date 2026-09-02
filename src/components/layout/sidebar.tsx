@@ -127,9 +127,16 @@ const systemNavItems = [
 interface SidebarProps {
   className?: string;
   onItemClick?: () => void;
+  appName?: string;
+  appVersion?: string;
 }
 
-export function Sidebar({ className = "", onItemClick }: SidebarProps) {
+export function Sidebar({
+  className = "",
+  onItemClick,
+  appName,
+  appVersion,
+}: SidebarProps) {
   const pathname = usePathname();
   const { currentUser, logout } = useAuth();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
@@ -192,9 +199,9 @@ export function Sidebar({ className = "", onItemClick }: SidebarProps) {
         </div>
         <div>
           <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
-            <span>MicroRAD</span>
+            <span>{appName}</span>
             <span className="rounded bg-blue-100 px-1 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
-              v0.2
+              {appVersion}
             </span>
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">

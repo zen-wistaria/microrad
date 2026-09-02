@@ -7,17 +7,21 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
+import { appConfig } from "@/config/app";
+
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "MicroRAD - PPPoE & RADIUS Manager",
-  description:
-    "Modern PPPoE Customer & RADIUS Management Dashboard for MikroTik ISPs",
-};
+export function generateMetadata(): Metadata {
+  return {
+    title: `${appConfig.name} - PPPoE & RADIUS Manager`,
+    description:
+      "Modern PPPoE Customer & RADIUS Management Dashboard for MikroTik ISPs",
+  };
+}
 
 export default function RootLayout({
   children,

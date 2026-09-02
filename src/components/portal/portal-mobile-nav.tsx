@@ -8,6 +8,7 @@ interface PortalMobileNavProps {
   onOpenChange: (open: boolean) => void;
   customerName?: string;
   online?: boolean;
+  appName?: string;
 }
 
 export function PortalMobileNav({
@@ -15,6 +16,7 @@ export function PortalMobileNav({
   onOpenChange,
   customerName,
   online,
+  appName,
 }: PortalMobileNavProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -24,6 +26,7 @@ export function PortalMobileNav({
           online={online}
           onItemClick={() => onOpenChange(false)}
           className="w-full border-none"
+          appName={appName}
         />
       </DialogContent>
     </Dialog>
